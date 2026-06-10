@@ -1,12 +1,20 @@
 import { Pool } from "pg";
 
 declare global {
-  var __pool: Pool | undefined;
+  var __pgPool: Pool | undefined;
 }
 
 export function getPool(): Pool {
-  if (!global.__pool) {
-    global.__pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL no está configurada");
   }
-  return global.__pool;
+  if (!global.__pgPool) {
+    global.__pgPool = new Pool({ connectionString: process.env.DATABASE_URL });
+  }
+  return global.__pgPool;
+}
+
+export async function query<T = unknown>(text: string, params: unknown[] = []): Promise<{ rows: T[] }> {
+  const pool = getPool();
+  return pool.query(text, params) as Promise<{ rows: T[] }>;
 }
