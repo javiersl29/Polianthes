@@ -16,5 +16,7 @@ export function getPool(): Pool {
 
 export async function query<T = unknown>(text: string, params: unknown[] = []): Promise<{ rows: T[] }> {
   const pool = getPool();
-  return pool.query(text, params) as Promise<{ rows: T[] }>;
+  const result = await pool.query(text, params);
+  return result as unknown as { rows: T[] };
 }
+

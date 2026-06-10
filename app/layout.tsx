@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
@@ -21,7 +21,10 @@ const body = Manrope({
 
 export const metadata: Metadata = {
   title: "Polianthes — Perfumería de autor",
-  description: "Casa de perfumería de autor. Decodifica tu fragancia y descubre una curaduría de nicho.",
+  description: "Casa de perfumería de autor. Decodifica tu fragancia y descubre una curaduría de nicho."
+};
+
+export const viewport: Viewport = {
   themeColor: "#0c0c0c"
 };
 

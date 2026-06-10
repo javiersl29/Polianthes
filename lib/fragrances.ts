@@ -20,13 +20,13 @@ export async function listFragrances(): Promise<FragranceListItem[]> {
 }
 
 export async function searchFragrances(
-  query: string,
+  text: string,
   note?: string | null
 ): Promise<FragranceListItem[]> {
   const params: unknown[] = [];
   let where = `active = TRUE`;
-  if (query && query.trim().length > 0) {
-    params.push(`%${query.toLowerCase()}%`);
+  if (text && text.trim().length > 0) {
+    params.push(`%${text.toLowerCase()}%`);
     where += ` AND (LOWER(full_name) LIKE $${params.length} OR LOWER(brand) LIKE $${params.length})`;
   }
   if (note && note.trim().length > 0) {

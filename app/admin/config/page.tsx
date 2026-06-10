@@ -1,5 +1,7 @@
 import { isAuthenticated } from "@/lib/auth";
 import { redirect } from "next/navigation";
+import ConfigForm from "./ConfigForm";
+import FragranceManager from "./FragranceManager";
 
 export const dynamic = "force-dynamic";
 
