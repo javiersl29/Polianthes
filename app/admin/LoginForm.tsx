@@ -24,6 +24,7 @@ export default function LoginForm() {
       setError(data.error ?? "Error");
       return;
     }
+    router.push("/admin");
     router.refresh();
   };
 

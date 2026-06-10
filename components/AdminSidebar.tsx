@@ -1,0 +1,50 @@
+"use client";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+
+const items = [
+  { href: "/admin", label: "Resumen", icon: "·" },
+  { href: "/admin/ai", label: "Configuración IA", icon: "✦" },
+  { href: "/admin/fragancias", label: "Fragancias", icon: "❍" }
+];
+
+export default function AdminSidebar({ username }: { username?: string | null }) {
+  const pathname = usePathname();
+  return (
+    <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-line min-h-[calc(100vh-7rem)] py-8 pr-4">
+      <p className="text-[11px] uppercase tracking-[0.2em] text-ink-mute px-3">Polianthes</p>
+      <p className="font-display italic text-3xl text-ink px-3 mt-1">Panel</p>
+      {username && <p className="text-xs text-ink-mute px-3 mt-1">Sesión: {username}</p>}
+      <nav className="mt-8 flex flex-col gap-1">
+        {items.map((it) => {
+          const active = it.href === "/admin" ? pathname === "/admin" : pathname.startsWith(it.href);
+          return (
+            <Link
+              key={it.href}
+              href={it.href}
+              className={`flex items-center gap-3 rounded-full px-4 py-2 text-sm transition-colors ${
+                active ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
+              }`}
+            >
+              <span className="text-base">{it.icon}</span>
+              {it.label}
+            </Link>
+          );
+        })}
+      </nav>
+      <form action="/api/auth?action=logout" method="POST" className="mt-auto px-3">
+        <button
+          type="submit"
+          className="text-xs text-ink-mute hover:text-gold"
+          onClick={async (e) => {
+            e.preventDefault();
+            await fetch("/api/auth?action=logout", { method: "POST" });
+            window.location.href = "/admin";
+          }}
+        >
+          Cerrar sesión
+        </button>
+      </form>
+    </aside>
+  );
+}
