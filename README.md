@@ -47,6 +47,7 @@ npm run dev
 | `OPENAI_API_KEY` | (opcional) Default; también configurable vía panel admin |
 | `OPENAI_BASE_URL` | (opcional) Default `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | (opcional) Default `gpt-4o-mini` |
+| `PEXELS_API_KEY` | API key de Pexels para búsqueda de imágenes. Si no, usa Wikimedia Commons |
 | `ADMIN_USERNAME` | Usuario inicial del panel |
 | `ADMIN_PASSWORD` | Contraseña inicial del panel |
 | `ADMIN_SESSION_SECRET` | Firma HMAC de la cookie de sesión |

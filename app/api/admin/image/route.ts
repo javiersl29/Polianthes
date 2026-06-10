@@ -4,35 +4,49 @@ import { getPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
-type UnsplashHit = {
-  id: string;
-  urls: { small: string; regular: string };
-  alt_description?: string;
-};
-
-async function searchUnsplash(query: string): Promise<string | null> {
-  // 1) Unsplash Source (sin API key): redirige a una imagen random basada en la query.
-  // Útil como fallback rápido. Devuelve 302 → URL firmada.
+async function fromPexels(query: string): Promise<string | null> {
+  const key = process.env.PEXELS_API_KEY;
+  if (!key) return null;
   try {
-    const src = `https://source.unsplash.com/featured/?${encodeURIComponent(query)}`;
-    const head = await fetch(src, { method: "HEAD", redirect: "manual" });
-    const loc = head.headers.get("location");
-    if (loc) return loc;
+    const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1&orientation=portrait`, {
+      headers: { Authorization: key }
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { photos?: { src?: { large?: string; medium?: string } }[] };
+    return data.photos?.[0]?.src?.large ?? data.photos?.[0]?.src?.medium ?? null;
   } catch {
-    /* ignore */
+    return null;
   }
-  return null;
+}
+
+async function fromWikimedia(query: string): Promise<string | null> {
+  try {
+    const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=imageinfo&iiprop=url&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(query)}&gsrlimit=1&iiurlwidth=800`;
+    const res = await fetch(url, { headers: { "User-Agent": "Polianthes/1.0" } });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { query?: { pages?: Record<string, { imageinfo?: { iiurl?: string }[] }> } };
+    const pages = data.query?.pages ?? {};
+    const first = Object.values(pages)[0];
+    return first?.imageinfo?.[0]?.iiurl ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function searchImage(query: string): Promise<string | null> {
+  return (await fromPexels(query)) ?? (await fromWikimedia(query));
 }
 
 async function persistImage(url: string, slug: string): Promise<string> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Unsplash download ${res.status}`);
+  const res = await fetch(url, { headers: { "User-Agent": "Polianthes/1.0" } });
+  if (!res.ok) throw new Error(`image download ${res.status}`);
   const buffer = Buffer.from(await res.arrayBuffer());
   const fs = await import("node:fs/promises");
   const path = await import("node:path");
   const dir = path.join(process.cwd(), "public", "fragancias");
   await fs.mkdir(dir, { recursive: true });
-  const filename = `${slug}.jpg`;
+  const ext = url.includes(".png") ? "png" : "jpg";
+  const filename = `${slug}.${ext}`;
   await fs.writeFile(path.join(dir, filename), buffer);
   return `/fragancias/${filename}`;
 }
@@ -49,12 +63,19 @@ export async function POST(req: NextRequest) {
   );
   if (result.rows.length === 0) return NextResponse.json({ error: "no encontrada" }, { status: 404 });
   const frag = result.rows[0];
-  const query = `${frag.brand} ${frag.name} perfume bottle`.trim();
-  const url = await searchUnsplash(query);
-  if (!url) return NextResponse.json({ error: "no se encontró imagen" }, { status: 404 });
+  const query = `${frag.brand} ${frag.name} perfume`;
+  const url = await searchImage(query);
+  if (!url) {
+    return NextResponse.json(
+      {
+        error: "No se encontró imagen. Configura PEXELS_API_KEY o agrega manualmente la URL."
+      },
+      { status: 404 }
+    );
+  }
   const localPath = await persistImage(url, slug);
   await pool.query(`UPDATE fragrance SET image_url = $1 WHERE id = $2`, [localPath, frag.id]);
-  return NextResponse.json({ ok: true, image_url: localPath });
+  return NextResponse.json({ ok: true, image_url: localPath, source_url: url });
 }
 
 export async function GET(req: NextRequest) {
@@ -67,7 +88,7 @@ export async function GET(req: NextRequest) {
     [slug]
   );
   if (result.rows.length === 0) return NextResponse.json({ error: "no encontrada" }, { status: 404 });
-  const query = `${result.rows[0].brand} ${result.rows[0].name} perfume bottle`.trim();
-  const hits = await searchUnsplash(query);
-  return NextResponse.json({ preview: hits });
+  const query = `${result.rows[0].brand} ${result.rows[0].name} perfume`;
+  const url = await searchImage(query);
+  return NextResponse.json({ preview: url });
 }
