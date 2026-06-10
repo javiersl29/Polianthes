@@ -81,7 +81,30 @@ export default function FragranceManager() {
     if (res.ok) {
       const data = await res.json();
       setItems((prev) => prev.map((p) => (p.slug === slug ? { ...p, image_url: data.image_url } : p)));
+    } else {
+      const err = await res.json();
+      alert(err.error ?? "No se pudo obtener imagen");
     }
+  };
+
+  const uploadImage = async (slug: string, file: File) => {
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = String(reader.result);
+      const res = await fetch("/api/admin/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, dataUrl })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setItems((prev) => prev.map((p) => (p.slug === slug ? { ...p, image_url: data.image_url } : p)));
+      } else {
+        const err = await res.json();
+        alert(err.error ?? "Error al subir");
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
   const updateRow = (id: number, patch: Partial<Row>) => {
@@ -159,6 +182,16 @@ export default function FragranceManager() {
       )}
       {batchError && <p className="mt-3 text-xs text-rose-300">{batchError}</p>}
 
+      <div className="mt-6 liquid-glass rounded-2xl p-4 text-xs text-ink-mute leading-relaxed">
+        <p className="text-ink font-medium mb-1">Cómo funciona la búsqueda de imágenes</p>
+        <p>
+          El botón "Buscar en Pexels" consulta la API de Pexels (necesita <code className="text-gold">PEXELS_API_KEY</code> en
+          Variables del servicio en Railway). Si no tienes la key, usa "Subir imagen" para arrastrar una foto
+          desde tu equipo. La imagen se guarda en <code className="text-gold">/public/fragancias/</code> y se asigna
+          automáticamente a la fragancia.
+        </p>
+      </div>
+
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <input
           value={filter}
@@ -233,8 +266,20 @@ export default function FragranceManager() {
                     Documentar con IA
                   </button>
                   <button onClick={() => fetchImage(row.slug)} className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold">
-                    Buscar imagen (Unsplash)
+                    Buscar en Pexels
                   </button>
+                  <label className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold cursor-pointer">
+                    Subir imagen
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) uploadImage(row.slug, file);
+                      }}
+                    />
+                  </label>
                 </div>
               </div>
             )}

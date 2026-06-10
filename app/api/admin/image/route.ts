@@ -4,37 +4,23 @@ import { getPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+type PexelsPhoto = { src?: { large?: string; medium?: string; original?: string } };
+
 async function fromPexels(query: string): Promise<string | null> {
   const key = process.env.PEXELS_API_KEY;
   if (!key) return null;
   try {
-    const res = await fetch(`https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1&orientation=portrait`, {
-      headers: { Authorization: key }
-    });
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${encodeURIComponent(query)}&per_page=1&orientation=portrait`,
+      { headers: { Authorization: key } }
+    );
     if (!res.ok) return null;
-    const data = (await res.json()) as { photos?: { src?: { large?: string; medium?: string } }[] };
-    return data.photos?.[0]?.src?.large ?? data.photos?.[0]?.src?.medium ?? null;
+    const data = (await res.json()) as { photos?: PexelsPhoto[] };
+    const photo = data.photos?.[0];
+    return photo?.src?.large ?? photo?.src?.medium ?? photo?.src?.original ?? null;
   } catch {
     return null;
   }
-}
-
-async function fromWikimedia(query: string): Promise<string | null> {
-  try {
-    const url = `https://commons.wikimedia.org/w/api.php?action=query&format=json&prop=imageinfo&iiprop=url&generator=search&gsrnamespace=6&gsrsearch=${encodeURIComponent(query)}&gsrlimit=1&iiurlwidth=800`;
-    const res = await fetch(url, { headers: { "User-Agent": "Polianthes/1.0" } });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { query?: { pages?: Record<string, { imageinfo?: { iiurl?: string }[] }> } };
-    const pages = data.query?.pages ?? {};
-    const first = Object.values(pages)[0];
-    return first?.imageinfo?.[0]?.iiurl ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function searchImage(query: string): Promise<string | null> {
-  return (await fromPexels(query)) ?? (await fromWikimedia(query));
 }
 
 async function persistImage(url: string, slug: string): Promise<string> {
@@ -57,18 +43,19 @@ export async function POST(req: NextRequest) {
   if (!slug) return NextResponse.json({ error: "slug requerido" }, { status: 400 });
 
   const pool = getPool();
-  const result = await pool.query<{ id: number; brand: string; name: string; full_name: string }>(
-    `SELECT id, brand, name, full_name FROM fragrance WHERE slug = $1`,
+  const result = await pool.query<{ id: number; brand: string; name: string }>(
+    `SELECT id, brand, name FROM fragrance WHERE slug = $1`,
     [slug]
   );
   if (result.rows.length === 0) return NextResponse.json({ error: "no encontrada" }, { status: 404 });
   const frag = result.rows[0];
-  const query = `${frag.brand} ${frag.name} perfume`;
-  const url = await searchImage(query);
+  const query = `${frag.brand} ${frag.name} perfume bottle`;
+  const url = await fromPexels(query);
   if (!url) {
     return NextResponse.json(
       {
-        error: "No se encontró imagen. Configura PEXELS_API_KEY o agrega manualmente la URL."
+        error:
+          "No se pudo obtener imagen. Verifica que PEXELS_API_KEY esté configurada en el panel Railway → Variables."
       },
       { status: 404 }
     );
@@ -88,7 +75,7 @@ export async function GET(req: NextRequest) {
     [slug]
   );
   if (result.rows.length === 0) return NextResponse.json({ error: "no encontrada" }, { status: 404 });
-  const query = `${result.rows[0].brand} ${result.rows[0].name} perfume`;
-  const url = await searchImage(query);
-  return NextResponse.json({ preview: url });
+  const query = `${result.rows[0].brand} ${result.rows[0].name} perfume bottle`;
+  const url = await fromPexels(query);
+  return NextResponse.json({ preview: url, has_pexels_key: !!process.env.PEXELS_API_KEY });
 }
