@@ -6,9 +6,11 @@ import { HEXAGON_SETS } from "@/lib/decoder";
 
 export const dynamic = "force-dynamic";
 
+type Gender = "hombre" | "mujer" | "unisex";
 type Body = {
   set: "familias" | "mood";
   vector: Record<string, number>;
+  gender?: Gender;
 };
 
 export async function POST(req: NextRequest) {
@@ -20,6 +22,7 @@ export async function POST(req: NextRequest) {
   }
   const set = HEXAGON_SETS[body.set];
   if (!set) return NextResponse.json({ error: "Set no válido" }, { status: 400 });
+  const gender: Gender = body.gender === "hombre" || body.gender === "mujer" ? body.gender : "unisex";
 
   const config = await getAiConfig();
   if (!config.api_key) {
@@ -37,11 +40,12 @@ export async function POST(req: NextRequest) {
   const vectorText = set.axes
     .map((a) => `- ${a.label} (${a.hint}): ${body.vector[a.id] ?? 50}/100`)
     .join("\n");
-  const catalogText = catalog
-    .map((f) => `• ${f.brand} — ${f.name} (slug: ${f.slug})${f.family ? ` [familia: ${f.family}]` : ""}${f.mood ? ` [mood: ${f.mood}]` : ""}`)
+  const filtered = gender === "unisex" ? catalog : catalog.filter((f) => f.gender === gender || f.gender === "unisex");
+  const catalogText = filtered
+    .map((f) => `• ${f.brand} — ${f.name} (slug: ${f.slug})${f.family ? ` [familia: ${f.family}]` : ""}${f.mood ? ` [mood: ${f.mood}]` : ""} [género: ${f.gender}]`)
     .join("\n");
 
-  const userPrompt = `Catálogo disponible (${catalog.length} fragancias):\n${catalogText}\n\nVector de afinidad del cliente (${set.id}):\n${vectorText}\n\nDevuelve exactamente 5 recomendaciones priorizando las fragancias cuya familia o mood coincida mejor con el vector.`;
+  const userPrompt = `Preferencia de género del cliente: ${gender}.${gender === "unisex" ? " (Considera tanto fragancias de hombre como de mujer; las unisex suelen ser la opción más flexible.)" : " Prioriza fragancias etiquetadas con este género; las unisex también son bienvenidas."}\n\nCatálogo disponible (${filtered.length} fragancias):\n${catalogText}\n\nVector de afinidad del cliente (${set.id}):\n${vectorText}\n\nDevuelve exactamente 5 recomendaciones priorizando las fragancias cuya familia, mood o género coincida mejor con el vector.`;
 
   const messages = [
     { role: "system" as const, content: config.system_prompt ?? "" },

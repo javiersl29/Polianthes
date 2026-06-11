@@ -6,7 +6,7 @@ import { chatCompletion } from "@/lib/llm";
 
 export const dynamic = "force-dynamic";
 
-const SYSTEM_PROMPT = `Eres el perfumista documentalista de Polianthes. Recibes el nombre de una fragancia y debes devolver SOLO un JSON estricto con: {"description":"...","family":"una de: Floral|Oriental|Amaderado|Chipre|Cítrico|Gourmand","mood":"una palabra evocadora en español","top_notes":["..."],"heart_notes":["..."],"base_notes":["..."]}. Sin texto fuera del JSON. Notas en español, máximo 5 por capa. Descripción en español, máximo 2 frases.`;
+const SYSTEM_PROMPT = `Eres el perfumista documentalista de Polianthes. Recibes el nombre de una fragancia y debes devolver SOLO un JSON estricto con: {"description":"...","family":"una de: Floral|Oriental|Amaderado|Chipre|Cítrico|Gourmand","mood":"una palabra evocadora en español","gender":"hombre|mujer|unisex","top_notes":["..."],"heart_notes":["..."],"base_notes":["..."]}. Sin texto fuera del JSON. Notas en español, máximo 5 por capa. Descripción en español, máximo 2 frases. Para 'gender' usa la convención de la maison: 'pour homme' o nombres típicamente masculinos → hombre; fragancias con '(Mujer)' o nombres femeninos → mujer; el resto → unisex.`;
 
 type Body = { mode?: "pending" | "all"; limit?: number };
 
@@ -49,24 +49,28 @@ export async function POST(req: NextRequest) {
         description?: string;
         family?: string;
         mood?: string;
+        gender?: "hombre" | "mujer" | "unisex";
         top_notes?: string[];
         heart_notes?: string[];
         base_notes?: string[];
       };
+      const gender = data.gender === "hombre" || data.gender === "mujer" ? data.gender : "unisex";
       await pool.query(
         `UPDATE fragrance SET
           description = COALESCE($1, description),
           family = COALESCE($2, family),
           mood = COALESCE($3, mood),
-          top_notes = COALESCE($4::text[], top_notes),
-          heart_notes = COALESCE($5::text[], heart_notes),
-          base_notes = COALESCE($6::text[], base_notes),
+          gender = COALESCE($4, gender),
+          top_notes = COALESCE($5::text[], top_notes),
+          heart_notes = COALESCE($6::text[], heart_notes),
+          base_notes = COALESCE($7::text[], base_notes),
           enriched_at = NOW()
-         WHERE id = $7`,
+         WHERE id = $8`,
         [
           data.description ?? null,
           data.family ?? null,
           data.mood ?? null,
+          gender,
           data.top_notes ?? null,
           data.heart_notes ?? null,
           data.base_notes ?? null,

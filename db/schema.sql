@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS fragrance (
   description TEXT,
   family TEXT,
   mood TEXT,
+  gender TEXT NOT NULL DEFAULT 'unisex',
   top_notes TEXT[] DEFAULT '{}',
   heart_notes TEXT[] DEFAULT '{}',
   base_notes TEXT[] DEFAULT '{}',
@@ -14,7 +15,8 @@ CREATE TABLE IF NOT EXISTS fragrance (
   inspiration_image_url TEXT,
   enriched_at TIMESTAMPTZ,
   active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT fragrance_gender_check CHECK (gender IN ('hombre', 'mujer', 'unisex'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_fragrance_brand ON fragrance(brand);

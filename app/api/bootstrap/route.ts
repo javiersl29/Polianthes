@@ -16,6 +16,10 @@ function slugify(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+async function ensureColumn(pool: ReturnType<typeof getPool>, table: string, column: string, definition: string) {
+  await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS ${column} ${definition}`);
+}
+
 export async function POST(req: NextRequest) {
   const secret = req.headers.get("x-bootstrap-secret") ?? req.nextUrl.searchParams.get("secret");
   if (secret !== (process.env.BOOTSTRAP_SECRET ?? "polianthes-bootstrap")) {
@@ -24,6 +28,21 @@ export async function POST(req: NextRequest) {
   const sql = fs.readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8");
   const pool = getPool();
   await pool.query(sql);
+
+  // Migraciones idempotentes para columnas añadidas en versiones posteriores
+  await ensureColumn(pool, "fragrance", "gender", "TEXT NOT NULL DEFAULT 'unisex'");
+  await pool.query(
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint WHERE conname = 'fragrance_gender_check'
+       ) THEN
+         ALTER TABLE fragrance
+           ADD CONSTRAINT fragrance_gender_check
+           CHECK (gender IN ('hombre', 'mujer', 'unisex'));
+       END IF;
+     END$$;`
+  );
 
   const rows = loadCatalog();
   let inserted = 0;

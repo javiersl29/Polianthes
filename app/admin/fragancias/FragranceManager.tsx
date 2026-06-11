@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 
+type Gender = "hombre" | "mujer" | "unisex";
 type Row = {
   id: number;
   slug: string;
@@ -9,6 +10,7 @@ type Row = {
   full_name: string;
   family: string | null;
   mood: string | null;
+  gender: Gender;
   description: string | null;
   image_url: string | null;
   inspiration_image_url: string | null;
@@ -20,6 +22,7 @@ type Row = {
 };
 
 const FAMILIES = ["Floral", "Oriental", "Amaderado", "Chipre", "Cítrico", "Gourmand"];
+const GENDERS: Gender[] = ["hombre", "mujer", "unisex"];
 
 export default function FragranceManager() {
   const [items, setItems] = useState<Row[]>([]);
@@ -230,10 +233,11 @@ export default function FragranceManager() {
                   <p className="font-display italic text-xl text-ink">{row.name}</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-ink-mute">
-                {row.enriched_at ? <span className="text-gold">Documentada</span> : <span>Sin documentar</span>}
-                <span className="liquid-glass rounded-full px-3 py-1">{row.active ? "Activa" : "Baja"}</span>
-              </div>
+                <div className="flex items-center gap-2 text-xs text-ink-mute">
+                  <span className="liquid-glass rounded-full px-3 py-1 capitalize">{row.gender}</span>
+                  {row.enriched_at ? <span className="text-gold">Documentada</span> : <span>Sin documentar</span>}
+                  <span className="liquid-glass rounded-full px-3 py-1">{row.active ? "Activa" : "Baja"}</span>
+                </div>
             </button>
             {expanded === row.id && (
               <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -243,6 +247,12 @@ export default function FragranceManager() {
                   value={row.family ?? ""}
                   options={FAMILIES}
                   onChange={(v) => updateRow(row.id, { family: v || null })}
+                />
+                <SelectField
+                  label="Género"
+                  value={row.gender}
+                  options={GENDERS}
+                  onChange={(v) => updateRow(row.id, { gender: (v as Gender) || "unisex" })}
                 />
                 <Field label="Mood" value={row.mood ?? ""} onChange={(v) => updateRow(row.id, { mood: v })} />
                 <Field label="URL imagen" value={row.image_url ?? ""} onChange={(v) => updateRow(row.id, { image_url: v })} />

@@ -34,10 +34,12 @@ export async function POST(req: NextRequest) {
       description?: string;
       family?: string;
       mood?: string;
+      gender?: "hombre" | "mujer" | "unisex";
       top_notes?: string[];
       heart_notes?: string[];
       base_notes?: string[];
     };
+    const gender = data.gender === "hombre" || data.gender === "mujer" ? data.gender : "unisex";
     const { getPool } = await import("@/lib/db");
     const pool = getPool();
     await pool.query(
@@ -45,22 +47,24 @@ export async function POST(req: NextRequest) {
         description = COALESCE($1, description),
         family = COALESCE($2, family),
         mood = COALESCE($3, mood),
-        top_notes = COALESCE($4::text[], top_notes),
-        heart_notes = COALESCE($5::text[], heart_notes),
-        base_notes = COALESCE($6::text[], base_notes),
+        gender = COALESCE($4, gender),
+        top_notes = COALESCE($5::text[], top_notes),
+        heart_notes = COALESCE($6::text[], heart_notes),
+        base_notes = COALESCE($7::text[], base_notes),
         enriched_at = NOW()
-       WHERE id = $7`,
+       WHERE id = $8`,
       [
         data.description ?? null,
         data.family ?? null,
         data.mood ?? null,
+        gender,
         data.top_notes ?? null,
         data.heart_notes ?? null,
         data.base_notes ?? null,
         detail.id
       ]
     );
-    return NextResponse.json({ ok: true, fragrance: data });
+    return NextResponse.json({ ok: true, fragrance: { ...data, gender } });
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "parse error" },

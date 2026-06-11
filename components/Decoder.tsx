@@ -3,12 +3,14 @@ import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HEXAGON_SETS, AxisSet, DecodeVector, defaultVector } from "@/lib/decoder";
 
+type Gender = "hombre" | "mujer" | "unisex";
 type Recommendation = {
   slug: string;
   brand: string;
   name: string;
   full_name: string;
   image_url: string | null;
+  gender: Gender;
   reason: string;
 };
 
@@ -40,6 +42,7 @@ export default function Decoder() {
   const [setId, setSetId] = useState<"familias" | "mood">("familias");
   const set: AxisSet = HEXAGON_SETS[setId];
   const [vector, setVector] = useState<DecodeVector>(() => defaultVector(HEXAGON_SETS.familias));
+  const [gender, setGender] = useState<Gender>("unisex");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Recommendation[]>([]);
@@ -65,7 +68,7 @@ export default function Decoder() {
       const res = await fetch("/api/decode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ set: setId, vector })
+        body: JSON.stringify({ set: setId, vector, gender })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo descifrar la fragancia");
@@ -93,7 +96,7 @@ export default function Decoder() {
           </p>
         </div>
 
-        <div className="mt-10 flex justify-center">
+        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
           <div className="liquid-glass inline-flex items-center rounded-full p-1.5">
             {(Object.keys(HEXAGON_SETS) as ("familias" | "mood")[]).map((id) => (
               <button
@@ -104,6 +107,20 @@ export default function Decoder() {
                 }`}
               >
                 {id === "familias" ? "Por familias" : "Por estado de ánimo"}
+              </button>
+            ))}
+          </div>
+          <div className="liquid-glass inline-flex items-center rounded-full p-1.5" role="group" aria-label="Género">
+            {(["hombre", "mujer", "unisex"] as Gender[]).map((g) => (
+              <button
+                key={g}
+                onClick={() => setGender(g)}
+                className={`px-4 py-1.5 text-sm rounded-full transition-colors capitalize ${
+                  gender === g ? "bg-gold text-bg" : "text-ink/80 hover:text-gold"
+                }`}
+                aria-pressed={gender === g}
+              >
+                {g}
               </button>
             ))}
           </div>
@@ -249,7 +266,10 @@ export default function Decoder() {
                       <span className="font-display italic text-gold text-3xl">{r.brand[0]}</span>
                     )}
                   </div>
-                  <p className="mt-3 text-xs text-ink-mute uppercase tracking-wider">{r.brand}</p>
+                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <p className="text-xs text-ink-mute uppercase tracking-wider">{r.brand}</p>
+                    <span className="liquid-glass rounded-full px-2 py-0.5 text-[10px] text-ink/80 capitalize">{r.gender}</span>
+                  </div>
                   <p className="font-display italic text-xl text-ink leading-tight">{r.name}</p>
                   <p className="mt-2 text-[12px] text-ink-mute leading-snug">{r.reason}</p>
                 </motion.a>

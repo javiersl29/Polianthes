@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 
+type Gender = "hombre" | "mujer" | "unisex";
 type Item = {
   id: number;
   slug: string;
@@ -10,16 +11,19 @@ type Item = {
   full_name: string;
   family: string | null;
   mood: string | null;
+  gender: Gender;
   image_url: string | null;
 };
 
 const FAMILIES = ["", "Floral", "Oriental", "Amaderado", "Chipre", "Cítrico", "Gourmand"];
+const GENDERS: ("all" | Gender)[] = ["all", "hombre", "mujer", "unisex"];
 
 export default function Catalog() {
   const [items, setItems] = useState<Item[]>([]);
   const [query, setQuery] = useState("");
   const [note, setNote] = useState("");
   const [family, setFamily] = useState("");
+  const [gender, setGender] = useState<"all" | Gender>("all");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -30,6 +34,7 @@ export default function Catalog() {
         const params = new URLSearchParams();
         if (query) params.set("q", query);
         if (note) params.set("note", note);
+        if (gender !== "all") params.set("gender", gender);
         const res = await fetch(`/api/search?${params.toString()}`, { signal: controller.signal });
         const data = (await res.json()) as { items: Item[] };
         const filtered = family ? data.items.filter((i) => i.family === family) : data.items;
@@ -42,7 +47,7 @@ export default function Catalog() {
       clearTimeout(t);
       controller.abort();
     };
-  }, [query, note, family]);
+  }, [query, note, family, gender]);
 
   const empty = useMemo(
     () => !loading && items.length === 0,
@@ -65,7 +70,7 @@ export default function Catalog() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 mb-4">
           <div className="liquid-glass rounded-full px-4 py-2 flex items-center gap-2">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-ink-mute"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
             <input
@@ -98,6 +103,21 @@ export default function Catalog() {
             ))}
           </div>
         </div>
+        <div className="mb-8 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] uppercase tracking-wider text-ink-mute mr-1">Género</span>
+          {GENDERS.map((g) => (
+            <button
+              key={g}
+              onClick={() => setGender(g)}
+              className={`liquid-glass rounded-full px-3 py-1.5 text-xs capitalize transition-colors ${
+                gender === g ? "bg-gold text-bg" : "text-ink/80 hover:text-gold"
+              }`}
+              aria-pressed={gender === g}
+            >
+              {g === "all" ? "Todos" : g}
+            </button>
+          ))}
+        </div>
 
         {empty && (
           <div className="liquid-glass rounded-3xl p-10 text-center text-ink-mute">
@@ -121,7 +141,10 @@ export default function Catalog() {
                   <span className="font-display italic text-gold text-4xl">{it.brand[0]}</span>
                 )}
               </div>
-              <p className="mt-3 text-[11px] text-ink-mute uppercase tracking-wider">{it.brand}</p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-ink-mute uppercase tracking-wider">{it.brand}</p>
+                <span className="text-[10px] text-ink/70 capitalize">{it.gender}</span>
+              </div>
               <p className="font-display italic text-xl text-ink leading-tight">{it.name}</p>
               {it.family && <p className="mt-1 text-[11px] text-gold">{it.family}</p>}
             </Link>

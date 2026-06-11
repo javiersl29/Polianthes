@@ -1,5 +1,7 @@
 import { query } from "./db";
 
+export type Gender = "hombre" | "mujer" | "unisex";
+
 export type FragranceListItem = {
   id: number;
   slug: string;
@@ -8,12 +10,13 @@ export type FragranceListItem = {
   full_name: string;
   family: string | null;
   mood: string | null;
+  gender: Gender;
   image_url: string | null;
 };
 
 export async function listFragrances(): Promise<FragranceListItem[]> {
   const result = await query<FragranceListItem>(
-    `SELECT id, slug, brand, name, full_name, family, mood, image_url
+    `SELECT id, slug, brand, name, full_name, family, mood, gender, image_url
      FROM fragrance WHERE active = TRUE ORDER BY brand, name`
   );
   return result.rows;
@@ -21,7 +24,8 @@ export async function listFragrances(): Promise<FragranceListItem[]> {
 
 export async function searchFragrances(
   text: string,
-  note?: string | null
+  note?: string | null,
+  gender?: Gender | null
 ): Promise<FragranceListItem[]> {
   const params: unknown[] = [];
   let where = `active = TRUE`;
@@ -39,8 +43,12 @@ export async function searchFragrances(
       LOWER(COALESCE(mood, '')) LIKE $${params.length}
     )`;
   }
+  if (gender) {
+    params.push(gender);
+    where += ` AND (gender = $${params.length} OR gender = 'unisex')`;
+  }
   const result = await query<FragranceListItem>(
-    `SELECT id, slug, brand, name, full_name, family, mood, image_url
+    `SELECT id, slug, brand, name, full_name, family, mood, gender, image_url
      FROM fragrance WHERE ${where} ORDER BY brand, name LIMIT 60`,
     params
   );
@@ -58,7 +66,7 @@ export type FragranceDetail = FragranceListItem & {
 
 export async function getFragranceBySlug(slug: string): Promise<FragranceDetail | null> {
   const result = await query<FragranceDetail>(
-    `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.image_url,
+    `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
             f.description, f.top_notes, f.heart_notes, f.base_notes, f.inspiration_image_url,
             COALESCE(
               (SELECT json_agg(json_build_object('size_ml', p.size_ml, 'price_cents', p.price_cents) ORDER BY p.size_ml)
