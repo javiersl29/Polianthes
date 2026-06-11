@@ -2,6 +2,9 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { HEXAGON_SETS, AxisSet, DecodeVector, defaultVector } from "@/lib/decoder";
+import FadingVideo from "./FadingVideo";
+
+const DECODER_VIDEO = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260419_065931_e3ca7b53-d32e-4ad5-81de-dc9d6fcfda6d.mp4";
 
 type Gender = "hombre" | "mujer" | "unisex";
 type SetId = "familias" | "mood" | "referencia";
@@ -721,6 +724,19 @@ function ThinkingProgress({ step, loading }: { step: number; loading: boolean })
 function HexBackground() {
   return (
     <div className="absolute inset-0 -z-0 overflow-hidden pointer-events-none">
+      <div className="absolute inset-0 opacity-[0.12]">
+        <FadingVideo
+          src={DECODER_VIDEO}
+          scale={1.4}
+          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 object-cover"
+        />
+      </div>
+      <div
+        className="absolute inset-0"
+        style={{
+          background: "linear-gradient(180deg, color-mix(in oklch, var(--color-bg) 60%, transparent) 0%, color-mix(in oklch, var(--color-bg) 30%, transparent) 50%, color-mix(in oklch, var(--color-bg) 60%, transparent) 100%)"
+        }}
+      />
       <div
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] sm:w-[900px] h-[500px] sm:h-[900px] rounded-full animate-hex-breathe"
         style={{
