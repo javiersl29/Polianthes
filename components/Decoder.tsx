@@ -116,28 +116,34 @@ export default function Decoder() {
   const hexPath = useMemo(() => polygonPoints(values), [values]);
 
   return (
-    <section id="decodificador" className="relative py-32 px-4 overflow-hidden">
+    <section id="decodificador" className="relative py-20 sm:py-32 px-4 overflow-hidden">
       <HexBackground />
 
       <div className="relative max-w-6xl mx-auto">
-        <div className="flex flex-col items-center text-center gap-4">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true, amount: 0.3 }}
+          transition={{ duration: 0.7, ease: "easeOut" }}
+          className="flex flex-col items-center text-center gap-3 sm:gap-4"
+        >
           <p className="text-sm text-ink-mute">// Decodificador</p>
-          <h2 className="font-display italic text-ink text-5xl md:text-7xl leading-[0.9] tracking-[-3px] max-w-3xl">
+          <h2 className="font-display italic text-ink text-4xl sm:text-5xl md:text-7xl leading-[0.9] tracking-[-2px] sm:tracking-[-3px] max-w-3xl">
             Descifra<br />tu fragancia
           </h2>
-          <p className="text-ink-mute max-w-xl mt-2">
+          <p className="text-ink-mute max-w-xl mt-1 sm:mt-2 text-sm sm:text-base px-2">
             Activa los ejes que te interesan, ajústalos a tu gusto y deja que la IA reflexione sobre tu
             mapa olfativo y proponga cinco inspiraciones afines.
           </p>
-        </div>
+        </motion.div>
 
-        <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-3">
-          <div className="liquid-glass inline-flex items-center rounded-full p-1.5">
+        <div className="mt-8 sm:mt-10 flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 px-2">
+          <div className="liquid-glass inline-flex items-center rounded-full p-1 sm:p-1.5 w-full sm:w-auto justify-center">
             {(Object.keys(HEXAGON_SETS) as ("familias" | "mood")[]).map((id) => (
               <button
                 key={id}
                 onClick={() => switchSet(id)}
-                className={`px-4 py-1.5 text-sm rounded-full transition-colors ${
+                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-full transition-colors ${
                   setId === id ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
                 }`}
               >
@@ -145,12 +151,12 @@ export default function Decoder() {
               </button>
             ))}
           </div>
-          <div className="liquid-glass inline-flex items-center rounded-full p-1.5" role="group" aria-label="Género">
+          <div className="liquid-glass inline-flex items-center rounded-full p-1 sm:p-1.5 w-full sm:w-auto justify-center" role="group" aria-label="Género">
             {(["hombre", "mujer", "unisex"] as Gender[]).map((g) => (
               <button
                 key={g}
                 onClick={() => setGender(g)}
-                className={`px-4 py-1.5 text-sm rounded-full transition-colors capitalize ${
+                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-full transition-colors capitalize ${
                   gender === g ? "bg-gold text-bg" : "text-ink/80 hover:text-gold"
                 }`}
                 aria-pressed={gender === g}
@@ -161,9 +167,9 @@ export default function Decoder() {
           </div>
         </div>
 
-        <div className="mt-14 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-12 items-center">
-          <div className="relative mx-auto" style={{ width: HEX_SIZE, height: HEX_SIZE }}>
-            <svg width={HEX_SIZE} height={HEX_SIZE} className="block relative z-10">
+        <div className="mt-10 sm:mt-14 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-8 sm:gap-12 items-center">
+          <div className="relative mx-auto w-full max-w-[360px]">
+            <svg viewBox={`0 0 ${HEX_SIZE} ${HEX_SIZE}`} className="block w-full h-auto relative z-10">
               <defs>
                 <linearGradient id="hexFill" x1="0" y1="0" x2="1" y2="1">
                   <stop offset="0%" stopColor="oklch(0.82 0.13 85)" stopOpacity="0.28" />
@@ -265,10 +271,10 @@ export default function Decoder() {
               return (
                 <div
                   key={axis.id}
-                  className={`liquid-glass rounded-2xl px-4 py-3 transition-opacity ${isActive ? "" : "opacity-50"}`}
+                  className={`liquid-glass rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 transition-opacity ${isActive ? "" : "opacity-50"}`}
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px]">
                       <input
                         type="checkbox"
                         checked={isActive}
@@ -282,7 +288,7 @@ export default function Decoder() {
                       {isActive ? vector[axis.id] ?? 50 : "—"}
                     </span>
                   </div>
-                  <p className="text-[11px] text-ink-mute mt-0.5">{axis.hint}</p>
+                  <p className="text-[11px] text-ink-mute mt-0.5 hidden sm:block">{axis.hint}</p>
                   <input
                     type="range"
                     min={0}
@@ -290,7 +296,7 @@ export default function Decoder() {
                     disabled={!isActive}
                     value={vector[axis.id] ?? 50}
                     onChange={(e) => updateAxis(axis.id, Number(e.target.value))}
-                    className="mt-2 w-full accent-[color:var(--color-gold)] disabled:opacity-40"
+                    className="mt-1 sm:mt-2 w-full disabled:opacity-40"
                     aria-label={axis.label}
                   />
                 </div>
@@ -300,7 +306,7 @@ export default function Decoder() {
             <button
               onClick={submit}
               disabled={loading}
-              className="liquid-glass-strong mt-4 w-full rounded-full px-5 py-3 text-sm font-medium text-ink hover:text-gold transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
+              className="liquid-glass-strong mt-3 sm:mt-4 w-full rounded-full px-5 py-3.5 sm:py-3 text-sm font-medium text-ink hover:text-gold transition-colors disabled:opacity-50 flex items-center justify-center gap-3 min-h-[48px]"
             >
               {loading ? (
                 <>
@@ -311,7 +317,7 @@ export default function Decoder() {
                 "Descifrar mi fragancia"
               )}
             </button>
-            <p className="text-[10px] text-ink-mute text-center">
+            <p className="text-[10px] text-ink-mute text-center px-2">
               La IA reflexiona sobre tu mapa olfativo y selecciona cinco inspiraciones afines.
             </p>
           </div>
@@ -331,27 +337,31 @@ export default function Decoder() {
         </AnimatePresence>
 
         {results.length > 0 && (
-          <div className="mt-16">
-            {/* Bloque Inspiración */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5 }}
+            className="mt-12 sm:mt-16"
+          >
             {reflection && (
               <motion.div
                 initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
                 animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                 transition={{ duration: 0.7, ease: "easeOut" }}
-                className="liquid-glass rounded-3xl p-8 md:p-10 mb-10 max-w-3xl mx-auto text-center"
+                className="liquid-glass rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-10 mb-8 sm:mb-10 max-w-3xl mx-auto text-center"
               >
                 <p className="text-[11px] uppercase tracking-[0.3em] text-gold">Inspiración</p>
-                <p className="mt-4 font-display italic text-2xl md:text-3xl text-ink leading-snug">
+                <p className="mt-3 sm:mt-4 font-display italic text-xl sm:text-2xl md:text-3xl text-ink leading-snug">
                   {reflection}
                 </p>
-                <p className="mt-4 text-[10px] text-ink-mute">
+                <p className="mt-3 sm:mt-4 text-[10px] text-ink-mute">
                   Polianthes interpreta tu mapa olfativo. Las fragancias son versiones inspiradas en las composiciones originales.
                 </p>
               </motion.div>
             )}
 
-            <p className="text-center text-sm text-ink-mute mb-6">Selección personalizada</p>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <p className="text-center text-sm text-ink-mute mb-4 sm:mb-6">Selección personalizada</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
               {results.map((r, idx) => (
                 <motion.a
                   key={r.slug}
@@ -359,31 +369,30 @@ export default function Decoder() {
                   initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                   transition={{ delay: idx * 0.08, duration: 0.6, ease: "easeOut" }}
-                  className="liquid-glass rounded-3xl p-4 hover:text-gold transition-colors"
+                  className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group"
                 >
-                  <div className="aspect-[3/4] rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute text-xs">
+                  <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute text-xs">
                     {r.image_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.image_url} alt={r.full_name} className="w-full h-full object-cover" />
+                      <img src={r.image_url} alt={r.full_name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                     ) : (
                       <span className="font-display italic text-gold text-3xl">{r.brand[0]}</span>
                     )}
                   </div>
-                  <div className="mt-3 flex items-center justify-between gap-2">
-                    <p className="text-xs text-ink-mute uppercase tracking-wider">{r.brand}</p>
-                    <span className="liquid-glass rounded-full px-2 py-0.5 text-[10px] text-ink/80 capitalize">
+                  <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
+                    <p className="text-[10px] sm:text-xs text-ink-mute uppercase tracking-wider truncate">{r.brand}</p>
+                    <span className="liquid-glass rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] text-ink/80 capitalize shrink-0">
                       {r.gender}
                     </span>
                   </div>
-                  <p className="font-display italic text-xl text-ink leading-tight">{r.name}</p>
+                  <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5">{r.name}</p>
                   {typeof r.score === "number" && (
-                    <p className="mt-1 text-[10px] text-gold">Afinidad {r.score}%</p>
+                    <p className="mt-0.5 sm:mt-1 text-[10px] text-gold">Afinidad {r.score}%</p>
                   )}
-                  <p className="mt-2 text-[12px] text-ink-mute leading-snug">{r.reason}</p>
+                  <p className="mt-1 sm:mt-2 text-[11px] sm:text-[12px] text-ink-mute leading-snug line-clamp-2">{r.reason}</p>
                 </motion.a>
               ))}
             </div>
-          </div>
+          </motion.div>
         )}
       </div>
     </section>
@@ -424,7 +433,7 @@ function HexBackground() {
   return (
     <div className="absolute inset-0 -z-0 overflow-hidden pointer-events-none">
       <div
-        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[900px] h-[900px] rounded-full animate-hex-breathe"
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] sm:w-[900px] h-[500px] sm:h-[900px] rounded-full animate-hex-breathe"
         style={{
           background:
             "radial-gradient(closest-side, color-mix(in oklch, var(--color-gold) 12%, transparent), transparent 70%)",
