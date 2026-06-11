@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAiConfig } from "@/lib/ai-config";
 import { getPool } from "@/lib/db";
 import { chatCompletion, extractFirstJson } from "@/lib/llm";
-import { affinity, FAMILY_AXES, MOOD_AXES } from "@/lib/vectors";
+import { affinity } from "@/lib/vectors";
 import { HEXAGON_SETS } from "@/lib/decoder";
 
 export const dynamic = "force-dynamic";
@@ -14,10 +14,13 @@ type Body = {
   vector: Record<string, number>;
   gender?: Gender;
   mode?: "fast" | "rich";
+  count?: number;
+  reference_slug?: string;
 };
 
 const FAMILY_COLUMNS = ["vec_floral", "vec_oriental", "vec_amaderado", "vec_chipre", "vec_citrico", "vec_gourmand"];
 const MOOD_COLUMNS = ["vec_frescura", "vec_misterio", "vec_romantico", "vec_energia", "vec_sofisticado", "vec_nostalgico"];
+const ALL_VEC_COLUMNS = [...FAMILY_COLUMNS, ...MOOD_COLUMNS];
 
 const SELECT_LIST = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url"].join(", ");
 
@@ -37,28 +40,26 @@ function buildFallbackReflection(
   gender: Gender,
   topItems: TopItem[]
 ): string {
-  // Identifica el eje dominante
   const entries = Object.entries(vector).filter(([, v]) => v > 50);
   entries.sort((a, b) => b[1] - a[1]);
   const dominant = entries[0]?.[0] ?? "";
   const familyLabel: Record<string, string> = {
-    floral: "floral",
-    oriental: "oriental",
-    amaderado: "amaderado",
-    chipre: "chipre",
-    citrico: "cítrico",
-    gourmand: "gourmand",
-    frescura: "fresco",
-    misterio: "misterioso",
-    romantico: "romántico",
-    energia: "enérgico",
-    sofisticado: "sofisticado",
-    nostalgico: "nostálgico"
+    floral: "floral", oriental: "oriental", amaderado: "amaderado", chipre: "chipre",
+    citrico: "cítrico", gourmand: "gourmand", frescura: "fresco", misterio: "misterioso",
+    romantico: "romántico", energia: "enérgico", sofisticado: "sofisticado", nostalgico: "nostálgico"
   };
   const domLabel = familyLabel[dominant] ?? "definido";
   const perfil = gender === "hombre" ? "un hombre" : gender === "mujer" ? "una mujer" : "una persona";
   const top3 = topItems.slice(0, 3).map((c) => `${c.f.brand} ${c.f.name}`).join(", ");
-  return `${perfil.charAt(0).toUpperCase() + perfil.slice(1)} con un perfil ${domLabel} en la curaduría. Esta selección reune cinco fragancias que comparten esa dirección: ${top3}, entre otras. Cada una abre con notas de salida definidas, evoluciona por un corazón característico y descansa en un fondo que las hace reconocibles.`;
+  return `${perfil.charAt(0).toUpperCase() + perfil.slice(1)} con un perfil ${domLabel} en la curaduría. Esta selección reune fragancias que comparten esa dirección: ${top3}, entre otras. Cada una abre con notas de salida definidas, evoluciona por un corazón característico y descansa en un fondo que las hace reconocibles.`;
+}
+
+function buildReferenceReflection(
+  refName: string,
+  topItems: TopItem[]
+): string {
+  const top3 = topItems.slice(0, 3).map((c) => `${c.f.brand} ${c.f.name}`).join(", ");
+  return `Si ${refName} define tu gusto, esta selección comparte su misma composición aromática: ${top3}, entre otras. Cada una mantiene el ADN olfativo que reconoces, con matices que sorprenden.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -69,29 +70,55 @@ export async function POST(req: NextRequest) {
   } catch {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
-  const set = HEXAGON_SETS[body.set];
-  if (!set) return NextResponse.json({ error: "Set no válido" }, { status: 400 });
+
+  const count = Math.max(1, Math.min(10, body.count ?? 5));
   const gender: Gender = body.gender === "hombre" || body.gender === "mujer" ? body.gender : "unisex";
   const mode: "fast" | "rich" = body.mode === "rich" ? "rich" : "fast";
 
   const pool = getPool();
-  const cols = body.set === "familias" ? FAMILY_COLUMNS : MOOD_COLUMNS;
+
+  let effectiveVector = body.vector;
+  let setId: "familias" | "mood" = body.set;
+  let referenceName: string | null = null;
+
+  if (body.reference_slug) {
+    const refResult = await pool.query(
+      `SELECT slug, brand, name, full_name, ${ALL_VEC_COLUMNS.map((c) => `"${c}"`).join(", ")} FROM fragrance WHERE slug = $1 AND active = TRUE`,
+      [body.reference_slug]
+    );
+    if (refResult.rows.length === 0) {
+      return NextResponse.json({ error: "Fragancia de referencia no encontrada." }, { status: 404 });
+    }
+    const ref = refResult.rows[0];
+    referenceName = ref.full_name;
+
+    const familyVec: Record<string, number> = {};
+    for (const col of FAMILY_COLUMNS) {
+      familyVec[col.replace("vec_", "")] = Number(ref[col] ?? 50);
+    }
+    const moodVec: Record<string, number> = {};
+    for (const col of MOOD_COLUMNS) {
+      moodVec[col.replace("vec_", "")] = Number(ref[col] ?? 50);
+    }
+
+    effectiveVector = { ...familyVec, ...moodVec };
+    setId = body.set || "familias";
+  }
+
+  const set = HEXAGON_SETS[setId];
+  if (!set) return NextResponse.json({ error: "Set no válido" }, { status: 400 });
+
+  const cols = setId === "familias" ? FAMILY_COLUMNS : MOOD_COLUMNS;
   const colsSql = cols.map((c) => `"${c}"`).join(", ");
   const genderClause = gender === "unisex" ? "" : "AND (gender = $1 OR gender = 'unisex')";
+  const excludeRef = body.reference_slug ? `AND slug != '${body.reference_slug.replace(/'/g, "''")}'` : "";
   const result = await pool.query(
-    `SELECT ${SELECT_LIST}, ${colsSql} FROM fragrance WHERE active = TRUE ${genderClause}`,
+    `SELECT ${SELECT_LIST}, ${colsSql} FROM fragrance WHERE active = TRUE ${genderClause} ${excludeRef}`,
     gender === "unisex" ? [] : [gender]
   );
   type Row = {
-    id: number;
-    slug: string;
-    brand: string;
-    name: string;
-    full_name: string;
-    family: string | null;
-    mood: string | null;
-    gender: Gender;
-    image_url: string | null;
+    id: number; slug: string; brand: string; name: string; full_name: string;
+    family: string | null; mood: string | null; gender: Gender; image_url: string | null;
     [k: string]: unknown;
   };
   const rows = result.rows as Row[];
@@ -100,6 +127,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "El catálogo está vacío." }, { status: 503 });
   }
 
+  const clientVecForRanking = setId === "familias"
+    ? Object.fromEntries(FAMILY_COLUMNS.map((c) => [c.replace("vec_", ""), effectiveVector[c.replace("vec_", "")] ?? 50]))
+    : Object.fromEntries(MOOD_COLUMNS.map((c) => [c.replace("vec_", ""), effectiveVector[c.replace("vec_", "")] ?? 50]));
+
   const ranked = rows
     .map((f) => {
       const fragVec: Record<string, number> = {};
@@ -107,45 +138,53 @@ export async function POST(req: NextRequest) {
         const id = col.replace("vec_", "");
         fragVec[id] = Number(f[col] ?? 50);
       }
-      const score = affinity(body.vector, fragVec);
+      const score = affinity(clientVecForRanking, fragVec);
       return { f, score };
     })
     .sort((a, b) => b.score - a.score);
 
-  const top = ranked.slice(0, 6);
+  const top = ranked.slice(0, Math.max(count + 1, 6));
   if (top.length === 0) {
     return NextResponse.json({ error: "No hay fragancias que coincidan." }, { status: 404 });
   }
 
-  // MODO FAST: ranking numérico puro
+  // MODO FAST
   if (mode === "fast") {
-    const recommendations = top.slice(0, 5).map((c, i) => ({
+    const recommendations = top.slice(0, count).map((c, i) => ({
       ...c.f,
-      reason: FAST_REASONS[i % FAST_REASONS.length],
+      reason: referenceName
+        ? `Comparte composición con ${referenceName}.`
+        : FAST_REASONS[i % FAST_REASONS.length],
       score: c.score
     }));
     const elapsed = Date.now() - startedAt;
-    return NextResponse.json({ recommendations, elapsed_ms: elapsed, mode: "fast" });
+    return NextResponse.json({
+      recommendations,
+      reflection: referenceName ? buildReferenceReflection(referenceName, top) : null,
+      elapsed_ms: elapsed,
+      mode: "fast",
+      reference: referenceName
+    });
   }
 
-  // MODO RICH: LLM con razones + reflexión
+  // MODO RICH
   const compactList = top
     .map((c, i) => `${i + 1}. ${c.f.brand} ${c.f.name} | ${c.f.slug} | ${c.score}% | ${c.f.family ?? ""} | ${c.f.mood ?? ""}`)
     .join("\n");
 
-  // Vector del cliente formateado para que la IA lo vea
   const vectorText = set.axes
-    .map((a) => `${a.label}=${body.vector[a.id] ?? 0}`)
+    .map((a) => `${a.label}=${effectiveVector[a.id] ?? 50}`)
     .join(", ");
 
   const richSystem =
     "Eres el curador humano de Polianthes. Hablas en español, con voz segura, cálida y editorial. " +
-    "Tu única salida es un objeto JSON estricto (sin markdown, sin <think>, sin texto extra). " +
+    "Tu única salida es un objeto JSON estricto (sin markdown, sin ```thinking```, sin texto extra). " +
     "Estructura: " +
     '{"r":[{"s":"slug","w":"frase ≤ 14 palabras, evocadora y humana"}],' +
-    '"f":"texto de 2-3 frases (≤ 90 palabras) que: (1) describe al cliente en 2-3 palabras o una imagen breve (ej. \"un hombre moderno que gravita hacia cítricos frescos\", \"una mujer que busca nocturnidad elegante\"); (2) describe la selección con sus tipos de perfume y composición (notas de salida, corazón, fondo) usando los slugs y el vector del cliente; (3) conecta los perfumes con el perfil del cliente en una sola frase final. Tono editorial, no de marketing. NO incluyas la palabra Inspiración en este texto."}';
+    '"f":"texto de 2-3 frases (≤ 90 palabras) que: (1) describe al cliente en 2-3 palabras o una imagen breve; (2) describe la selección con sus tipos de perfume y composición (notas de salida, corazón, fondo); (3) conecta los perfumes con el perfil del cliente en una sola frase final. Tono editorial, no de marketing. NO incluyas la palabra Inspiración en este texto."}';
 
-  const richUser = `Set: ${body.set}\nVector del cliente: ${vectorText}\nGénero: ${gender}\nCandidatos:\n${compactList}`;
+  const refContext = referenceName ? `\nReferencia del cliente: "${referenceName}" — le gusta esta fragancia y busca otras con composición aromática similar.` : "";
+  const richUser = `Set: ${setId}\nVector del cliente: ${vectorText}\nGénero: ${gender}\nCantidad solicitada: ${count}${refContext}\nCandidatos:\n${compactList}`;
 
   try {
     const config = await configReadyOrThrow();
@@ -165,7 +204,7 @@ export async function POST(req: NextRequest) {
     const picked = pickedRaw
       .map((p) => ({ slug: p.s ?? "", reason: p.w ?? "" }))
       .filter((p) => p.slug)
-      .slice(0, 5);
+      .slice(0, count);
 
     const recommendations = picked
       .map((p) => {
@@ -175,41 +214,50 @@ export async function POST(req: NextRequest) {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
-    if (recommendations.length < 5) {
+    if (recommendations.length < count) {
       for (const cand of top) {
-        if (recommendations.length >= 5) break;
+        if (recommendations.length >= count) break;
         if (recommendations.find((r) => r.slug === cand.f.slug)) continue;
         recommendations.push({
           ...cand.f,
-          reason: FAST_REASONS[recommendations.length % FAST_REASONS.length],
+          reason: referenceName
+            ? `Comparte composición con ${referenceName}.`
+            : FAST_REASONS[recommendations.length % FAST_REASONS.length],
           score: cand.score
         });
       }
     }
 
-    // Si la IA omitió la reflexión, usar fallback
     const reflection =
-      (parsed.f ?? "").trim() || buildFallbackReflection(body.vector, body.set, gender, top);
+      (parsed.f ?? "").trim() || (referenceName
+        ? buildReferenceReflection(referenceName, top)
+        : buildFallbackReflection(effectiveVector, setId, gender, top));
 
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({
-      recommendations: recommendations.slice(0, 5),
+      recommendations: recommendations.slice(0, count),
       reflection,
       elapsed_ms: elapsed,
-      mode: "rich"
+      mode: "rich",
+      reference: referenceName
     });
   } catch (err) {
-    const recommendations = top.slice(0, 5).map((c, i) => ({
+    const recommendations = top.slice(0, count).map((c, i) => ({
       ...c.f,
-      reason: FAST_REASONS[i % FAST_REASONS.length],
+      reason: referenceName
+        ? `Comparte composición con ${referenceName}.`
+        : FAST_REASONS[i % FAST_REASONS.length],
       score: c.score
     }));
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({
       recommendations,
-      reflection: buildFallbackReflection(body.vector, body.set, gender, top),
+      reflection: referenceName
+        ? buildReferenceReflection(referenceName, top)
+        : buildFallbackReflection(effectiveVector, setId, gender, top),
       elapsed_ms: elapsed,
       mode: "fallback",
+      reference: referenceName,
       warning: err instanceof Error ? err.message : ""
     });
   }
