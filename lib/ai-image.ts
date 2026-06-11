@@ -1,3 +1,4 @@
+import { query } from "./db";
 import { getAiConfig } from "./ai-config";
 
 export type ImageGenerationInput = {
@@ -12,11 +13,15 @@ export type ImageGenerationInput = {
 };
 
 export type ImageGenerationResult = {
+  ok: boolean;
   url?: string;
   b64?: string;
   revisedPrompt?: string;
   model: string;
+  endpoint?: string;
   provider: "minimax" | "mock";
+  error?: string;
+  debug?: Record<string, unknown>;
 };
 
 const FAMILY_MOOD_HINTS: Record<string, string> = {
@@ -61,59 +66,210 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     .join(" ");
 }
 
-export function resolveImageEndpoint(baseUrl: string | null | undefined): string {
-  const url = (baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
-  return `${url}/images/generations`;
+export type ResolvedImageConfig = {
+  endpoint: string;
+  apiKey: string;
+  model: string;
+  source: "env" | "db_ai_config";
+};
+
+export async function resolveImageConfig(): Promise<ResolvedImageConfig | null> {
+  // 1) Variables de entorno explícitas (tienen prioridad)
+  const envKey = process.env.MINIMAX_IMAGE_API_KEY;
+  const envEndpoint = process.env.MINIMAX_IMAGE_ENDPOINT;
+  const envModel = process.env.MINIMAX_IMAGE_MODEL;
+  if (envKey && envEndpoint) {
+    return {
+      endpoint: envEndpoint,
+      apiKey: envKey,
+      model: envModel || "minimax-image-01",
+      source: "env"
+    };
+  }
+
+  // 2) Fallback: usar api_key de ai_config + endpoint construido
+  const cfg = await getAiConfig();
+  if (!cfg.api_key) return null;
+  const base = (cfg.base_url ?? "https://api.minimax.io/v1").replace(/\/+$/, "");
+  return {
+    endpoint: `${base}/image_generation`,
+    apiKey: cfg.api_key,
+    model: envModel || "minimax-image-01",
+    source: "db_ai_config"
+  };
 }
 
 export async function generateImage(
   input: ImageGenerationInput
 ): Promise<ImageGenerationResult> {
-  const cfg = await getAiConfig();
-  if (!cfg.api_key) {
-    return mockResult(input, "Falta API key en Configuración IA");
+  const cfg = await resolveImageConfig();
+  if (!cfg) {
+    return {
+      ok: false,
+      provider: "mock",
+      model: "none",
+      error: "No hay configuración de imagen. Define MINIMAX_IMAGE_API_KEY + MINIMAX_IMAGE_ENDPOINT en Railway, o configura la api_key en /admin/ai.",
+      debug: { hint: "Falta API key de imagen en env y en ai_config" }
+    };
   }
+
   const prompt = buildImagePrompt(input);
-  const model = process.env.MINIMAX_IMAGE_MODEL || "minimax-image-01";
-  const response = await fetch(resolveImageEndpoint(cfg.base_url), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${cfg.api_key}`
-    },
-    body: JSON.stringify({
-      model,
-      prompt,
-      n: 1,
-      size: "1024x1024",
-      response_format: "url"
-    })
-  });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`Image API ${response.status}: ${text.slice(0, 400)}`);
-  }
-  const data = (await response.json()) as {
-    data?: Array<{ url?: string; b64_json?: string; revised_prompt?: string }>;
-    model?: string;
+  const body: Record<string, unknown> = {
+    model: cfg.model,
+    prompt,
+    n: 1,
+    size: "1024x1024"
   };
-  const first = data.data?.[0];
-  if (!first) {
-    throw new Error("La API no devolvió imágenes");
+
+  let response: Response;
+  try {
+    response = await fetch(cfg.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
+  } catch (err) {
+    return {
+      ok: false,
+      provider: "minimax",
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      error: `No se pudo conectar: ${err instanceof Error ? err.message : "Error de red"}`,
+      debug: { body, config_source: cfg.source }
+    };
   }
+
+  const text = await response.text();
+  if (!response.ok) {
+    return {
+      ok: false,
+      provider: "minimax",
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      error: `HTTP ${response.status}: ${text.slice(0, 500)}`,
+      debug: { body, config_source: cfg.source, response_excerpt: text.slice(0, 500) }
+    };
+  }
+
+  let data: {
+    data?: Array<{ url?: string; b64_json?: string; image_base64?: string; revised_prompt?: string }>;
+    model?: string;
+    image_url?: string;
+    images?: string[];
+  };
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      provider: "minimax",
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      error: "Respuesta no es JSON válido",
+      debug: { response_excerpt: text.slice(0, 500) }
+    };
+  }
+
+  // Distintas formas de respuesta según el proveedor
+  const url =
+    data.data?.[0]?.url ??
+    data.image_url ??
+    data.images?.[0];
+  const b64 = data.data?.[0]?.b64_json ?? data.data?.[0]?.image_base64;
+
+  if (!url && !b64) {
+    return {
+      ok: false,
+      provider: "minimax",
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      error: "La API no devolvió imagen (ni url ni b64)",
+      debug: { response: data }
+    };
+  }
+
   return {
-    url: first.url,
-    b64: first.b64_json,
-    revisedPrompt: first.revised_prompt,
-    model: data.model ?? model,
+    ok: true,
+    url,
+    b64,
+    revisedPrompt: data.data?.[0]?.revised_prompt,
+    model: data.model ?? cfg.model,
+    endpoint: cfg.endpoint,
     provider: "minimax"
   };
 }
 
-function mockResult(input: ImageGenerationInput, reason: string): ImageGenerationResult {
+export type DbImageConfig = {
+  has_ai_config: boolean;
+  ai_base_url: string | null;
+  env_endpoint: string | null;
+  env_model: string | null;
+  has_env_key: boolean;
+  resolved: ResolvedImageConfig | null;
+};
+
+/**
+ * Endpoint de diagnóstico: devuelve qué configuración está viendo el servidor.
+ * Útil para debuggear "qué endpoint/modelo está usando realmente".
+ */
+export async function getImageConfigDiagnostics(): Promise<DbImageConfig> {
+  const envKey = process.env.MINIMAX_IMAGE_API_KEY;
+  const envEndpoint = process.env.MINIMAX_IMAGE_ENDPOINT;
+  const envModel = process.env.MINIMAX_IMAGE_MODEL;
+  const cfg = await getAiConfig();
+  const resolved = await resolveImageConfig();
   return {
-    model: "mock",
-    provider: "mock",
-    revisedPrompt: `[MOCK] ${reason}. Prompt construido para "${input.fragranceName}" (${input.family ?? "n/d"}).`
+    has_ai_config: Boolean(cfg.api_key),
+    ai_base_url: cfg.base_url,
+    env_endpoint: envEndpoint ?? null,
+    env_model: envModel ?? null,
+    has_env_key: Boolean(envKey),
+    resolved
   };
+}
+
+/**
+ * Ping contra el endpoint de imágenes sin gastar créditos. Útil para verificar config.
+ */
+export async function pingImageEndpoint(): Promise<{
+  ok: boolean;
+  endpoint: string;
+  model: string;
+  status?: number;
+  error?: string;
+}> {
+  const cfg = await resolveImageConfig();
+  if (!cfg) {
+    return { ok: false, endpoint: "(no config)", model: "?", error: "Sin configuración" };
+  }
+  // Ping de bajo costo: usamos una llamada de chat al endpoint, o un GET si existe
+  // La estrategia más segura: mandar una generación con prompt vacío y un timeout corto,
+  // y devolver el status code (no 404 = endpoint existe).
+  try {
+    const res = await fetch(cfg.endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cfg.apiKey}`
+      },
+      body: JSON.stringify({ model: cfg.model, prompt: "ping", n: 1, size: "256x256" }),
+      signal: AbortSignal.timeout(8000)
+    });
+    return {
+      ok: res.status !== 404,
+      endpoint: cfg.endpoint,
+      model: cfg.model,
+      status: res.status
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      endpoint: cfg.endpoint,
+      model: cfg.model,
+      error: err instanceof Error ? err.message : "Error"
+    };
+  }
 }

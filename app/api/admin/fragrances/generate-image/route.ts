@@ -26,6 +26,15 @@ type FragranceRow = {
   image_url: string | null;
 };
 
+export async function GET() {
+  if (!(await isAuthenticated())) {
+    return NextResponse.json({ error: "no autorizado" }, { status: 401 });
+  }
+  const { getImageConfigDiagnostics, pingImageEndpoint } = await import("@/lib/ai-image");
+  const [diag, ping] = await Promise.all([getImageConfigDiagnostics(), pingImageEndpoint()]);
+  return NextResponse.json({ config: diag, ping });
+}
+
 export async function POST(req: NextRequest) {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "no autorizado" }, { status: 401 });
@@ -54,21 +63,23 @@ export async function POST(req: NextRequest) {
     baseNotes: row.base_notes ?? [],
     promptOverride: body.prompt_override
   };
-  let result;
-  try {
-    result = await generateImage(input);
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Error generando imagen" },
-      { status: 500 }
-    );
-  }
-  if (result.provider === "mock" || !result.url) {
+  const result = await generateImage(input);
+  if (!result.ok) {
     return NextResponse.json({
       ok: false,
-      reason: "no_provider",
-      message: "La API de imágenes no está configurada o devolvió vacío.",
-      prompt: buildPromptForEcho(input)
+      reason: "generation_failed",
+      message: result.error,
+      model: result.model,
+      endpoint: result.endpoint,
+      debug: result.debug
+    });
+  }
+  if (!result.url) {
+    return NextResponse.json({
+      ok: false,
+      reason: "no_url",
+      message: "La API devolvió imagen pero en base64. Aún no se soporta guardar base64; agrega response_format url en el endpoint.",
+      has_b64: Boolean(result.b64)
     });
   }
   if (!save) {
@@ -77,7 +88,7 @@ export async function POST(req: NextRequest) {
       saved: false,
       url: result.url,
       model: result.model,
-      prompt: buildPromptForEcho(input)
+      endpoint: result.endpoint
     });
   }
   try {
@@ -103,8 +114,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
-
-function buildPromptForEcho(input: ImageGenerationInput): string {
-  return `[brand: ${input.brand}] [name: ${input.fragranceName}] [family: ${input.family ?? "n/d"}] [mood: ${input.mood ?? "n/d"}]`;
 }

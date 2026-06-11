@@ -32,6 +32,8 @@ export default function ImagesPage() {
   const [previews, setPreviews] = useState<Record<number, Preview>>({});
   const [batchRunning, setBatchRunning] = useState(false);
   const [search, setSearch] = useState("");
+  const [diag, setDiag] = useState<{ config: Record<string, unknown>; ping: Record<string, unknown> } | null>(null);
+  const [diagOpen, setDiagOpen] = useState(false);
 
   useEffect(() => {
     fetch("/api/admin/fragrances")
@@ -41,6 +43,10 @@ export default function ImagesPage() {
         setLoading(false);
       })
       .catch(() => setLoading(false));
+    fetch("/api/admin/fragrances/generate-image")
+      .then((r) => r.json())
+      .then((data) => setDiag(data))
+      .catch(() => setDiag(null));
   }, []);
 
   const toggleSelected = (id: number) => {
@@ -69,6 +75,16 @@ export default function ImagesPage() {
         body: JSON.stringify({ slug: row.slug, save: false })
       });
       const data = await res.json();
+      if (data?.reason === "generation_failed" || data?.reason === "no_url") {
+        const lines = [
+          data.message,
+          data.endpoint ? `endpoint: ${data.endpoint}` : "",
+          data.model ? `modelo: ${data.model}` : ""
+        ].filter(Boolean);
+        const msg = lines.join(" · ");
+        setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", url: null, message: msg } }));
+        return { id: row.id, slug: row.slug, status: "error", url: null, message: msg };
+      }
       if (!res.ok) throw new Error(data.error || "Error");
       if (data.reason === "no_provider") {
         const msg = data.message || "API de imágenes no configurada";
@@ -150,6 +166,8 @@ export default function ImagesPage() {
           Genera imágenes con plantilla de marca (silueta de frasco + fondo negro + luz dorada + perfume original difuminado al fondo). Selecciona hasta {MAX_SELECTION} fragancias, previsualiza, y guarda las que te gusten.
         </p>
       </div>
+
+      {diag && <DiagPanel diag={diag} open={diagOpen} setOpen={setDiagOpen} />}
 
       <div className="liquid-glass rounded-2xl p-4 sm:p-5 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
@@ -264,4 +282,45 @@ export default function ImagesPage() {
 
 function selectedIds(items: Item[], previews: Record<number, Preview>): number[] {
   return items.filter((i) => previews[i.id]?.status === "ready").map((i) => i.id);
+}
+
+function DiagPanel({ diag, open, setOpen }: { diag: { config: Record<string, unknown>; ping: Record<string, unknown> }; open: boolean; setOpen: (v: boolean) => void }) {
+  const resolved = (diag.config.resolved as { endpoint?: string; model?: string; source?: string } | null) ?? null;
+  const ping = diag.ping;
+  const pingOk = Boolean(ping.ok);
+  return (
+    <div className="liquid-glass rounded-2xl p-3 sm:p-4 text-xs space-y-2">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-2 text-ink-mute hover:text-gold w-full text-left"
+      >
+        <span className={`h-2 w-2 rounded-full ${pingOk ? "bg-emerald-400" : "bg-rose-400"}`} />
+        <span className="font-medium">
+          {pingOk ? "Conectividad con el proveedor de imágenes OK" : "Sin conectividad — revisa la configuración"}
+        </span>
+        <span className="ml-auto text-[10px] text-ink-mute/60">{open ? "ocultar" : "diagnóstico"}</span>
+      </button>
+      {open && (
+        <div className="mt-2 space-y-2 text-[11px] text-ink-mute leading-relaxed">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+            <div><span className="text-ink-mute/60">Endpoint usado:</span> <code className="text-ink">{resolved?.endpoint ?? "(no resuelto)"}</code></div>
+            <div><span className="text-ink-mute/60">Modelo:</span> <code className="text-ink">{resolved?.model ?? "—"}</code></div>
+            <div><span className="text-ink-mute/60">Origen config:</span> <code className="text-ink">{resolved?.source ?? "—"}</code></div>
+            <div><span className="text-ink-mute/60">Ping status:</span> <code className="text-ink">{String(ping.status ?? "—")}</code></div>
+          </div>
+          <div className="pt-2 border-t border-line/30 space-y-1">
+            <p className="text-ink/80 font-medium">Para configurar, define estas variables en Railway:</p>
+            <pre className="bg-bg-elev/50 rounded-md p-2 text-[10px] overflow-x-auto whitespace-pre-wrap break-all">
+{`MINIMAX_IMAGE_API_KEY=<tu-api-key-de-imagen>
+MINIMAX_IMAGE_ENDPOINT=https://api.minimax.io/v1/image_generation
+MINIMAX_IMAGE_MODEL=minimax-image-01`}
+            </pre>
+            <p className="text-[10px] text-ink-mute/80">
+              Si tu base_url es distinto (ej. api.minimax.chat), ajusta MINIMAX_IMAGE_ENDPOINT. Si tu modelo se llama distinto (ej. minimax-image-1.0), cámbialo en MINIMAX_IMAGE_MODEL.
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
