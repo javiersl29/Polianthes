@@ -243,13 +243,13 @@ export default function Decoder() {
           </p>
         </motion.div>
 
-        <div className="mt-8 sm:mt-10 space-y-2 sm:space-y-3 px-2">
-          <div className="liquid-glass inline-flex items-center rounded-full p-1 sm:p-1.5 w-full sm:w-auto justify-center flex-wrap gap-y-1">
+        <div className="mt-8 sm:mt-10 space-y-2 sm:space-y-3 px-2 flex flex-col items-center">
+          <div className="liquid-glass flex items-center rounded-full p-1 sm:p-1.5 justify-center flex-wrap gap-y-1 max-w-full">
             {setTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => switchSet(tab.id)}
-                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-full transition-colors ${
+                className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-full transition-colors whitespace-nowrap ${
                   setId === tab.id ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
                 }`}
               >
@@ -258,8 +258,8 @@ export default function Decoder() {
             ))}
           </div>
 
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-center gap-2 sm:gap-3">
-            <div className="liquid-glass inline-flex items-center rounded-full p-1 sm:p-1.5 flex-1 sm:flex-none justify-center" role="group" aria-label="Género">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 w-full sm:w-auto">
+            <div className="liquid-glass flex items-center rounded-full p-1 sm:p-1.5 justify-center" role="group" aria-label="Género">
               {(["hombre", "mujer", "unisex"] as Gender[]).map((g) => (
                 <button
                   key={g}
@@ -274,7 +274,7 @@ export default function Decoder() {
               ))}
             </div>
 
-            <div className="liquid-glass inline-flex items-center rounded-full p-1 sm:p-1.5 flex-1 sm:flex-none justify-center gap-1">
+            <div className="liquid-glass flex items-center rounded-full p-1 sm:p-1.5 justify-center gap-1">
               <span className="text-[10px] sm:text-xs text-ink-mute px-1 hidden sm:inline">Cant.</span>
               {COUNT_OPTIONS.map((n) => (
                 <button
