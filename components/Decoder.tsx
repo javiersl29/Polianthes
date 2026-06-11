@@ -86,12 +86,11 @@ export default function Decoder() {
     setError(null);
   };
 
-  const submit = async () => {
+  const submit = async (mode: "fast" | "rich" = "fast") => {
     setLoading(true);
     setThinkingIdx(0);
     setError(null);
     setResults([]);
-    // Payload: sólo los ejes activos
     const effectiveVector: DecodeVector = {};
     for (const a of set.axes) {
       effectiveVector[a.id] = active[a.id] ? vector[a.id] ?? 50 : 0;
@@ -100,7 +99,7 @@ export default function Decoder() {
       const res = await fetch("/api/decode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ set: setId, vector: effectiveVector, gender })
+        body: JSON.stringify({ set: setId, vector: effectiveVector, gender, mode })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo descifrar la fragancia");
@@ -302,20 +301,33 @@ export default function Decoder() {
               );
             })}
 
-            <button
-              onClick={submit}
-              disabled={loading}
-              className="liquid-glass-strong mt-4 w-full rounded-full px-5 py-3 text-sm font-medium text-ink hover:text-gold transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
-            >
-              {loading ? (
-                <>
-                  <ThinkingDots />
-                  <span key={thinkingIdx} className="animate-fade-in">{THINKING_LINES[thinkingIdx]}</span>
-                </>
-              ) : (
-                "Descifrar mi fragancia"
-              )}
-            </button>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <button
+                onClick={() => submit("fast")}
+                disabled={loading}
+                className="liquid-glass-strong col-span-2 rounded-full px-5 py-3 text-sm font-medium text-ink hover:text-gold transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
+              >
+                {loading ? (
+                  <>
+                    <ThinkingDots />
+                    <span key={thinkingIdx} className="animate-fade-in">{THINKING_LINES[thinkingIdx]}</span>
+                  </>
+                ) : (
+                  "Descifrar mi fragancia"
+                )}
+              </button>
+              <button
+                onClick={() => submit("rich")}
+                disabled={loading}
+                className="liquid-glass rounded-full px-3 py-3 text-xs hover:text-gold transition-colors disabled:opacity-50"
+                title="Justificaciones más elaboradas (más lento)"
+              >
+                Con razón IA
+              </button>
+            </div>
+            <p className="mt-2 text-[10px] text-ink-mute text-center">
+              Modo rápido: afinidad numérica. Modo IA: justificación literaria de cada fragancia.
+            </p>
           </div>
         </div>
 

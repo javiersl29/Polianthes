@@ -13,22 +13,21 @@ type Body = {
   set: "familias" | "mood";
   vector: Record<string, number>;
   gender?: Gender;
+  mode?: "fast" | "rich"; // fast = sin LLM, ranking numérico puro
 };
 
 const FAMILY_COLUMNS = ["vec_floral", "vec_oriental", "vec_amaderado", "vec_chipre", "vec_citrico", "vec_gourmand"];
 const MOOD_COLUMNS = ["vec_frescura", "vec_misterio", "vec_romantico", "vec_energia", "vec_sofisticado", "vec_nostalgico"];
 
-const SELECT_LIST = [
-  "id",
-  "slug",
-  "brand",
-  "name",
-  "full_name",
-  "family",
-  "mood",
-  "gender",
-  "image_url"
-].join(", ");
+const SELECT_LIST = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url"].join(", ");
+
+const FAST_REASONS = [
+  "Afin a tu vector numérico.",
+  "Tu afinidad es alta en este perfil.",
+  "Corresponde bien a la dirección que marcas.",
+  "Coincidencia sólida con tus ejes.",
+  "Tu firma olfativa resuena aquí."
+];
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
@@ -41,25 +40,16 @@ export async function POST(req: NextRequest) {
   const set = HEXAGON_SETS[body.set];
   if (!set) return NextResponse.json({ error: "Set no válido" }, { status: 400 });
   const gender: Gender = body.gender === "hombre" || body.gender === "mujer" ? body.gender : "unisex";
-
-  const config = await getAiConfig();
-  if (!config.api_key) {
-    return NextResponse.json(
-      { error: "El decodificador aún no ha sido configurado por el administrador." },
-      { status: 503 }
-    );
-  }
+  const mode: "fast" | "rich" = body.mode === "rich" ? "rich" : "fast";
 
   const pool = getPool();
   const cols = body.set === "familias" ? FAMILY_COLUMNS : MOOD_COLUMNS;
   const colsSql = cols.map((c) => `"${c}"`).join(", ");
-  // gender = 'unisex' ⇒ sin filtro; si no, parámetro $1
   const genderClause = gender === "unisex" ? "" : "AND (gender = $1 OR gender = 'unisex')";
   const result = await pool.query(
     `SELECT ${SELECT_LIST}, ${colsSql} FROM fragrance WHERE active = TRUE ${genderClause}`,
     gender === "unisex" ? [] : [gender]
   );
-  // 2) Hidratar columnas vec_* en una sola estructura por fila
   type Row = {
     id: number;
     slug: string;
@@ -78,7 +68,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "El catálogo está vacío." }, { status: 503 });
   }
 
-  // 3) Ranking numérico
   const axisIds = body.set === "familias" ? FAMILY_AXES.map((a) => a.id) : MOOD_AXES.map((a) => a.id);
   const ranked = rows
     .map((f) => {
@@ -92,13 +81,23 @@ export async function POST(req: NextRequest) {
     })
     .sort((a, b) => b.score - a.score);
 
-  // 4) Top 6 (antes 12) para que el LLM elija 5 con justificación breve
   const top = ranked.slice(0, 6);
   if (top.length === 0) {
     return NextResponse.json({ error: "No hay fragancias que coincidan." }, { status: 404 });
   }
 
-  // 5) Prompt aún más compacto
+  // MODO RÁPIDO: ranking numérico puro, sin LLM
+  if (mode === "fast") {
+    const recommendations = top.slice(0, 5).map((c, i) => ({
+      ...c.f,
+      reason: FAST_REASONS[i % FAST_REASONS.length],
+      score: c.score
+    }));
+    const elapsed = Date.now() - startedAt;
+    return NextResponse.json({ recommendations, elapsed_ms: elapsed, mode: "fast" });
+  }
+
+  // MODO RICH: LLM para justificación
   const compactList = top
     .map((c, i) => `${i + 1}. ${c.f.brand} ${c.f.name} | ${c.f.slug} | ${c.score}%`)
     .join("\n");
@@ -111,29 +110,30 @@ export async function POST(req: NextRequest) {
   const userPrompt = `Género: ${gender}\n${compactList}`;
 
   try {
-    const completion = await chatCompletion(
-      { ...config, temperature: 0.3 },
-      [
-        { role: "system", content: compactSystem },
-        { role: "user", content: userPrompt }
-      ]
-    );
+    const config = await configReadyOrThrow();
+    const completion = await chatCompletion(config, [
+      { role: "system", content: compactSystem },
+      { role: "user", content: userPrompt }
+    ]);
     const text = completion.text.trim();
-    // eslint-disable-next-line no-console
-    console.log(`[decode] LLM raw (first 400): ${text.slice(0, 400).replace(/\n/g, " ")}`);
     const safe = extractFirstJson(text);
-    if (!safe) {
-      // eslint-disable-next-line no-console
-      console.error(`[decode] LLM no devolvió JSON. text=${text.slice(0, 800)}`);
-      throw new Error("La IA no devolvió un JSON válido");
-    }
-    const parsed = JSON.parse(safe) as { r?: { s: string; w: string }[] } | { recommendations?: { slug: string; reason: string }[] };
+    if (!safe) throw new Error("La IA no devolvió un JSON válido");
+    const parsed = JSON.parse(safe) as
+      | { r?: { s: string; w: string }[] }
+      | { recommendations?: { slug: string; reason: string }[] };
 
-    const pickedRaw = (parsed as { r?: { s: string; w: string }[] }).r ?? (parsed as { recommendations?: { slug: string; reason: string }[] }).recommendations ?? [];
+    const pickedRaw =
+      (parsed as { r?: { s: string; w: string }[] }).r ??
+      (parsed as { recommendations?: { slug: string; reason: string }[] }).recommendations ??
+      [];
     const picked = pickedRaw
-      .map((p) => ({ slug: (p as { s?: string; slug?: string }).s ?? (p as { slug?: string }).slug ?? "", reason: (p as { w?: string; reason?: string }).w ?? (p as { reason?: string }).reason ?? "" }))
+      .map((p) => ({
+        slug: (p as { s?: string; slug?: string }).s ?? (p as { slug?: string }).slug ?? "",
+        reason: (p as { w?: string; reason?: string }).w ?? (p as { reason?: string }).reason ?? ""
+      }))
       .filter((p) => p.slug)
       .slice(0, 5);
+
     const recommendations = picked
       .map((p) => {
         const found = top.find((c) => c.f.slug === p.slug);
@@ -142,23 +142,34 @@ export async function POST(req: NextRequest) {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
-    // Rellenar con ranking numérico si el LLM omitió
     if (recommendations.length < 5) {
       for (const cand of top) {
         if (recommendations.length >= 5) break;
         if (recommendations.find((r) => r.slug === cand.f.slug)) continue;
         recommendations.push({
           ...cand.f,
-          reason: "Coincidencia numérica alta con tu vector.",
+          reason: FAST_REASONS[recommendations.length % FAST_REASONS.length],
           score: cand.score
         });
       }
     }
 
     const elapsed = Date.now() - startedAt;
-    return NextResponse.json({ recommendations: recommendations.slice(0, 5), elapsed_ms: elapsed });
+    return NextResponse.json({ recommendations: recommendations.slice(0, 5), elapsed_ms: elapsed, mode: "rich" });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Si el LLM falla, devolvemos el ranking numérico con razones genéricas
+    const recommendations = top.slice(0, 5).map((c, i) => ({
+      ...c.f,
+      reason: FAST_REASONS[i % FAST_REASONS.length],
+      score: c.score
+    }));
+    const elapsed = Date.now() - startedAt;
+    return NextResponse.json({ recommendations, elapsed_ms: elapsed, mode: "fallback", warning: err instanceof Error ? err.message : "" });
   }
+}
+
+async function configReadyOrThrow() {
+  const c = await getAiConfig();
+  if (!c.api_key) throw new Error("API key no configurada");
+  return c;
 }
