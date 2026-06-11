@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 type Gender = "hombre" | "mujer" | "unisex";
 type Row = {
@@ -74,6 +75,16 @@ export default function FragranceManager() {
     current?: string;
   } | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
+
+  // Estado del modal de alta
+  const [creating, setCreating] = useState(false);
+  const [createForm, setCreateForm] = useState<{
+    full_name: string;
+    family: string;
+    mood: string;
+    gender: Gender;
+  }>({ full_name: "", family: "", mood: "", gender: "unisex" });
+  const [createError, setCreateError] = useState<string | null>(null);
 
   // Refs para pausar/detener
   const pausedRef = useRef(false);
@@ -346,6 +357,83 @@ export default function FragranceManager() {
     enrichSequential(items.map((p) => p.slug), items.map((p) => p.id), "Re-documentando");
   };
 
+  const submitCreate = async () => {
+    setCreateError(null);
+    const fullName = createForm.full_name.trim();
+    if (!fullName) {
+      setCreateError("Indica el nombre completo de la fragancia");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/admin/fragrances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          full_name: fullName,
+          family: createForm.family || null,
+          mood: createForm.mood || null,
+          gender: createForm.gender,
+          create_presentations: true
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      const { brand, name } = splitBrandClient(fullName);
+      toast.success(`Alta: ${brand} · ${name}`, {
+        description: `SKU ${data.fragrance.display_code} · 4 presentaciones creadas con precios por defecto.`
+      });
+      setCreateForm({ full_name: "", family: "", mood: "", gender: "unisex" });
+      await refresh();
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : "Error");
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const deleteFragrance = async (row: Row, hard: boolean) => {
+    const msg = hard
+      ? `¿Eliminar DEFINITIVAMENTE "${row.full_name}"? Esta acción no se puede deshacer. Las presentaciones también se borrarán.`
+      : `¿Dar de baja "${row.full_name}"? Dejará de aparecer en el catálogo público pero se conserva el historial.`;
+    if (!confirm(msg)) return;
+    try {
+      const res = await fetch("/api/admin/fragrances", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: row.id, hard })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast.success(hard ? "Fragrancia eliminada" : "Fragrancia dada de baja");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    }
+  };
+
+  const reactivateFragrance = async (row: Row) => {
+    try {
+      const res = await fetch("/api/admin/fragrances", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: row.id })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      toast.success("Fragrancia reactivada");
+      await refresh();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    }
+  };
+
+  function splitBrandClient(full: string) {
+    const idx = full.indexOf(" - ");
+    if (idx === -1) return { brand: "Independiente", name: full };
+    return { brand: full.slice(0, idx).trim(), name: full.slice(idx + 3).trim() };
+  }
+
   const runSelection = (mode: "pending" | "all") => {
     const subset = items.filter((i) => selected.has(i.id));
     if (subset.length === 0) {
@@ -379,6 +467,16 @@ export default function FragranceManager() {
           )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => {
+              setCreateError(null);
+              setCreateForm({ full_name: "", family: "", mood: "", gender: "unisex" });
+            }}
+            className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold"
+            data-toggle="new-fragrance"
+          >
+            + Nueva fragancia
+          </button>
           <button
             onClick={runBatchPending}
             disabled={batchState === "running" || batchState === "paused"}
@@ -470,6 +568,73 @@ export default function FragranceManager() {
           El decodificador los usa para un ranking numérico objetivo antes de pedir a la IA que
           seleccione 5 con justificación. Puedes ajustar los sliders a mano en cada fragancia.
         </p>
+      </div>
+
+      <div className="mt-6 liquid-glass rounded-2xl p-4 sm:p-5 space-y-3">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="font-display italic text-lg sm:text-xl text-ink">Dar de alta una fragancia</h2>
+            <p className="text-[11px] text-ink-mute mt-0.5">
+              Crea el registro y 4 presentaciones (10/30/60/100 ml) con precios por defecto. Luego podrás documentarla con IA.
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-[2fr_1fr_1fr_1fr_auto] gap-2 items-end">
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-ink-mute">Nombre completo *</span>
+            <input
+              value={createForm.full_name}
+              onChange={(e) => setCreateForm((f) => ({ ...f, full_name: e.target.value }))}
+              placeholder="Paco Rabanne - One Million"
+              className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !creating) submitCreate();
+              }}
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-ink-mute">Familia</span>
+            <select
+              value={createForm.family}
+              onChange={(e) => setCreateForm((f) => ({ ...f, family: e.target.value }))}
+              className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+            >
+              <option value="">—</option>
+              {FAMILIES.map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-ink-mute">Mood</span>
+            <input
+              value={createForm.mood}
+              onChange={(e) => setCreateForm((f) => ({ ...f, mood: e.target.value }))}
+              placeholder="ej. Misterioso"
+              className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+            />
+          </label>
+          <label className="block">
+            <span className="text-[10px] uppercase tracking-wider text-ink-mute">Género</span>
+            <select
+              value={createForm.gender}
+              onChange={(e) => setCreateForm((f) => ({ ...f, gender: e.target.value as Gender }))}
+              className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+            >
+              {GENDERS.map((g) => (
+                <option key={g} value={g}>{g}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            onClick={submitCreate}
+            disabled={creating}
+            className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50 whitespace-nowrap"
+          >
+            {creating ? "Creando…" : "Dar de alta"}
+          </button>
+        </div>
+        {createError && <p className="text-xs text-rose-300">{createError}</p>}
       </div>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -651,6 +816,28 @@ export default function FragranceManager() {
                         }}
                       />
                     </label>
+                    {row.active ? (
+                      <button
+                        onClick={() => deleteFragrance(row, false)}
+                        className="liquid-glass rounded-full px-4 py-2 text-sm text-ink-mute hover:text-rose-300 ml-auto"
+                      >
+                        Dar de baja
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => reactivateFragrance(row)}
+                        className="liquid-glass rounded-full px-4 py-2 text-sm text-emerald-300 hover:text-emerald-200 ml-auto"
+                      >
+                        Reactivar
+                      </button>
+                    )}
+                    <button
+                      onClick={() => deleteFragrance(row, true)}
+                      className="text-ink-mute/60 hover:text-rose-400 text-xs px-2"
+                      title="Eliminar definitivamente"
+                    >
+                      × Eliminar
+                    </button>
                   </div>
                 </div>
               )}

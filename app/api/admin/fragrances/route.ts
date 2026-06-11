@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
-import { query } from "@/lib/db";
+import { query, getPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -68,8 +68,28 @@ const SELECT_LIST = [
   "base_notes",
   "active",
   "enriched_at",
+  "display_code",
+  "artistic_name",
+  "inspired_by_name",
+  "inspired_by_brand",
   ...VEC_COLUMNS
 ].join(", ");
+
+function slugify(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}
+
+function splitBrand(fullName: string): { brand: string; name: string } {
+  const idx = fullName.indexOf(" - ");
+  if (idx === -1) return { brand: "Independiente", name: fullName.trim() };
+  return { brand: fullName.slice(0, idx).trim(), name: fullName.slice(idx + 3).trim() };
+}
 
 export async function GET() {
   if (!isAuthenticated()) return NextResponse.json({ error: "no autorizado" }, { status: 401 });
@@ -139,4 +159,165 @@ export async function PATCH(req: NextRequest) {
     ]
   );
   return NextResponse.json({ ok: true });
+}
+
+type CreateBody = {
+  full_name?: string;
+  brand?: string;
+  name?: string;
+  family?: string | null;
+  mood?: string | null;
+  gender?: Gender;
+  active?: boolean;
+  create_presentations?: boolean;
+};
+
+export async function POST(req: NextRequest) {
+  if (!isAuthenticated()) return NextResponse.json({ error: "no autorizado" }, { status: 401 });
+  const body = (await req.json().catch(() => null)) as CreateBody | null;
+  if (!body) return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+
+  let brand = (body.brand ?? "").trim();
+  let name = (body.name ?? "").trim();
+  const fullName = (body.full_name ?? "").trim();
+  if (!brand && !name && !fullName) {
+    return NextResponse.json({ error: "Indica al menos un nombre" }, { status: 400 });
+  }
+  if (!brand || !name) {
+    const split = splitBrand(fullName);
+    brand = brand || split.brand;
+    name = name || split.name;
+  }
+  if (!brand || !name) {
+    return NextResponse.json({ error: "Faltan marca o nombre" }, { status: 400 });
+  }
+
+  const gender: Gender =
+    body.gender === "hombre" || body.gender === "mujer" || body.gender === "unisex" ? body.gender : "unisex";
+  const active = body.active !== false;
+  const createPresentations = body.create_presentations !== false;
+
+  const baseSlug = slugify(`${brand} ${name}`);
+  const fullNameDb = `${brand} - ${name}`;
+
+  const pool = getPool();
+  const client = await pool.connect();
+  let fragranceId = 0;
+  let slug = baseSlug;
+  try {
+    await client.query("BEGIN");
+    let attempt = 0;
+    while (attempt < 50) {
+      const r = await client.query(
+        `INSERT INTO fragrance (slug, brand, name, full_name, family, mood, gender, active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (slug) DO NOTHING
+         RETURNING id`,
+        [slug, brand, name, fullNameDb, body.family ?? null, body.mood ?? null, gender, active]
+      );
+      if (r.rows.length > 0) {
+        fragranceId = r.rows[0].id;
+        break;
+      }
+      attempt += 1;
+      slug = `${baseSlug}-${attempt + 1}`;
+    }
+    if (fragranceId === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "No se pudo generar un slug único" }, { status: 500 });
+    }
+    await client.query(
+      `UPDATE fragrance
+       SET display_code = 'PLT-' || LPAD(id::text, 3, '0'),
+           inspired_by_brand = $1,
+           inspired_by_name = $2
+       WHERE id = $3`,
+      [brand, name, fragranceId]
+    );
+
+    if (createPresentations) {
+      await client.query(
+        `INSERT INTO presentation (fragrance_id, size_ml, price_cents, cost_cents, stock, sku, active)
+         SELECT $1, d.size_ml, d.price_cents, d.cost_cents, d.stock,
+                d.sku_prefix || '-' || LPAD($1::text, 3, '0') || '-' || d.size_ml,
+                TRUE
+         FROM pricing_defaults d
+         ON CONFLICT (fragrance_id, size_ml) DO NOTHING`,
+        [fragranceId]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Error creando fragancia" },
+      { status: 500 }
+    );
+  } finally {
+    client.release();
+  }
+
+  const created = await query(
+    `SELECT ${SELECT_LIST} FROM fragrance WHERE id = $1`,
+    [fragranceId]
+  );
+  return NextResponse.json({ ok: true, fragrance: created.rows[0] });
+}
+
+type DeleteBody = {
+  id: number;
+  hard?: boolean;
+};
+
+export async function DELETE(req: NextRequest) {
+  if (!isAuthenticated()) return NextResponse.json({ error: "no autorizado" }, { status: 401 });
+  const body = (await req.json().catch(() => null)) as DeleteBody | null;
+  if (!body || typeof body.id !== "number") {
+    return NextResponse.json({ error: "id requerido" }, { status: 400 });
+  }
+
+  if (body.hard) {
+    // Hard delete: presentation tiene ON DELETE CASCADE, así que las presentaciones se borran.
+    // order_item tiene ON DELETE RESTRICT, así que bloquea si hay historial de venta.
+    const refs = await query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM order_item WHERE fragrance_id = $1`,
+      [body.id]
+    );
+    if (Number(refs.rows[0]?.count ?? 0) > 0) {
+      return NextResponse.json(
+        { error: "No se puede eliminar: esta fragancia tiene pedidos asociados. Desactívala en su lugar." },
+        { status: 409 }
+      );
+    }
+    await query(`DELETE FROM presentation WHERE fragrance_id = $1`, [body.id]);
+    await query(`DELETE FROM fragrance WHERE id = $1`, [body.id]);
+    return NextResponse.json({ ok: true, mode: "hard" });
+  }
+
+  // Soft delete: solo desactivar
+  const r = await query<{ slug: string }>(
+    `UPDATE fragrance SET active = FALSE WHERE id = $1 RETURNING slug`,
+    [body.id]
+  );
+  if (r.rowCount === 0) {
+    return NextResponse.json({ error: "Fragrancia no encontrada" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, mode: "soft", slug: r.rows[0]?.slug });
+}
+
+export async function PUT(req: NextRequest) {
+  // Reactivar una fragancia dada de baja (reactivación)
+  if (!isAuthenticated()) return NextResponse.json({ error: "no autorizado" }, { status: 401 });
+  const body = (await req.json().catch(() => null)) as { id?: number } | null;
+  if (!body || typeof body.id !== "number") {
+    return NextResponse.json({ error: "id requerido" }, { status: 400 });
+  }
+  const r = await query<{ slug: string }>(
+    `UPDATE fragrance SET active = TRUE WHERE id = $1 RETURNING slug`,
+    [body.id]
+  );
+  if (r.rowCount === 0) {
+    return NextResponse.json({ error: "Fragrancia no encontrada" }, { status: 404 });
+  }
+  return NextResponse.json({ ok: true, slug: r.rows[0]?.slug });
 }
