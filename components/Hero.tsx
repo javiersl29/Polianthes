@@ -13,7 +13,7 @@ export default function Hero() {
       <FadingVideo
         src={HERO_VIDEO}
         scale={1.2}
-        className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top z-0"
+        className="absolute inset-0 w-full h-full object-cover object-top z-0"
       />
 
       <div className="relative z-10 flex flex-col min-h-screen pt-24 sm:pt-28 px-4 sm:px-6">

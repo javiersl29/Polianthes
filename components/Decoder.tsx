@@ -728,7 +728,7 @@ function HexBackground() {
         <FadingVideo
           src={DECODER_VIDEO}
           scale={1.4}
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 object-cover"
+          className="absolute inset-0 w-full h-full object-cover"
         />
       </div>
       <div

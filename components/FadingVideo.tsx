@@ -38,7 +38,7 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
 
     isVisibleRef.current = false;
     video.style.opacity = "0";
-    video.currentTime = 0;
+    try { video.currentTime = 0; } catch { /* ignore */ }
     setFailed(false);
 
     const fadeTo = (target: number, duration: number) => {
@@ -73,11 +73,7 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
       }
       restartTimerRef.current = window.setTimeout(() => {
         if (!mountedRef.current) return;
-        try {
-          video.currentTime = 0;
-        } catch {
-          // ignore
-        }
+        try { video.currentTime = 0; } catch { /* ignore */ }
         const playPromise = video.play();
         if (playPromise && typeof playPromise.catch === "function") {
           playPromise.catch(() => undefined);
@@ -89,9 +85,7 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
     const startPlayback = () => {
       const playPromise = video.play();
       if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(() => {
-          // autoplay can fail in some browsers; user interaction will resolve
-        });
+        playPromise.catch(() => undefined);
       }
       fadeIn();
     };
@@ -117,7 +111,6 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
     };
 
     const onPause = () => {
-      // Si el navegador hace pause por alguna razón, reanudar
       if (mountedRef.current && isVisibleRef.current === false) {
         const playPromise = video.play();
         if (playPromise && typeof playPromise.catch === "function") {
@@ -132,13 +125,29 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
       if (mountedRef.current) setFailed(true);
     };
 
+    // Fallback para móviles: si el autoplay falla por restricciones del navegador,
+    // intentar reproducir en la primera interacción del usuario
+    const onFirstInteraction = () => {
+      if (video.paused) {
+        const playPromise = video.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+          playPromise.catch(() => undefined);
+        }
+      }
+      document.removeEventListener("touchstart", onFirstInteraction);
+      document.removeEventListener("click", onFirstInteraction);
+      document.removeEventListener("scroll", onFirstInteraction);
+    };
+    document.addEventListener("touchstart", onFirstInteraction, { passive: true });
+    document.addEventListener("click", onFirstInteraction);
+    document.addEventListener("scroll", onFirstInteraction, { passive: true });
+
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("playing", onPlaying);
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("pause", onPause);
     video.addEventListener("error", onError);
 
-    // Si el video ya tiene datos cargados (cache del browser)
     if (video.readyState >= 3) {
       startPlayback();
     }
@@ -149,6 +158,9 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("pause", onPause);
       video.removeEventListener("error", onError);
+      document.removeEventListener("touchstart", onFirstInteraction);
+      document.removeEventListener("click", onFirstInteraction);
+      document.removeEventListener("scroll", onFirstInteraction);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
       if (restartTimerRef.current !== null) {
         clearTimeout(restartTimerRef.current);
@@ -157,10 +169,15 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
     };
   }, [src]);
 
-  const computedStyle: React.CSSProperties =
-    scale > 1
-      ? { width: `${scale * 100}%`, height: `${scale * 100}%`, ...style }
-      : { width: "100%", height: "100%", ...style };
+  const computedStyle: React.CSSProperties = {
+    width: "100%",
+    height: "100%",
+    ...style
+  };
+  if (scale > 1) {
+    computedStyle.width = `${scale * 100}%`;
+    computedStyle.height = `${scale * 100}%`;
+  }
 
   return (
     <>
@@ -178,8 +195,18 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
         src={src}
         poster={poster}
         muted
+        autoPlay
+        loop
         playsInline
-        preload="auto"
+        preload="metadata"
+        width="100%"
+        height="100%"
+        disablePictureInPicture
+        {...({
+          webkitPlaysinline: true,
+          "x5-playsinline": "true",
+          "x5-video-player-type": "h5"
+        } as React.VideoHTMLAttributes<HTMLVideoElement>)}
         className={className}
         style={computedStyle}
       />
