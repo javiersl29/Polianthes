@@ -3,10 +3,33 @@ import { isAuthenticated } from "@/lib/auth";
 import { getAiConfig } from "@/lib/ai-config";
 import { getPool } from "@/lib/db";
 import { chatCompletion } from "@/lib/llm";
+import { clamp01to100 } from "@/lib/vectors";
 
 export const dynamic = "force-dynamic";
 
-const SYSTEM_PROMPT = `Eres el perfumista documentalista de Polianthes. Recibes el nombre de una fragancia y debes devolver SOLO un JSON estricto con: {"description":"...","family":"una de: Floral|Oriental|Amaderado|Chipre|Cítrico|Gourmand","mood":"una palabra evocadora en español","gender":"hombre|mujer|unisex","top_notes":["..."],"heart_notes":["..."],"base_notes":["..."]}. Sin texto fuera del JSON. Notas en español, máximo 5 por capa. Descripción en español, máximo 2 frases. Para 'gender' usa la convención de la maison: 'pour homme' o nombres típicamente masculinos → hombre; fragancias con '(Mujer)' o nombres femeninos → mujer; el resto → unisex.`;
+const SYSTEM_PROMPT = `Eres el perfumista documentalista de Polianthes. Recibes el nombre de una fragancia y debes devolver SOLO un JSON estricto con la siguiente forma:
+
+{
+  "description": "…",
+  "family": "una de: Floral|Oriental|Amaderado|Chipre|Cítrico|Gourmand",
+  "mood": "una palabra evocadora en español",
+  "gender": "hombre|mujer|unisex",
+  "top_notes": ["…"],
+  "heart_notes": ["…"],
+  "base_notes": ["…"],
+  "family_axes": {
+    "floral": 0-100, "oriental": 0-100, "amaderado": 0-100,
+    "chipre": 0-100, "citrico": 0-100, "gourmand": 0-100
+  },
+  "mood_axes": {
+    "frescura": 0-100, "misterio": 0-100, "romantico": 0-100,
+    "energia": 0-100, "sofisticado": 0-100, "nostalgico": 0-100
+  }
+}
+
+Sin texto fuera del JSON. Notas en español, máximo 5 por capa. Descripción en español, máximo 2 frases. Para 'gender' usa la convención de la maison: 'pour homme' o nombres típicamente masculinos → hombre; fragancias con '(Mujer)' o nombres femeninos → mujer; el resto → unisex.
+
+Los vectores (family_axes, mood_axes) puntúan la composición aromática real de la fragancia de 0 (ausente) a 100 (dominante). Sé leal a la realidad: si es un cítrico, citrico≈85 y el resto 10-30; si tiene sándalo y oud, amaderado≈70 y oriental≈50. Cada fragancia suele tener 1-2 ejes altos (60-90), 1-2 medios (30-60) y el resto bajos (5-25).`;
 
 type Body = { mode?: "pending" | "all"; limit?: number };
 
@@ -53,8 +76,12 @@ export async function POST(req: NextRequest) {
         top_notes?: string[];
         heart_notes?: string[];
         base_notes?: string[];
+        family_axes?: Record<string, unknown>;
+        mood_axes?: Record<string, unknown>;
       };
       const gender = data.gender === "hombre" || data.gender === "mujer" ? data.gender : "unisex";
+      const fa = data.family_axes ?? {};
+      const ma = data.mood_axes ?? {};
       await pool.query(
         `UPDATE fragrance SET
           description = COALESCE($1, description),
@@ -64,8 +91,13 @@ export async function POST(req: NextRequest) {
           top_notes = COALESCE($5::text[], top_notes),
           heart_notes = COALESCE($6::text[], heart_notes),
           base_notes = COALESCE($7::text[], base_notes),
+          vec_floral = $8, vec_oriental = $9, vec_amaderado = $10,
+          vec_chipre = $11, vec_citrico = $12, vec_gourmand = $13,
+          vec_frescura = $14, vec_misterio = $15, vec_romantico = $16,
+          vec_energia = $17, vec_sofisticado = $18, vec_nostalgico = $19,
+          vector_justification = $20::jsonb,
           enriched_at = NOW()
-         WHERE id = $8`,
+         WHERE id = $21`,
         [
           data.description ?? null,
           data.family ?? null,
@@ -74,6 +106,19 @@ export async function POST(req: NextRequest) {
           data.top_notes ?? null,
           data.heart_notes ?? null,
           data.base_notes ?? null,
+          clamp01to100(fa.floral),
+          clamp01to100(fa.oriental),
+          clamp01to100(fa.amaderado),
+          clamp01to100(fa.chipre),
+          clamp01to100(fa.citrico),
+          clamp01to100(fa.gourmand),
+          clamp01to100(ma.frescura),
+          clamp01to100(ma.misterio),
+          clamp01to100(ma.romantico),
+          clamp01to100(ma.energia),
+          clamp01to100(ma.sofisticado),
+          clamp01to100(ma.nostalgico),
+          JSON.stringify({ family_axes: fa, mood_axes: ma }),
           item.id
         ]
       );

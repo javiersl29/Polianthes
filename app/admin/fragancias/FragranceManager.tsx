@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Gender = "hombre" | "mujer" | "unisex";
 type Row = {
@@ -19,12 +19,42 @@ type Row = {
   base_notes: string[];
   active: boolean;
   enriched_at: string | null;
+  vec_floral: number;
+  vec_oriental: number;
+  vec_amaderado: number;
+  vec_chipre: number;
+  vec_citrico: number;
+  vec_gourmand: number;
+  vec_frescura: number;
+  vec_misterio: number;
+  vec_romantico: number;
+  vec_energia: number;
+  vec_sofisticado: number;
+  vec_nostalgico: number;
 };
 
 type PerfStatus = "idle" | "running" | "done" | "error";
+type BatchState = "idle" | "running" | "paused" | "stopped";
 
 const FAMILIES = ["Floral", "Oriental", "Amaderado", "Chipre", "Cítrico", "Gourmand"];
 const GENDERS: Gender[] = ["hombre", "mujer", "unisex"];
+
+const FAMILY_VEC_KEYS = [
+  ["Floral", "vec_floral"],
+  ["Oriental", "vec_oriental"],
+  ["Amaderado", "vec_amaderado"],
+  ["Chipre", "vec_chipre"],
+  ["Cítrico", "vec_citrico"],
+  ["Gourmand", "vec_gourmand"]
+] as const;
+const MOOD_VEC_KEYS = [
+  ["Frescura", "vec_frescura"],
+  ["Misterio", "vec_misterio"],
+  ["Romántico", "vec_romantico"],
+  ["Energía", "vec_energia"],
+  ["Sofisticado", "vec_sofisticado"],
+  ["Nostálgico", "vec_nostalgico"]
+] as const;
 
 export default function FragranceManager() {
   const [items, setItems] = useState<Row[]>([]);
@@ -35,9 +65,19 @@ export default function FragranceManager() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [status, setStatus] = useState<Record<number, PerfStatus>>({});
   const [statusDetail, setStatusDetail] = useState<Record<number, string>>({});
-  const [batchRunning, setBatchRunning] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ processed: number; total: number; updated: number; failed: number; current?: string } | null>(null);
+  const [batchState, setBatchState] = useState<BatchState>("idle");
+  const [batchProgress, setBatchProgress] = useState<{
+    processed: number;
+    total: number;
+    updated: number;
+    failed: number;
+    current?: string;
+  } | null>(null);
   const [batchError, setBatchError] = useState<string | null>(null);
+
+  // Refs para pausar/detener
+  const pausedRef = useRef(false);
+  const stoppedRef = useRef(false);
 
   const refresh = async () => {
     const [fr, st] = await Promise.all([
@@ -58,7 +98,9 @@ export default function FragranceManager() {
     refresh();
   }, []);
 
-  const visible = items.filter((i) => (showInactive || i.active) && (!filter || i.full_name.toLowerCase().includes(filter.toLowerCase())));
+  const visible = items.filter(
+    (i) => (showInactive || i.active) && (!filter || i.full_name.toLowerCase().includes(filter.toLowerCase()))
+  );
 
   const toggleSelected = (id: number) => {
     setSelected((prev) => {
@@ -96,7 +138,11 @@ export default function FragranceManager() {
       });
       if (res.ok) {
         const data = await res.json();
-        setItems((prev) => prev.map((p) => (p.slug === slug ? { ...p, ...data.fragrance, enriched_at: new Date().toISOString() } : p)));
+        setItems((prev) =>
+          prev.map((p) =>
+            p.slug === slug ? { ...p, ...data.fragrance, enriched_at: new Date().toISOString() } : p
+          )
+        );
         setStatus((s) => ({ ...s, [id]: "done" }));
         setStatusDetail((d) => ({ ...d, [id]: "Listo" }));
       } else {
@@ -150,14 +196,16 @@ export default function FragranceManager() {
   };
 
   /**
-   * Enriquece secuencialmente, una por una, actualizando el progreso en cada paso.
-   * Si se le pasa una lista de slugs, procesa exactamente esa lista (modo selección).
-   * Si no, procesa por lotes grandes desde el backend (modo masivo).
+   * Enriquece secuencialmente, una por una.
+   * Soporta pausar (espera en el siguiente paso) y detener (sale del bucle).
    */
   const enrichSequential = async (slugs: string[], ids: number[], label: string) => {
-    setBatchRunning(true);
+    setBatchState("running");
     setBatchError(null);
     setBatchProgress({ processed: 0, total: slugs.length, updated: 0, failed: 0 });
+    pausedRef.current = false;
+    stoppedRef.current = false;
+
     const newStatus: Record<number, PerfStatus> = { ...status };
     const newDetail: Record<number, string> = { ...statusDetail };
     ids.forEach((id) => {
@@ -169,12 +217,22 @@ export default function FragranceManager() {
 
     let updated = 0;
     let failed = 0;
+
     for (let i = 0; i < slugs.length; i += 1) {
+      if (stoppedRef.current) break;
+
+      // Pausa: esperar a que se reanude
+      while (pausedRef.current && !stoppedRef.current) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+      if (stoppedRef.current) break;
+
       const slug = slugs[i];
       const id = ids[i];
       setStatus((s) => ({ ...s, [id]: "running" }));
       setStatusDetail((d) => ({ ...d, [id]: `${label} (${i + 1}/${slugs.length})` }));
       setBatchProgress({ processed: i, total: slugs.length, updated, failed, current: slug });
+
       try {
         const res = await fetch("/api/enrich", {
           method: "POST",
@@ -183,7 +241,9 @@ export default function FragranceManager() {
         });
         if (res.ok) {
           const data = await res.json();
-          setItems((prev) => prev.map((p) => (p.slug === slug ? { ...p, ...data.fragrance, enriched_at: new Date().toISOString() } : p)));
+          setItems((prev) =>
+            prev.map((p) => (p.slug === slug ? { ...p, ...data.fragrance, enriched_at: new Date().toISOString() } : p))
+          );
           setStatus((s) => ({ ...s, [id]: "done" }));
           setStatusDetail((d) => ({ ...d, [id]: "Listo" }));
           updated += 1;
@@ -199,11 +259,30 @@ export default function FragranceManager() {
         failed += 1;
       }
       setBatchProgress({ processed: i + 1, total: slugs.length, updated, failed, current: slug });
-      // Pausa para no saturar la API
       await new Promise((r) => setTimeout(r, 300));
     }
     await refresh();
-    setBatchRunning(false);
+    if (stoppedRef.current) {
+      setBatchState("stopped");
+      setBatchError(`Detenido por el usuario tras ${updated} procesadas.`);
+    } else {
+      setBatchState("idle");
+    }
+  };
+
+  const pauseBatch = () => {
+    if (batchState !== "running") return;
+    pausedRef.current = true;
+    setBatchState("paused");
+  };
+  const resumeBatch = () => {
+    if (batchState !== "paused") return;
+    pausedRef.current = false;
+    setBatchState("running");
+  };
+  const stopBatch = () => {
+    stoppedRef.current = true;
+    pausedRef.current = false;
   };
 
   const runBatchPending = () => {
@@ -255,18 +334,42 @@ export default function FragranceManager() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={runBatchPending}
-            disabled={batchRunning}
+            disabled={batchState === "running" || batchState === "paused"}
             className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
           >
-            {batchRunning ? "Trabajando…" : "Documentar pendientes"}
+            Documentar pendientes
           </button>
           <button
             onClick={runBatchAll}
-            disabled={batchRunning}
+            disabled={batchState === "running" || batchState === "paused"}
             className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
           >
-            {batchRunning ? "Trabajando…" : "Re-documentar todo"}
+            Re-documentar todo
           </button>
+          {batchState === "running" && (
+            <button
+              onClick={pauseBatch}
+              className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold"
+            >
+              Pausar
+            </button>
+          )}
+          {batchState === "paused" && (
+            <button
+              onClick={resumeBatch}
+              className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold"
+            >
+              Reanudar
+            </button>
+          )}
+          {(batchState === "running" || batchState === "paused") && (
+            <button
+              onClick={stopBatch}
+              className="liquid-glass rounded-full px-4 py-2 text-sm text-rose-300 hover:text-rose-200"
+            >
+              Detener
+            </button>
+          )}
         </div>
       </div>
 
@@ -275,7 +378,8 @@ export default function FragranceManager() {
           <div className="flex items-center justify-between text-xs text-ink-mute mb-2">
             <span>
               {batchProgress.processed} / {batchProgress.total} — {percent}%
-              {batchProgress.current && (
+              {batchState === "paused" && <span className="text-gold ml-2">(pausado)</span>}
+              {batchProgress.current && batchState === "running" && (
                 <span className="text-ink ml-2">→ {batchProgress.current}</span>
               )}
             </span>
@@ -285,7 +389,7 @@ export default function FragranceManager() {
           </div>
           <div className="h-1.5 w-full bg-bg-elev rounded-full overflow-hidden">
             <div
-              className="h-full bg-gold transition-all duration-200"
+              className={`h-full transition-all duration-200 ${batchState === "paused" ? "bg-ink-mute" : "bg-gold"}`}
               style={{ width: `${percent}%` }}
             />
           </div>
@@ -293,28 +397,19 @@ export default function FragranceManager() {
       )}
       {batchError && <p className="mt-3 text-xs text-rose-300">{batchError}</p>}
 
-      {selected.size > 0 && !batchRunning && (
+      {selected.size > 0 && batchState === "idle" && (
         <div className="mt-5 liquid-glass-strong rounded-2xl p-4 flex items-center justify-between flex-wrap gap-3">
           <p className="text-sm">
             <span className="text-gold font-medium">{selected.size}</span> fragancia{selected.size === 1 ? "" : "s"} seleccionada{selected.size === 1 ? "" : "s"}
           </p>
           <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => runSelection("pending")}
-              className="liquid-glass-strong rounded-full px-3 py-1.5 text-xs hover:text-gold"
-            >
+            <button onClick={() => runSelection("pending")} className="liquid-glass-strong rounded-full px-3 py-1.5 text-xs hover:text-gold">
               Documentar selección
             </button>
-            <button
-              onClick={() => runSelection("all")}
-              className="liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold"
-            >
+            <button onClick={() => runSelection("all")} className="liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold">
               Re-documentar selección
             </button>
-            <button
-              onClick={clearSelection}
-              className="text-xs text-ink-mute hover:text-gold px-2"
-            >
+            <button onClick={clearSelection} className="text-xs text-ink-mute hover:text-gold px-2">
               Limpiar
             </button>
           </div>
@@ -322,12 +417,11 @@ export default function FragranceManager() {
       )}
 
       <div className="mt-6 liquid-glass rounded-2xl p-4 text-xs text-ink-mute leading-relaxed">
-        <p className="text-ink font-medium mb-1">Cómo funciona la búsqueda de imágenes</p>
+        <p className="text-ink font-medium mb-1">Vectores numéricos</p>
         <p>
-          El botón "Buscar en Pexels" consulta la API de Pexels (necesita <code className="text-gold">PEXELS_API_KEY</code> en
-          Variables del servicio en Railway). Si no tienes la key, usa "Subir imagen" para arrastrar una foto
-          desde tu equipo. La imagen se guarda en <code className="text-gold">/public/fragancias/</code> y se asigna
-          automáticamente a la fragancia.
+          Cada fragancia almacena 12 valores 0-100 que puntúan su composición real (familias y mood).
+          El decodificador los usa para un ranking numérico objetivo antes de pedir a la IA que
+          seleccione 5 con justificación. Puedes ajustar los sliders a mano en cada fragancia.
         </p>
       </div>
 
@@ -340,7 +434,8 @@ export default function FragranceManager() {
         />
         <button
           onClick={selectAllVisible}
-          className="liquid-glass rounded-full px-4 py-2 text-xs hover:text-gold"
+          disabled={batchState === "running" || batchState === "paused"}
+          className="liquid-glass rounded-full px-4 py-2 text-xs hover:text-gold disabled:opacity-50"
         >
           Seleccionar visibles
         </button>
@@ -361,7 +456,13 @@ export default function FragranceManager() {
             <div
               key={row.id}
               className={`liquid-glass rounded-2xl p-4 ${!row.active ? "opacity-60" : ""} ${
-                st === "running" ? "ring-1 ring-gold/60" : st === "done" ? "ring-1 ring-emerald-400/40" : st === "error" ? "ring-1 ring-rose-400/40" : ""
+                st === "running"
+                  ? "ring-1 ring-gold/60"
+                  : st === "done"
+                  ? "ring-1 ring-emerald-400/40"
+                  : st === "error"
+                  ? "ring-1 ring-rose-400/40"
+                  : ""
               }`}
             >
               <div className="w-full flex items-center gap-3 text-left">
@@ -393,7 +494,11 @@ export default function FragranceManager() {
                   <div className="flex items-center gap-2 text-xs text-ink-mute shrink-0">
                     {st === "running" && <span className="liquid-glass rounded-full px-3 py-1 text-gold">Procesando…</span>}
                     {st === "done" && <span className="liquid-glass rounded-full px-3 py-1 text-emerald-300">Listo</span>}
-                    {st === "error" && <span className="liquid-glass rounded-full px-3 py-1 text-rose-300" title={statusDetail[row.id]}>Error</span>}
+                    {st === "error" && (
+                      <span className="liquid-glass rounded-full px-3 py-1 text-rose-300" title={statusDetail[row.id]}>
+                        Error
+                      </span>
+                    )}
                     <span className="liquid-glass rounded-full px-3 py-1 capitalize">{row.gender}</span>
                     {row.enriched_at ? <span className="text-gold">Documentada</span> : <span>Sin documentar</span>}
                     <span className="liquid-glass rounded-full px-3 py-1">{row.active ? "Activa" : "Baja"}</span>
@@ -421,9 +526,21 @@ export default function FragranceManager() {
                   <Field label="Mood" value={row.mood ?? ""} onChange={(v) => updateRow(row.id, { mood: v })} />
                   <Field label="URL imagen" value={row.image_url ?? ""} onChange={(v) => updateRow(row.id, { image_url: v })} />
                   <Field label="URL imagen inspiración" value={row.inspiration_image_url ?? ""} onChange={(v) => updateRow(row.id, { inspiration_image_url: v })} />
-                  <Field label="Notas de salida (coma)" value={row.top_notes.join(", ")} onChange={(v) => updateRow(row.id, { top_notes: v.split(",").map((s) => s.trim()).filter(Boolean) })} />
-                  <Field label="Notas de corazón" value={row.heart_notes.join(", ")} onChange={(v) => updateRow(row.id, { heart_notes: v.split(",").map((s) => s.trim()).filter(Boolean) })} />
-                  <Field label="Notas de fondo" value={row.base_notes.join(", ")} onChange={(v) => updateRow(row.id, { base_notes: v.split(",").map((s) => s.trim()).filter(Boolean) })} />
+                  <Field
+                    label="Notas de salida (coma)"
+                    value={row.top_notes.join(", ")}
+                    onChange={(v) => updateRow(row.id, { top_notes: v.split(",").map((s) => s.trim()).filter(Boolean) })}
+                  />
+                  <Field
+                    label="Notas de corazón"
+                    value={row.heart_notes.join(", ")}
+                    onChange={(v) => updateRow(row.id, { heart_notes: v.split(",").map((s) => s.trim()).filter(Boolean) })}
+                  />
+                  <Field
+                    label="Notas de fondo"
+                    value={row.base_notes.join(", ")}
+                    onChange={(v) => updateRow(row.id, { base_notes: v.split(",").map((s) => s.trim()).filter(Boolean) })}
+                  />
                   <label className="flex items-center gap-2 text-xs text-ink-mute">
                     <input
                       type="checkbox"
@@ -432,6 +549,35 @@ export default function FragranceManager() {
                     />
                     Activa en el catálogo (dar de baja desmarcando)
                   </label>
+
+                  <div className="md:col-span-2 mt-2">
+                    <p className="text-[11px] uppercase tracking-wider text-ink-mute mb-1">Vector de familias (0-100)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {FAMILY_VEC_KEYS.map(([label, key]) => (
+                        <VectorSlider
+                          key={key}
+                          label={label}
+                          value={row[key as keyof Row] as number}
+                          onChange={(v) => updateRow(row.id, { [key]: v } as Partial<Row>)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <p className="text-[11px] uppercase tracking-wider text-ink-mute mb-1">Vector de mood (0-100)</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {MOOD_VEC_KEYS.map(([label, key]) => (
+                        <VectorSlider
+                          key={key}
+                          label={label}
+                          value={row[key as keyof Row] as number}
+                          onChange={(v) => updateRow(row.id, { [key]: v } as Partial<Row>)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="md:col-span-2 flex flex-wrap items-center gap-2">
                     <button onClick={() => save(row)} className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold">
                       Guardar
@@ -499,5 +645,25 @@ function SelectField({ label, value, options, onChange }: { label: string; value
         ))}
       </select>
     </label>
+  );
+}
+
+function VectorSlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="liquid-glass rounded-2xl px-3 py-2">
+      <div className="flex items-baseline justify-between">
+        <span className="text-xs">{label}</span>
+        <span className="font-display italic text-gold text-base">{value}</span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1 w-full accent-[color:var(--color-gold)]"
+        aria-label={label}
+      />
+    </div>
   );
 }

@@ -43,6 +43,15 @@ export async function POST(req: NextRequest) {
        END IF;
      END$$;`
   );
+  // Vectores numéricos 0-100 para afinidad con el decodificador
+  const vectorCols = [
+    "vec_floral", "vec_oriental", "vec_amaderado", "vec_chipre", "vec_citrico", "vec_gourmand",
+    "vec_frescura", "vec_misterio", "vec_romantico", "vec_energia", "vec_sofisticado", "vec_nostalgico"
+  ];
+  for (const col of vectorCols) {
+    await ensureColumn(pool, "fragrance", col, "INTEGER NOT NULL DEFAULT 50");
+  }
+  await ensureColumn(pool, "fragrance", "vector_justification", "JSONB");
 
   const rows = loadCatalog();
   let inserted = 0;

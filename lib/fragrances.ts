@@ -12,11 +12,25 @@ export type FragranceListItem = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  vec_floral: number;
+  vec_oriental: number;
+  vec_amaderado: number;
+  vec_chipre: number;
+  vec_citrico: number;
+  vec_gourmand: number;
+  vec_frescura: number;
+  vec_misterio: number;
+  vec_romantico: number;
+  vec_energia: number;
+  vec_sofisticado: number;
+  vec_nostalgico: number;
 };
 
 export async function listFragrances(): Promise<FragranceListItem[]> {
   const result = await query<FragranceListItem>(
-    `SELECT id, slug, brand, name, full_name, family, mood, gender, image_url
+    `SELECT id, slug, brand, name, full_name, family, mood, gender, image_url,
+            vec_floral, vec_oriental, vec_amaderado, vec_chipre, vec_citrico, vec_gourmand,
+            vec_frescura, vec_misterio, vec_romantico, vec_energia, vec_sofisticado, vec_nostalgico
      FROM fragrance WHERE active = TRUE ORDER BY brand, name`
   );
   return result.rows;
@@ -68,6 +82,8 @@ export async function getFragranceBySlug(slug: string): Promise<FragranceDetail 
   const result = await query<FragranceDetail>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
             f.description, f.top_notes, f.heart_notes, f.base_notes, f.inspiration_image_url,
+            f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
+            f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
             COALESCE(
               (SELECT json_agg(json_build_object('size_ml', p.size_ml, 'price_cents', p.price_cents) ORDER BY p.size_ml)
                FROM presentation p WHERE p.fragrance_id = f.id AND p.active = TRUE),
