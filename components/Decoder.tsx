@@ -264,8 +264,10 @@ export default function Decoder() {
                 <button
                   key={g}
                   onClick={() => setGender(g)}
-                  className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-full transition-colors capitalize ${
-                    gender === g ? "bg-gold text-bg" : "text-ink/80 hover:text-gold"
+                  className={`px-3 sm:px-4 py-1.5 text-xs sm:text-sm rounded-full transition-colors capitalize ${
+                    gender === g
+                      ? "bg-gold text-bg shadow-[0_0_12px_-2px_oklch(0.82_0.13_85/0.5)]"
+                      : "text-ink/80 hover:text-gold"
                   }`}
                   aria-pressed={gender === g}
                 >
@@ -280,8 +282,10 @@ export default function Decoder() {
                 <button
                   key={n}
                   onClick={() => setCount(n)}
-                  className={`w-8 sm:w-9 h-8 sm:h-9 text-xs sm:text-sm rounded-full transition-colors ${
-                    count === n ? "bg-ink/60 text-ink" : "text-ink/60 hover:text-gold"
+                  className={`w-8 sm:w-9 h-8 sm:h-9 text-xs sm:text-sm font-semibold rounded-full transition-all ${
+                    count === n
+                      ? "bg-gold text-bg shadow-[0_0_12px_-2px_oklch(0.82_0.13_85/0.5)] scale-105"
+                      : "text-ink/70 hover:text-gold"
                   }`}
                   aria-label={`${n} recomendaciones`}
                   aria-pressed={count === n}
