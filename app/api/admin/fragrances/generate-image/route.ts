@@ -30,9 +30,9 @@ export async function GET() {
   if (!(await isAuthenticated())) {
     return NextResponse.json({ error: "no autorizado" }, { status: 401 });
   }
-  const { getImageConfigDiagnostics, pingImageEndpoint } = await import("@/lib/ai-image");
-  const [diag, ping] = await Promise.all([getImageConfigDiagnostics(), pingImageEndpoint()]);
-  return NextResponse.json({ config: diag, ping });
+  const { getImageConfigDiagnostics, testImageConnection } = await import("@/lib/ai-image");
+  const [diag, test] = await Promise.all([getImageConfigDiagnostics(), testImageConnection()]);
+  return NextResponse.json({ config: diag, test });
 }
 
 export async function POST(req: NextRequest) {

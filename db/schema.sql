@@ -182,3 +182,19 @@ CREATE TABLE IF NOT EXISTS coupon_redemption (
 );
 CREATE INDEX IF NOT EXISTS idx_coupon_redemption_coupon ON coupon_redemption(coupon_id);
 
+-- Configuración del proveedor de imágenes (MiniMax u otro compatible)
+CREATE TABLE IF NOT EXISTS image_api_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  provider TEXT NOT NULL DEFAULT 'minimax',
+  endpoint TEXT NOT NULL DEFAULT 'https://api.minimax.io/v1/image_generation',
+  api_key TEXT,
+  model TEXT NOT NULL DEFAULT 'image-01',
+  aspect_ratio TEXT NOT NULL DEFAULT '1:1',
+  response_format TEXT NOT NULL DEFAULT 'url' CHECK (response_format IN ('url','base64')),
+  prompt_optimizer BOOLEAN NOT NULL DEFAULT FALSE,
+  n INTEGER NOT NULL DEFAULT 1 CHECK (n BETWEEN 1 AND 9),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT single_row_image_config CHECK (id = 1)
+);
+

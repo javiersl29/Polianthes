@@ -21,6 +21,8 @@ export type ImageGenerationResult = {
   endpoint?: string;
   provider: "minimax" | "mock";
   error?: string;
+  errorCode?: number;
+  statusCode?: number;
   debug?: Record<string, unknown>;
 };
 
@@ -66,37 +68,90 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     .join(" ");
 }
 
+export type ImageApiConfig = {
+  id: number;
+  provider: string;
+  endpoint: string;
+  api_key: string | null;
+  model: string;
+  aspect_ratio: string;
+  response_format: "url" | "base64";
+  prompt_optimizer: boolean;
+  n: number;
+  active: boolean;
+  updated_at: string;
+};
+
+export async function getImageApiConfig(): Promise<ImageApiConfig | null> {
+  const r = await query<ImageApiConfig>(
+    `SELECT id, provider, endpoint, api_key, model, aspect_ratio, response_format,
+            prompt_optimizer, n, active, updated_at
+     FROM image_api_config WHERE id = 1`
+  );
+  return r.rows[0] ?? null;
+}
+
 export type ResolvedImageConfig = {
   endpoint: string;
   apiKey: string;
   model: string;
-  source: "env" | "db_ai_config";
+  aspectRatio: string;
+  responseFormat: "url" | "base64";
+  n: number;
+  promptOptimizer: boolean;
+  source: "db" | "env" | "fallback";
 };
 
+const DEFAULT_ENDPOINT = "https://api.minimax.io/v1/image_generation";
+const DEFAULT_MODEL = "image-01";
+
 export async function resolveImageConfig(): Promise<ResolvedImageConfig | null> {
-  // 1) Variables de entorno explícitas (tienen prioridad)
-  const envKey = process.env.MINIMAX_IMAGE_API_KEY;
+  // 1) DB image_api_config (preferido)
+  const dbCfg = await getImageApiConfig();
+  const envKey = process.env.MINIMAX_API_KEY;
   const envEndpoint = process.env.MINIMAX_IMAGE_ENDPOINT;
   const envModel = process.env.MINIMAX_IMAGE_MODEL;
-  if (envKey && envEndpoint) {
+
+  if (dbCfg && dbCfg.active && dbCfg.api_key) {
     return {
-      endpoint: envEndpoint,
+      endpoint: dbCfg.endpoint,
+      apiKey: dbCfg.api_key,
+      model: dbCfg.model,
+      aspectRatio: dbCfg.aspect_ratio,
+      responseFormat: dbCfg.response_format,
+      n: dbCfg.n,
+      promptOptimizer: dbCfg.prompt_optimizer,
+      source: "db"
+    };
+  }
+  // 2) Variables de entorno
+  if (envKey) {
+    return {
+      endpoint: envEndpoint || DEFAULT_ENDPOINT,
       apiKey: envKey,
-      model: envModel || "minimax-image-01",
+      model: envModel || DEFAULT_MODEL,
+      aspectRatio: "1:1",
+      responseFormat: "url",
+      n: 1,
+      promptOptimizer: false,
       source: "env"
     };
   }
-
-  // 2) Fallback: usar api_key de ai_config + endpoint construido
+  // 3) Fallback: ai_config (legacy)
   const cfg = await getAiConfig();
-  if (!cfg.api_key) return null;
-  const base = (cfg.base_url ?? "https://api.minimax.io/v1").replace(/\/+$/, "");
-  return {
-    endpoint: `${base}/image_generation`,
-    apiKey: cfg.api_key,
-    model: envModel || "minimax-image-01",
-    source: "db_ai_config"
-  };
+  if (cfg.api_key) {
+    return {
+      endpoint: DEFAULT_ENDPOINT,
+      apiKey: cfg.api_key,
+      model: DEFAULT_MODEL,
+      aspectRatio: "1:1",
+      responseFormat: "url",
+      n: 1,
+      promptOptimizer: false,
+      source: "fallback"
+    };
+  }
+  return null;
 }
 
 export async function generateImage(
@@ -106,19 +161,24 @@ export async function generateImage(
   if (!cfg) {
     return {
       ok: false,
-      provider: "mock",
-      model: "none",
-      error: "No hay configuración de imagen. Define MINIMAX_IMAGE_API_KEY + MINIMAX_IMAGE_ENDPOINT en Railway, o configura la api_key en /admin/ai.",
-      debug: { hint: "Falta API key de imagen en env y en ai_config" }
+      provider: "minimax",
+      model: "?",
+      error:
+        "No hay configuración de imagen. Configúrala en /admin/imagenes o define MINIMAX_API_KEY en Railway."
     };
   }
 
   const prompt = buildImagePrompt(input);
-  const body: Record<string, unknown> = {
+  // Prompt máximo 1500 caracteres según docs
+  const trimmedPrompt = prompt.length > 1500 ? prompt.slice(0, 1497) + "..." : prompt;
+
+  const body = {
     model: cfg.model,
-    prompt,
-    n: 1,
-    size: "1024x1024"
+    prompt: trimmedPrompt,
+    aspect_ratio: cfg.aspectRatio,
+    response_format: cfg.responseFormat,
+    n: cfg.n,
+    prompt_optimizer: cfg.promptOptimizer
   };
 
   let response: Response;
@@ -138,27 +198,16 @@ export async function generateImage(
       model: cfg.model,
       endpoint: cfg.endpoint,
       error: `No se pudo conectar: ${err instanceof Error ? err.message : "Error de red"}`,
-      debug: { body, config_source: cfg.source }
+      debug: { body_sent: body, source: cfg.source }
     };
   }
 
   const text = await response.text();
-  if (!response.ok) {
-    return {
-      ok: false,
-      provider: "minimax",
-      model: cfg.model,
-      endpoint: cfg.endpoint,
-      error: `HTTP ${response.status}: ${text.slice(0, 500)}`,
-      debug: { body, config_source: cfg.source, response_excerpt: text.slice(0, 500) }
-    };
-  }
-
   let data: {
-    data?: Array<{ url?: string; b64_json?: string; image_base64?: string; revised_prompt?: string }>;
-    model?: string;
-    image_url?: string;
-    images?: string[];
+    data?: { image_urls?: string[]; image_base64?: string[] };
+    metadata?: { success_count?: number; failed_count?: number };
+    base_resp?: { status_code?: number; status_msg?: string };
+    id?: string;
   };
   try {
     data = JSON.parse(text);
@@ -168,86 +217,145 @@ export async function generateImage(
       provider: "minimax",
       model: cfg.model,
       endpoint: cfg.endpoint,
-      error: "Respuesta no es JSON válido",
-      debug: { response_excerpt: text.slice(0, 500) }
+      statusCode: response.status,
+      error: `Respuesta no es JSON (HTTP ${response.status}): ${text.slice(0, 300)}`,
+      debug: { body_sent: body, source: cfg.source }
     };
   }
 
-  // Distintas formas de respuesta según el proveedor
-  const url =
-    data.data?.[0]?.url ??
-    data.image_url ??
-    data.images?.[0];
-  const b64 = data.data?.[0]?.b64_json ?? data.data?.[0]?.image_base64;
+  const statusCode = data.base_resp?.status_code;
+  const statusMsg = data.base_resp?.status_msg;
 
-  if (!url && !b64) {
+  if (statusCode !== undefined && statusCode !== 0) {
     return {
       ok: false,
       provider: "minimax",
       model: cfg.model,
       endpoint: cfg.endpoint,
-      error: "La API no devolvió imagen (ni url ni b64)",
-      debug: { response: data }
+      statusCode,
+      errorCode: statusCode,
+      error: `API error ${statusCode}: ${statusMsg ?? "unknown"} — ${explainStatusCode(statusCode)}`,
+      debug: { body_sent: body, response: data, source: cfg.source }
+    };
+  }
+
+  if (!response.ok) {
+    return {
+      ok: false,
+      provider: "minimax",
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      statusCode: response.status,
+      error: `HTTP ${response.status}: ${text.slice(0, 300)}`,
+      debug: { body_sent: body, response: data, source: cfg.source }
+    };
+  }
+
+  const imageUrls = data.data?.image_urls;
+  const imageB64 = data.data?.image_base64;
+
+  if (imageUrls && imageUrls.length > 0) {
+    return {
+      ok: true,
+      url: imageUrls[0],
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      provider: "minimax",
+      debug: {
+        success_count: data.metadata?.success_count,
+        failed_count: data.metadata?.failed_count,
+        image_count: imageUrls.length
+      }
+    };
+  }
+  if (imageB64 && imageB64.length > 0) {
+    return {
+      ok: true,
+      b64: imageB64[0],
+      model: cfg.model,
+      endpoint: cfg.endpoint,
+      provider: "minimax",
+      debug: {
+        success_count: data.metadata?.success_count,
+        failed_count: data.metadata?.failed_count,
+        image_count: imageB64.length,
+        note: "response_format=base64: se guardará directamente sin descarga"
+      }
     };
   }
 
   return {
-    ok: true,
-    url,
-    b64,
-    revisedPrompt: data.data?.[0]?.revised_prompt,
-    model: data.model ?? cfg.model,
+    ok: false,
+    provider: "minimax",
+    model: cfg.model,
     endpoint: cfg.endpoint,
-    provider: "minimax"
+    error: "La API no devolvió imágenes (ni urls ni base64)",
+    debug: { response: data, source: cfg.source }
   };
 }
 
+function explainStatusCode(code: number): string {
+  const map: Record<number, string> = {
+    0: "OK",
+    1002: "Rate limit — espera unos segundos y reintenta",
+    1004: "API Key inválida o no autorizada",
+    1008: "Saldo insuficiente en la cuenta",
+    1026: "Prompt bloqueado por filtro de contenido",
+    2013: "Parámetros inválidos",
+    2049: "API Key inválida"
+  };
+  return map[code] ?? "código no documentado";
+}
+
 export type DbImageConfig = {
-  has_ai_config: boolean;
-  ai_base_url: string | null;
+  has_db_config: boolean;
+  db_config: ImageApiConfig | null;
   env_endpoint: string | null;
   env_model: string | null;
   has_env_key: boolean;
   resolved: ResolvedImageConfig | null;
 };
 
-/**
- * Endpoint de diagnóstico: devuelve qué configuración está viendo el servidor.
- * Útil para debuggear "qué endpoint/modelo está usando realmente".
- */
 export async function getImageConfigDiagnostics(): Promise<DbImageConfig> {
-  const envKey = process.env.MINIMAX_IMAGE_API_KEY;
-  const envEndpoint = process.env.MINIMAX_IMAGE_ENDPOINT;
-  const envModel = process.env.MINIMAX_IMAGE_MODEL;
-  const cfg = await getAiConfig();
+  const dbConfig = await getImageApiConfig();
   const resolved = await resolveImageConfig();
   return {
-    has_ai_config: Boolean(cfg.api_key),
-    ai_base_url: cfg.base_url,
-    env_endpoint: envEndpoint ?? null,
-    env_model: envModel ?? null,
-    has_env_key: Boolean(envKey),
-    resolved
+    has_db_config: Boolean(dbConfig?.api_key),
+    db_config: dbConfig ? { ...dbConfig, api_key: dbConfig.api_key ? "***" : null } : null,
+    env_endpoint: process.env.MINIMAX_IMAGE_ENDPOINT ?? null,
+    env_model: process.env.MINIMAX_IMAGE_MODEL ?? null,
+    has_env_key: Boolean(process.env.MINIMAX_API_KEY),
+    resolved: resolved
+      ? { ...resolved, apiKey: "***" }
+      : null
   };
 }
 
-/**
- * Ping contra el endpoint de imágenes sin gastar créditos. Útil para verificar config.
- */
-export async function pingImageEndpoint(): Promise<{
+export type TestConnectionResult = {
   ok: boolean;
   endpoint: string;
   model: string;
-  status?: number;
+  source: string;
+  status_code?: number;
+  status_msg?: string;
+  image_count?: number;
+  elapsed_ms?: number;
   error?: string;
-}> {
+  debug?: Record<string, unknown>;
+};
+
+export async function testImageConnection(): Promise<TestConnectionResult> {
   const cfg = await resolveImageConfig();
   if (!cfg) {
-    return { ok: false, endpoint: "(no config)", model: "?", error: "Sin configuración" };
+    return {
+      ok: false,
+      endpoint: "(no config)",
+      model: "?",
+      source: "none",
+      error: "No hay configuración. Define api_key en /admin/imagenes o MINIMAX_API_KEY en Railway."
+    };
   }
-  // Ping de bajo costo: usamos una llamada de chat al endpoint, o un GET si existe
-  // La estrategia más segura: mandar una generación con prompt vacío y un timeout corto,
-  // y devolver el status code (no 404 = endpoint existe).
+  const start = Date.now();
   try {
     const res = await fetch(cfg.endpoint, {
       method: "POST",
@@ -255,21 +363,59 @@ export async function pingImageEndpoint(): Promise<{
         "Content-Type": "application/json",
         Authorization: `Bearer ${cfg.apiKey}`
       },
-      body: JSON.stringify({ model: cfg.model, prompt: "ping", n: 1, size: "256x256" }),
-      signal: AbortSignal.timeout(8000)
+      body: JSON.stringify({
+        model: cfg.model,
+        prompt: "A single small red dot on a white background, minimal, simple",
+        aspect_ratio: cfg.aspectRatio,
+        response_format: cfg.responseFormat,
+        n: 1,
+        prompt_optimizer: false
+      }),
+      signal: AbortSignal.timeout(30000)
     });
+    const text = await res.text();
+    const elapsed = Date.now() - start;
+    let data: {
+      data?: { image_urls?: string[]; image_base64?: string[] };
+      metadata?: { success_count?: number; failed_count?: number };
+      base_resp?: { status_code?: number; status_msg?: string };
+    };
+    try {
+      data = JSON.parse(text);
+    } catch {
+      return {
+        ok: false,
+        endpoint: cfg.endpoint,
+        model: cfg.model,
+        source: cfg.source,
+        error: `HTTP ${res.status}: respuesta no es JSON`,
+        elapsed_ms: elapsed,
+        debug: { response_excerpt: text.slice(0, 300) }
+      };
+    }
+    const sc = data.base_resp?.status_code ?? (res.ok ? 0 : res.status);
+    const sm = data.base_resp?.status_msg ?? "";
+    const imageCount = data.data?.image_urls?.length ?? data.data?.image_base64?.length ?? 0;
     return {
-      ok: res.status !== 404,
+      ok: sc === 0 && imageCount > 0,
       endpoint: cfg.endpoint,
       model: cfg.model,
-      status: res.status
+      source: cfg.source,
+      status_code: sc,
+      status_msg: sm,
+      image_count: imageCount,
+      elapsed_ms: elapsed,
+      error: sc !== 0 ? `${explainStatusCode(sc)}` : imageCount === 0 ? "La API respondió OK pero no devolvió imágenes" : undefined,
+      debug: { body_sent: { model: cfg.model, prompt: "(test prompt)", aspect_ratio: cfg.aspectRatio, response_format: cfg.responseFormat } }
     };
   } catch (err) {
     return {
       ok: false,
       endpoint: cfg.endpoint,
       model: cfg.model,
-      error: err instanceof Error ? err.message : "Error"
+      source: cfg.source,
+      error: err instanceof Error ? err.message : "Error de red",
+      elapsed_ms: Date.now() - start
     };
   }
 }
