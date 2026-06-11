@@ -107,9 +107,11 @@ export async function POST(req: NextRequest) {
     .join("\n");
 
   const compactSystem =
-    "Eres el curador de Polianthes. Recibes una lista de 6 fragancias rankeadas por afinidad al cliente. " +
-    "Devuelve SOLO JSON estricto: {\"recommendations\":[{\"slug\":\"...\",\"reason\":\"frase ≤ 14 palabras en español, evocadora\"}]} " +
-    "con exactamente 5 elementos en el mismo orden de la lista, sin texto fuera del JSON.";
+    "Eres el curador de Polianthes. Tu única tarea es producir JSON estricto, sin razonamiento interno ni texto adicional. " +
+    "Responde EXCLUSIVAMENTE con este objeto (sin comillas markdown, sin bloques ```json, sin etiquetas <think>): " +
+    '{"recommendations":[{"slug":"...","reason":"frase ≤ 14 palabras en español, evocadora"}]}. ' +
+    "Incluye exactamente 5 elementos en el mismo orden de la lista. " +
+    "No expliques nada. No resumas. No agregues prosa. SOLO el JSON.";
 
   const userPrompt = `Vector (${body.set}): ${set.axes
     .map((a) => `${a.label}=${body.vector[a.id] ?? 0}`)
