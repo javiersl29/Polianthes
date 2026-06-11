@@ -29,8 +29,37 @@ const FAST_REASONS = [
   "Tu firma olfativa resuena aquí."
 ];
 
-const FALLBACK_REFLECTION =
-  "Si te reconoces en un perfil olfativo así, esta selección traduce tus preferencias en cinco fragancias de la curaduría. Cada una abre con sus notas de salida, evoluciona por un corazón definido y descansa en un fondo que las hace memorables.";
+type TopItem = { f: { id: number; slug: string; brand: string; name: string; full_name: string; family: string | null; mood: string | null; gender: Gender; image_url: string | null; [k: string]: unknown }; score: number };
+
+function buildFallbackReflection(
+  vector: Record<string, number>,
+  setId: "familias" | "mood",
+  gender: Gender,
+  topItems: TopItem[]
+): string {
+  // Identifica el eje dominante
+  const entries = Object.entries(vector).filter(([, v]) => v > 50);
+  entries.sort((a, b) => b[1] - a[1]);
+  const dominant = entries[0]?.[0] ?? "";
+  const familyLabel: Record<string, string> = {
+    floral: "floral",
+    oriental: "oriental",
+    amaderado: "amaderado",
+    chipre: "chipre",
+    citrico: "cítrico",
+    gourmand: "gourmand",
+    frescura: "fresco",
+    misterio: "misterioso",
+    romantico: "romántico",
+    energia: "enérgico",
+    sofisticado: "sofisticado",
+    nostalgico: "nostálgico"
+  };
+  const domLabel = familyLabel[dominant] ?? "definido";
+  const perfil = gender === "hombre" ? "un hombre" : gender === "mujer" ? "una mujer" : "una persona";
+  const top3 = topItems.slice(0, 3).map((c) => `${c.f.brand} ${c.f.name}`).join(", ");
+  return `${perfil.charAt(0).toUpperCase() + perfil.slice(1)} con un perfil ${domLabel} en la curaduría. Esta selección reune cinco fragancias que comparten esa dirección: ${top3}, entre otras. Cada una abre con notas de salida definidas, evoluciona por un corazón característico y descansa en un fondo que las hace reconocibles.`;
+}
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
@@ -101,7 +130,7 @@ export async function POST(req: NextRequest) {
 
   // MODO RICH: LLM con razones + reflexión
   const compactList = top
-    .map((c, i) => `${i + 1}. ${c.f.brand} ${c.f.name} | ${c.f.slug} | ${c.score}%`)
+    .map((c, i) => `${i + 1}. ${c.f.brand} ${c.f.name} | ${c.f.slug} | ${c.score}% | ${c.f.family ?? ""} | ${c.f.mood ?? ""}`)
     .join("\n");
 
   // Vector del cliente formateado para que la IA lo vea
@@ -159,7 +188,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Si la IA omitió la reflexión, usar fallback
-    const reflection = (parsed.f ?? "").trim() || FALLBACK_REFLECTION;
+    const reflection =
+      (parsed.f ?? "").trim() || buildFallbackReflection(body.vector, body.set, gender, top);
 
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({
@@ -177,7 +207,7 @@ export async function POST(req: NextRequest) {
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({
       recommendations,
-      reflection: FALLBACK_REFLECTION,
+      reflection: buildFallbackReflection(body.vector, body.set, gender, top),
       elapsed_ms: elapsed,
       mode: "fallback",
       warning: err instanceof Error ? err.message : ""
