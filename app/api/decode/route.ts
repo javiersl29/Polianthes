@@ -30,7 +30,7 @@ const FAST_REASONS = [
 ];
 
 const FALLBACK_REFLECTION =
-  "Tu mapa olfativo se inclina con claridad hacia una familia dominante. La selección reune firmas que honran esa dirección. Inspiración: cada fragancia es una versión inspirada en las composiciones originales; sus creadores reinterpretan la fórmula sin replicarla.";
+  "Si te reconoces en un perfil olfativo así, esta selección traduce tus preferencias en cinco fragancias de la curaduría. Cada una abre con sus notas de salida, evoluciona por un corazón definido y descansa en un fondo que las hace memorables.";
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
     "Tu única salida es un objeto JSON estricto (sin markdown, sin <think>, sin texto extra). " +
     "Estructura: " +
     '{"r":[{"s":"slug","w":"frase ≤ 14 palabras, evocadora y humana"}],' +
-    '"f":"reflexión narrativa de 2-3 frases (≤ 80 palabras) que sintetiza la configuración del cliente y humaniza las fragancias. La palabra Inspiración debe aparecer literalmente en la reflexión."}';
+    '"f":"texto de 2-3 frases (≤ 90 palabras) que: (1) describe al cliente en 2-3 palabras o una imagen breve (ej. \"un hombre moderno que gravita hacia cítricos frescos\", \"una mujer que busca nocturnidad elegante\"); (2) describe la selección con sus tipos de perfume y composición (notas de salida, corazón, fondo) usando los slugs y el vector del cliente; (3) conecta los perfumes con el perfil del cliente en una sola frase final. Tono editorial, no de marketing. NO incluyas la palabra Inspiración en este texto."}';
 
   const richUser = `Set: ${body.set}\nVector del cliente: ${vectorText}\nGénero: ${gender}\nCandidatos:\n${compactList}`;
 
@@ -158,13 +158,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Reflejar "Inspiración" si la IA lo olvidó
-    let reflection = (parsed.f ?? "").trim();
-    if (reflection && !/inspiraci[oó]n/i.test(reflection)) {
-      reflection = `${reflection} Inspiración: cada fragancia es una versión inspirada en las composiciones originales.`;
-    } else if (!reflection) {
-      reflection = FALLBACK_REFLECTION;
-    }
+    // Si la IA omitió la reflexión, usar fallback
+    const reflection = (parsed.f ?? "").trim() || FALLBACK_REFLECTION;
 
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({

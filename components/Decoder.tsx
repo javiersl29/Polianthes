@@ -342,10 +342,10 @@ export default function Decoder() {
               >
                 <p className="text-[11px] uppercase tracking-[0.3em] text-gold">Inspiración</p>
                 <p className="mt-4 font-display italic text-2xl md:text-3xl text-ink leading-snug">
-                  {renderReflection(reflection)}
+                  {reflection}
                 </p>
                 <p className="mt-4 text-[10px] text-ink-mute">
-                  Polianthes interpreta tu mapa olfativo. Cada fragancia es una versión inspirada en las composiciones originales.
+                  Polianthes interpreta tu mapa olfativo. Las fragancias son versiones inspiradas en las composiciones originales.
                 </p>
               </motion.div>
             )}
@@ -387,20 +387,6 @@ export default function Decoder() {
         )}
       </div>
     </section>
-  );
-}
-
-/** Resalta la palabra "inspiración/inspirada" en el texto */
-function renderReflection(text: string) {
-  const parts = text.split(/(inspiraci[oó]n\w*)/gi);
-  return parts.map((p, i) =>
-    /inspiraci[oó]n\w*/i.test(p) ? (
-      <span key={i} className="text-gold font-medium">
-        {p}
-      </span>
-    ) : (
-      <span key={i}>{p}</span>
-    )
   );
 }
 
