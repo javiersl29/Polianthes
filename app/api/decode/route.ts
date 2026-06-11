@@ -98,24 +98,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No hay fragancias que coincidan." }, { status: 404 });
   }
 
-  // 5) Prompt compacto, baja temperatura
+  // 5) Prompt aún más compacto
   const compactList = top
-    .map(
-      (c, i) =>
-        `${i + 1}. ${c.f.brand} — ${c.f.name} | slug=${c.f.slug} | afinidad=${c.score}%${c.f.family ? ` | ${c.f.family}` : ""}`
-    )
+    .map((c, i) => `${i + 1}. ${c.f.brand} ${c.f.name} | ${c.f.slug} | ${c.score}%`)
     .join("\n");
 
   const compactSystem =
-    "Eres el curador de Polianthes. Tu única tarea es producir JSON estricto, sin razonamiento interno ni texto adicional. " +
-    "Responde EXCLUSIVAMENTE con este objeto (sin comillas markdown, sin bloques ```json, sin etiquetas <think>): " +
-    '{"recommendations":[{"slug":"...","reason":"frase ≤ 14 palabras en español, evocadora"}]}. ' +
-    "Incluye exactamente 5 elementos en el mismo orden de la lista. " +
-    "No expliques nada. No resumas. No agregues prosa. SOLO el JSON.";
+    "Responde SOLO con este JSON (sin texto extra, sin markdown, sin <think>): " +
+    '{"r":[{"s":"slug","w":"frase ≤ 14 palabras en español, evocadora"}]}. ' +
+    "5 elementos en el mismo orden de la lista.";
 
-  const userPrompt = `Vector (${body.set}): ${set.axes
-    .map((a) => `${a.label}=${body.vector[a.id] ?? 0}`)
-    .join(", ")}\nGénero: ${gender}\n\nCandidatos:\n${compactList}`;
+  const userPrompt = `Género: ${gender}\n${compactList}`;
 
   try {
     const completion = await chatCompletion(
@@ -134,9 +127,13 @@ export async function POST(req: NextRequest) {
       console.error(`[decode] LLM no devolvió JSON. text=${text.slice(0, 800)}`);
       throw new Error("La IA no devolvió un JSON válido");
     }
-    const parsed = JSON.parse(safe) as { recommendations?: { slug: string; reason: string }[] };
+    const parsed = JSON.parse(safe) as { r?: { s: string; w: string }[] } | { recommendations?: { slug: string; reason: string }[] };
 
-    const picked = (parsed.recommendations ?? []).slice(0, 5);
+    const pickedRaw = (parsed as { r?: { s: string; w: string }[] }).r ?? (parsed as { recommendations?: { slug: string; reason: string }[] }).recommendations ?? [];
+    const picked = pickedRaw
+      .map((p) => ({ slug: (p as { s?: string; slug?: string }).s ?? (p as { slug?: string }).slug ?? "", reason: (p as { w?: string; reason?: string }).w ?? (p as { reason?: string }).reason ?? "" }))
+      .filter((p) => p.slug)
+      .slice(0, 5);
     const recommendations = picked
       .map((p) => {
         const found = top.find((c) => c.f.slug === p.slug);
