@@ -52,12 +52,12 @@ export async function POST(req: NextRequest) {
 
   const pool = getPool();
   const cols = body.set === "familias" ? FAMILY_COLUMNS : MOOD_COLUMNS;
-  // Concatenamos nombres de columna de forma segura (no vienen del usuario)
   const colsSql = cols.map((c) => `"${c}"`).join(", ");
-  const genderFilter = gender === "unisex" ? "" : "AND (gender = $1 OR gender = 'unisex')";
-  const params: unknown[] = gender === "unisex" ? [] : [gender];
+  // gender = 'unisex' ⇒ sin filtro; si no, parámetro $1
+  const genderClause = gender === "unisex" ? "" : "AND (gender = $1 OR gender = 'unisex')";
   const result = await pool.query(
-    `SELECT ${SELECT_LIST}, ${colsSql} FROM fragrance WHERE active = TRUE ${genderFilter}`
+    `SELECT ${SELECT_LIST}, ${colsSql} FROM fragrance WHERE active = TRUE ${genderClause}`,
+    gender === "unisex" ? [] : [gender]
   );
   // 2) Hidratar columnas vec_* en una sola estructura por fila
   type Row = {
