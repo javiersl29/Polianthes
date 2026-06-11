@@ -13,7 +13,7 @@ type Body = {
   set: "familias" | "mood";
   vector: Record<string, number>;
   gender?: Gender;
-  mode?: "fast" | "rich"; // fast = sin LLM, ranking numérico puro
+  mode?: "fast" | "rich";
 };
 
 const FAMILY_COLUMNS = ["vec_floral", "vec_oriental", "vec_amaderado", "vec_chipre", "vec_citrico", "vec_gourmand"];
@@ -28,6 +28,9 @@ const FAST_REASONS = [
   "Coincidencia sólida con tus ejes.",
   "Tu firma olfativa resuena aquí."
 ];
+
+const FALLBACK_REFLECTION =
+  "Tu mapa olfativo se inclina con claridad hacia una familia dominante. La selección reune firmas que honran esa dirección. Inspiración: cada fragancia es una versión inspirada en las composiciones originales; sus creadores reinterpretan la fórmula sin replicarla.";
 
 export async function POST(req: NextRequest) {
   const startedAt = Date.now();
@@ -68,7 +71,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "El catálogo está vacío." }, { status: 503 });
   }
 
-  const axisIds = body.set === "familias" ? FAMILY_AXES.map((a) => a.id) : MOOD_AXES.map((a) => a.id);
   const ranked = rows
     .map((f) => {
       const fragVec: Record<string, number> = {};
@@ -86,7 +88,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No hay fragancias que coincidan." }, { status: 404 });
   }
 
-  // MODO RÁPIDO: ranking numérico puro, sin LLM
+  // MODO FAST: ranking numérico puro
   if (mode === "fast") {
     const recommendations = top.slice(0, 5).map((c, i) => ({
       ...c.f,
@@ -97,40 +99,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ recommendations, elapsed_ms: elapsed, mode: "fast" });
   }
 
-  // MODO RICH: LLM para justificación
+  // MODO RICH: LLM con razones + reflexión
   const compactList = top
     .map((c, i) => `${i + 1}. ${c.f.brand} ${c.f.name} | ${c.f.slug} | ${c.score}%`)
     .join("\n");
 
-  const compactSystem =
-    "Responde SOLO con este JSON (sin texto extra, sin markdown, sin <think>): " +
-    '{"r":[{"s":"slug","w":"frase ≤ 14 palabras en español, evocadora"}]}. ' +
-    "5 elementos en el mismo orden de la lista.";
+  // Vector del cliente formateado para que la IA lo vea
+  const vectorText = set.axes
+    .map((a) => `${a.label}=${body.vector[a.id] ?? 0}`)
+    .join(", ");
 
-  const userPrompt = `Género: ${gender}\n${compactList}`;
+  const richSystem =
+    "Eres el curador humano de Polianthes. Hablas en español, con voz segura, cálida y editorial. " +
+    "Tu única salida es un objeto JSON estricto (sin markdown, sin <think>, sin texto extra). " +
+    "Estructura: " +
+    '{"r":[{"s":"slug","w":"frase ≤ 14 palabras, evocadora y humana"}],' +
+    '"f":"reflexión narrativa de 2-3 frases (≤ 80 palabras) que sintetiza la configuración del cliente y humaniza las fragancias. La palabra Inspiración debe aparecer literalmente en la reflexión."}';
+
+  const richUser = `Set: ${body.set}\nVector del cliente: ${vectorText}\nGénero: ${gender}\nCandidatos:\n${compactList}`;
 
   try {
     const config = await configReadyOrThrow();
     const completion = await chatCompletion(config, [
-      { role: "system", content: compactSystem },
-      { role: "user", content: userPrompt }
+      { role: "system", content: richSystem },
+      { role: "user", content: richUser }
     ]);
     const text = completion.text.trim();
     const safe = extractFirstJson(text);
     if (!safe) throw new Error("La IA no devolvió un JSON válido");
-    const parsed = JSON.parse(safe) as
-      | { r?: { s: string; w: string }[] }
-      | { recommendations?: { slug: string; reason: string }[] };
+    const parsed = JSON.parse(safe) as {
+      r?: { s: string; w: string }[];
+      f?: string;
+    };
 
-    const pickedRaw =
-      (parsed as { r?: { s: string; w: string }[] }).r ??
-      (parsed as { recommendations?: { slug: string; reason: string }[] }).recommendations ??
-      [];
+    const pickedRaw = parsed.r ?? [];
     const picked = pickedRaw
-      .map((p) => ({
-        slug: (p as { s?: string; slug?: string }).s ?? (p as { slug?: string }).slug ?? "",
-        reason: (p as { w?: string; reason?: string }).w ?? (p as { reason?: string }).reason ?? ""
-      }))
+      .map((p) => ({ slug: p.s ?? "", reason: p.w ?? "" }))
       .filter((p) => p.slug)
       .slice(0, 5);
 
@@ -154,17 +158,35 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Reflejar "Inspiración" si la IA lo olvidó
+    let reflection = (parsed.f ?? "").trim();
+    if (reflection && !/inspiraci[oó]n/i.test(reflection)) {
+      reflection = `${reflection} Inspiración: cada fragancia es una versión inspirada en las composiciones originales.`;
+    } else if (!reflection) {
+      reflection = FALLBACK_REFLECTION;
+    }
+
     const elapsed = Date.now() - startedAt;
-    return NextResponse.json({ recommendations: recommendations.slice(0, 5), elapsed_ms: elapsed, mode: "rich" });
+    return NextResponse.json({
+      recommendations: recommendations.slice(0, 5),
+      reflection,
+      elapsed_ms: elapsed,
+      mode: "rich"
+    });
   } catch (err) {
-    // Si el LLM falla, devolvemos el ranking numérico con razones genéricas
     const recommendations = top.slice(0, 5).map((c, i) => ({
       ...c.f,
       reason: FAST_REASONS[i % FAST_REASONS.length],
       score: c.score
     }));
     const elapsed = Date.now() - startedAt;
-    return NextResponse.json({ recommendations, elapsed_ms: elapsed, mode: "fallback", warning: err instanceof Error ? err.message : "" });
+    return NextResponse.json({
+      recommendations,
+      reflection: FALLBACK_REFLECTION,
+      elapsed_ms: elapsed,
+      mode: "fallback",
+      warning: err instanceof Error ? err.message : ""
+    });
   }
 }
 

@@ -24,8 +24,8 @@ const THINKING_LINES = [
   "Leyendo tu afinidad…",
   "Comparando con 146 fragancias curadas…",
   "Calculando distancias en el espacio olfativo…",
-  "Buscando las cinco firmas más cercanas…",
-  "Componiendo tu selección…"
+  "Entrevistando a las fragancias candidatas…",
+  "Componiendo tu selección personal…"
 ];
 
 function polar(angleDeg: number, radius: number) {
@@ -56,13 +56,12 @@ export default function Decoder() {
   const [thinkingIdx, setThinkingIdx] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Recommendation[]>([]);
+  const [reflection, setReflection] = useState<string | null>(null);
 
-  // Resetea "active" cuando cambias de set
   useEffect(() => {
     setActive(Object.fromEntries(set.axes.map((a) => [a.id, true])));
   }, [setId, set]);
 
-  // Rotación de frases mientras loading
   useEffect(() => {
     if (!loading) return;
     const t = setInterval(() => setThinkingIdx((i) => (i + 1) % THINKING_LINES.length), 900);
@@ -84,13 +83,15 @@ export default function Decoder() {
     setActive(Object.fromEntries(HEXAGON_SETS[next].axes.map((a) => [a.id, true])));
     setResults([]);
     setError(null);
+    setReflection(null);
   };
 
-  const submit = async (mode: "fast" | "rich" = "fast") => {
+  const submit = async () => {
     setLoading(true);
     setThinkingIdx(0);
     setError(null);
     setResults([]);
+    setReflection(null);
     const effectiveVector: DecodeVector = {};
     for (const a of set.axes) {
       effectiveVector[a.id] = active[a.id] ? vector[a.id] ?? 50 : 0;
@@ -99,11 +100,12 @@ export default function Decoder() {
       const res = await fetch("/api/decode", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ set: setId, vector: effectiveVector, gender, mode })
+        body: JSON.stringify({ set: setId, vector: effectiveVector, gender, mode: "rich" })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo descifrar la fragancia");
       setResults(data.recommendations ?? []);
+      setReflection(data.reflection ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
@@ -115,7 +117,6 @@ export default function Decoder() {
 
   return (
     <section id="decodificador" className="relative py-32 px-4 overflow-hidden">
-      {/* Fondo animado tenue */}
       <HexBackground />
 
       <div className="relative max-w-6xl mx-auto">
@@ -125,8 +126,8 @@ export default function Decoder() {
             Descifra<br />tu fragancia
           </h2>
           <p className="text-ink-mute max-w-xl mt-2">
-            Activa los ejes que te interesan, ajústalos a tu gusto y deja que la IA encuentre las cinco
-            fragancias que mejor traducen tu intención.
+            Activa los ejes que te interesan, ajústalos a tu gusto y deja que la IA reflexione sobre tu
+            mapa olfativo y proponga cinco inspiraciones afines.
           </p>
         </div>
 
@@ -177,7 +178,6 @@ export default function Decoder() {
                 </filter>
               </defs>
 
-              {/* anillos concéntricos */}
               {[100, 75, 50, 25].map((p) => (
                 <polygon
                   key={p}
@@ -188,7 +188,6 @@ export default function Decoder() {
                 />
               ))}
 
-              {/* ejes */}
               {set.axes.map((axis, i) => {
                 const angle = (360 / set.axes.length) * i;
                 const p = polar(angle, RADIUS);
@@ -205,7 +204,6 @@ export default function Decoder() {
                 );
               })}
 
-              {/* polígono activo */}
               <motion.polygon
                 points={hexPath}
                 fill="url(#hexFill)"
@@ -217,7 +215,6 @@ export default function Decoder() {
                 filter="url(#glow)"
               />
 
-              {/* marcadores */}
               {set.axes.map((axis, i) => {
                 const angle = (360 / set.axes.length) * i;
                 const isActive = active[axis.id];
@@ -238,7 +235,6 @@ export default function Decoder() {
                 );
               })}
 
-              {/* etiquetas — más legibles */}
               {set.axes.map((axis, i) => {
                 const angle = (360 / set.axes.length) * i;
                 const p = polar(angle, LABEL_RADIUS);
@@ -301,32 +297,22 @@ export default function Decoder() {
               );
             })}
 
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              <button
-                onClick={() => submit("fast")}
-                disabled={loading}
-                className="liquid-glass-strong col-span-2 rounded-full px-5 py-3 text-sm font-medium text-ink hover:text-gold transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
-              >
-                {loading ? (
-                  <>
-                    <ThinkingDots />
-                    <span key={thinkingIdx} className="animate-fade-in">{THINKING_LINES[thinkingIdx]}</span>
-                  </>
-                ) : (
-                  "Descifrar mi fragancia"
-                )}
-              </button>
-              <button
-                onClick={() => submit("rich")}
-                disabled={loading}
-                className="liquid-glass rounded-full px-3 py-3 text-xs hover:text-gold transition-colors disabled:opacity-50"
-                title="Justificaciones más elaboradas (más lento)"
-              >
-                Con razón IA
-              </button>
-            </div>
-            <p className="mt-2 text-[10px] text-ink-mute text-center">
-              Modo rápido: afinidad numérica. Modo IA: justificación literaria de cada fragancia.
+            <button
+              onClick={submit}
+              disabled={loading}
+              className="liquid-glass-strong mt-4 w-full rounded-full px-5 py-3 text-sm font-medium text-ink hover:text-gold transition-colors disabled:opacity-50 flex items-center justify-center gap-3"
+            >
+              {loading ? (
+                <>
+                  <ThinkingVisual />
+                  <span key={thinkingIdx} className="animate-fade-in">{THINKING_LINES[thinkingIdx]}</span>
+                </>
+              ) : (
+                "Descifrar mi fragancia"
+              )}
+            </button>
+            <p className="text-[10px] text-ink-mute text-center">
+              La IA reflexiona sobre tu mapa olfativo y selecciona cinco inspiraciones afines.
             </p>
           </div>
         </div>
@@ -346,6 +332,24 @@ export default function Decoder() {
 
         {results.length > 0 && (
           <div className="mt-16">
+            {/* Bloque Inspiración */}
+            {reflection && (
+              <motion.div
+                initial={{ opacity: 0, y: 20, filter: "blur(8px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                transition={{ duration: 0.7, ease: "easeOut" }}
+                className="liquid-glass rounded-3xl p-8 md:p-10 mb-10 max-w-3xl mx-auto text-center"
+              >
+                <p className="text-[11px] uppercase tracking-[0.3em] text-gold">Inspiración</p>
+                <p className="mt-4 font-display italic text-2xl md:text-3xl text-ink leading-snug">
+                  {renderReflection(reflection)}
+                </p>
+                <p className="mt-4 text-[10px] text-ink-mute">
+                  Polianthes interpreta tu mapa olfativo. Cada fragancia es una versión inspirada en las composiciones originales.
+                </p>
+              </motion.div>
+            )}
+
             <p className="text-center text-sm text-ink-mute mb-6">Selección personalizada</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {results.map((r, idx) => (
@@ -386,17 +390,50 @@ export default function Decoder() {
   );
 }
 
-function ThinkingDots() {
+/** Resalta la palabra "inspiración/inspirada" en el texto */
+function renderReflection(text: string) {
+  const parts = text.split(/(inspiraci[oó]n\w*)/gi);
+  return parts.map((p, i) =>
+    /inspiraci[oó]n\w*/i.test(p) ? (
+      <span key={i} className="text-gold font-medium">
+        {p}
+      </span>
+    ) : (
+      <span key={i}>{p}</span>
+    )
+  );
+}
+
+function ThinkingVisual() {
   return (
-    <span className="inline-flex items-center gap-1">
-      <span className="h-1.5 w-1.5 rounded-full bg-gold animate-bounce" style={{ animationDelay: "0ms" }} />
-      <span className="h-1.5 w-1.5 rounded-full bg-gold animate-bounce" style={{ animationDelay: "150ms" }} />
-      <span className="h-1.5 w-1.5 rounded-full bg-gold animate-bounce" style={{ animationDelay: "300ms" }} />
+    <span className="relative inline-flex items-center justify-center w-6 h-6" aria-hidden="true">
+      <svg viewBox="0 0 32 32" className="absolute inset-0">
+        <motion.polygon
+          points="16,3 28,10 28,22 16,29 4,22 4,10"
+          fill="none"
+          stroke="oklch(0.82 0.13 85)"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeDasharray="80 80"
+          initial={{ strokeDashoffset: 0, rotate: 0 }}
+          animate={{ strokeDashoffset: -160, rotate: 360 }}
+          transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+          style={{ transformOrigin: "16px 16px" }}
+        />
+        <motion.circle
+          cx="16"
+          cy="16"
+          r="2"
+          fill="oklch(0.82 0.13 85)"
+          animate={{ r: [1.5, 3, 1.5], opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+        />
+      </svg>
     </span>
   );
 }
 
-/** Fondo animado: gradiente respirando + partículas SVG muy tenues */
 function HexBackground() {
   return (
     <div className="absolute inset-0 -z-0 overflow-hidden pointer-events-none">
