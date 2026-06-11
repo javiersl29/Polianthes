@@ -86,6 +86,10 @@ export default function FragranceManager() {
   }>({ full_name: "", family: "", mood: "", gender: "unisex" });
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Estado de generación de imagen
+  const [generatingImage, setGeneratingImage] = useState<Record<number, boolean>>({});
+  const [generatedPreview, setGeneratedPreview] = useState<Record<number, string | null>>({});
+
   // Refs para pausar/detener
   const pausedRef = useRef(false);
   const stoppedRef = useRef(false);
@@ -188,6 +192,58 @@ export default function FragranceManager() {
       setStatus((s) => ({ ...s, [id]: "error" }));
       setStatusDetail((d) => ({ ...d, [id]: err instanceof Error ? err.message : "Error" }));
     }
+  };
+
+  function splitBrandClient(full: string) {
+    const idx = full.indexOf(" - ");
+    if (idx === -1) return { brand: "Independiente", name: full };
+    return { brand: full.slice(0, idx).trim(), name: full.slice(idx + 3).trim() };
+  }
+
+  const generateAiImage = async (row: Row) => {
+    setGeneratingImage((g) => ({ ...g, [row.id]: true }));
+    try {
+      const res = await fetch("/api/admin/fragrances/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: row.slug, save: false })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      if (data.reason === "no_provider") {
+        toast.error(data.message || "La API de imágenes no está disponible.");
+        return;
+      }
+      setGeneratedPreview((p) => ({ ...p, [row.id]: data.url ?? null }));
+      toast.success("Imagen generada. Revisa la preview abajo y decide si guardarla.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    } finally {
+      setGeneratingImage((g) => ({ ...g, [row.id]: false }));
+    }
+  };
+
+  const acceptAiImage = async (row: Row) => {
+    const preview = generatedPreview[row.id];
+    if (!preview) return;
+    try {
+      const res = await fetch("/api/admin/fragrances/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: row.slug, save: true })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      setItems((prev) => prev.map((p) => (p.id === row.id ? { ...p, image_url: data.image_url } : p)));
+      setGeneratedPreview((p) => ({ ...p, [row.id]: null }));
+      toast.success("Imagen guardada");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    }
+  };
+
+  const rejectAiImage = (row: Row): void => {
+    setGeneratedPreview((p) => ({ ...p, [row.id]: null }));
   };
 
   const fetchImage = async (slug: string) => {
@@ -427,12 +483,6 @@ export default function FragranceManager() {
       toast.error(err instanceof Error ? err.message : "Error");
     }
   };
-
-  function splitBrandClient(full: string) {
-    const idx = full.indexOf(" - ");
-    if (idx === -1) return { brand: "Independiente", name: full };
-    return { brand: full.slice(0, idx).trim(), name: full.slice(idx + 3).trim() };
-  }
 
   const runSelection = (mode: "pending" | "all") => {
     const subset = items.filter((i) => selected.has(i.id));
@@ -816,6 +866,14 @@ export default function FragranceManager() {
                         }}
                       />
                     </label>
+                    <button
+                      onClick={() => generateAiImage(row)}
+                      disabled={generatingImage[row.id]}
+                      className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
+                      title="Genera una imagen con IA (MiniMax) usando el template de marca"
+                    >
+                      {generatingImage[row.id] ? "Generando…" : "✦ Generar con IA"}
+                    </button>
                     {row.active ? (
                       <button
                         onClick={() => deleteFragrance(row, false)}
@@ -839,6 +897,33 @@ export default function FragranceManager() {
                       × Eliminar
                     </button>
                   </div>
+
+                  {generatedPreview[row.id] && (
+                    <div className="md:col-span-2 mt-3 liquid-glass-strong rounded-2xl p-4 space-y-3">
+                      <p className="text-xs text-ink-mute">
+                        Vista previa generada por IA. Si te gusta, guárdala. Si no, descarta y vuelve a generar.
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3 items-start">
+                        <div className="w-32 sm:w-40 aspect-square rounded-xl overflow-hidden bg-bg-elev shrink-0">
+                          <img src={generatedPreview[row.id]!} alt="Preview IA" className="w-full h-full object-cover" />
+                        </div>
+                        <div className="flex flex-col gap-2">
+                          <button
+                            onClick={() => acceptAiImage(row)}
+                            className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold"
+                          >
+                            Guardar como imagen oficial
+                          </button>
+                          <button
+                            onClick={() => rejectAiImage(row)}
+                            className="liquid-glass rounded-full px-4 py-2 text-sm text-ink-mute hover:text-rose-300"
+                          >
+                            Descartar y regenerar
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
