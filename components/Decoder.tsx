@@ -76,9 +76,21 @@ export default function Decoder() {
   const [refDropdownOpen, setRefDropdownOpen] = useState(false);
   const [selectedRef, setSelectedRef] = useState<FragranceOption | null>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
+  const refContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/search?gender=")
+    if (!refDropdownOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (refContainerRef.current && !refContainerRef.current.contains(e.target as Node)) {
+        setRefDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [refDropdownOpen]);
+
+  useEffect(() => {
+    fetch("/api/fragrances")
       .then((r) => r.json())
       .then((data) => setFragrances(data.items ?? []))
       .catch(() => {});
@@ -122,11 +134,12 @@ export default function Decoder() {
   };
 
   const filteredFragrances = useMemo(() => {
-    if (!refSearch.trim()) return fragrances.slice(0, 20);
-    const q = refSearch.toLowerCase();
-    return fragrances.filter(
-      (f) => f.full_name.toLowerCase().includes(q) || f.brand.toLowerCase().includes(q)
-    ).slice(0, 20);
+    if (!refSearch.trim()) return fragrances.slice(0, 50);
+    const terms = refSearch.toLowerCase().split(/\s+/).filter(Boolean);
+    return fragrances.filter((f) => {
+      const text = `${f.full_name} ${f.brand} ${f.family ?? ""}`.toLowerCase();
+      return terms.every((t) => text.includes(t));
+    }).slice(0, 50);
   }, [fragrances, refSearch]);
 
   const selectReference = (f: FragranceOption) => {
@@ -311,7 +324,7 @@ export default function Decoder() {
                     </button>
                   </div>
                 ) : (
-                  <div className="relative">
+                  <div className="relative" ref={refContainerRef}>
                     <div className="liquid-glass rounded-xl flex items-center gap-2 px-3 py-2.5 min-h-[48px]">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-ink-mute shrink-0"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
                       <input
@@ -325,36 +338,47 @@ export default function Decoder() {
                     </div>
 
                     <AnimatePresence>
-                      {refDropdownOpen && filteredFragrances.length > 0 && (
+                      {refDropdownOpen && (
                         <motion.div
                           initial={{ opacity: 0, y: -4 }}
                           animate={{ opacity: 1, y: 0 }}
                           exit={{ opacity: 0, y: -4 }}
                           transition={{ duration: 0.2 }}
-                          className="absolute z-20 left-0 right-0 mt-1 liquid-glass-strong rounded-xl max-h-[240px] overflow-y-auto"
+                          className="absolute z-20 left-0 right-0 mt-1 liquid-glass-strong rounded-xl max-h-[320px] overflow-y-auto"
                         >
-                          {filteredFragrances.map((f) => (
-                            <button
-                              key={f.slug}
-                              onClick={() => selectReference(f)}
-                              className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
-                            >
-                              <div className="h-10 w-10 rounded-lg bg-bg-elev overflow-hidden grid place-items-center shrink-0">
-                                {f.image_url ? (
-                                  <img src={f.image_url} alt={f.full_name} className="w-full h-full object-cover" />
-                                ) : (
-                                  <span className="font-display italic text-gold text-sm">{f.brand[0]}</span>
+                          <div className="sticky top-0 z-10 bg-bg-elev/90 backdrop-blur-sm px-3 py-1.5 text-[10px] text-ink-mute flex items-center justify-between">
+                            <span>{refSearch.trim() ? `${filteredFragrances.length} resultado${filteredFragrances.length === 1 ? "" : "s"}` : `${fragrances.length} fragancias`}</span>
+                            {refSearch.trim() && filteredFragrances.length > 50 && <span>Mostrando 50 de {filteredFragrances.length}</span>}
+                          </div>
+                          {filteredFragrances.length === 0 ? (
+                            <div className="px-4 py-6 text-center text-sm text-ink-mute">
+                              <p>No encontramos coincidencias.</p>
+                              <p className="mt-1 text-xs">Intenta con otro nombre o marca.</p>
+                            </div>
+                          ) : (
+                            filteredFragrances.map((f) => (
+                              <button
+                                key={f.slug}
+                                onClick={() => selectReference(f)}
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
+                              >
+                                <div className="h-10 w-10 rounded-lg bg-bg-elev overflow-hidden grid place-items-center shrink-0">
+                                  {f.image_url ? (
+                                    <img src={f.image_url} alt={f.full_name} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <span className="font-display italic text-gold text-sm">{f.brand[0]}</span>
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-[10px] text-ink-mute uppercase tracking-wider">{f.brand}</p>
+                                  <p className="text-sm text-ink truncate">{f.name}</p>
+                                </div>
+                                {f.family && (
+                                  <span className="text-[10px] text-gold shrink-0 ml-auto">{f.family}</span>
                                 )}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[10px] text-ink-mute uppercase tracking-wider">{f.brand}</p>
-                                <p className="text-sm text-ink truncate">{f.name}</p>
-                              </div>
-                              {f.family && (
-                                <span className="text-[10px] text-gold shrink-0 ml-auto">{f.family}</span>
-                              )}
-                            </button>
-                          ))}
+                              </button>
+                            ))
+                          )}
                         </motion.div>
                       )}
                     </AnimatePresence>
