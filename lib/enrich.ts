@@ -1,5 +1,5 @@
 import { searchWeb, formatHitsForPrompt, SearchResult } from "./search";
-import { chatCompletion } from "./llm";
+import { chatCompletion, extractFirstJson } from "./llm";
 import { AiConfig } from "./ai-config";
 import { clamp01to100, FAMILY_AXES, MOOD_AXES } from "./vectors";
 
@@ -72,11 +72,10 @@ Reglas:
 const RETRY_HINT = "\n\nIMPORTANTE: tu respuesta anterior omitió los vectores (family_axes y mood_axes) o los dejó vacíos. Esta vez DEBES incluir los 12 valores numéricos 0-100. Responde SOLO con el JSON completo, sin texto fuera.";
 
 function safeParse(text: string): Record<string, unknown> | null {
+  const json = extractFirstJson(text);
+  if (!json) return null;
   try {
-    const start = text.indexOf("{");
-    const end = text.lastIndexOf("}");
-    if (start < 0 || end <= start) return null;
-    return JSON.parse(text.slice(start, end + 1));
+    return JSON.parse(json);
   } catch {
     return null;
   }

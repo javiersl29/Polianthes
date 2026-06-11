@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiConfig } from "@/lib/ai-config";
 import { getPool } from "@/lib/db";
-import { chatCompletion } from "@/lib/llm";
+import { chatCompletion, extractFirstJson } from "@/lib/llm";
 import { affinity, FAMILY_AXES, MOOD_AXES } from "@/lib/vectors";
 import { HEXAGON_SETS } from "@/lib/decoder";
 
@@ -124,9 +124,14 @@ export async function POST(req: NextRequest) {
       ]
     );
     const text = completion.text.trim();
-    const jsonStart = text.indexOf("{");
-    const jsonEnd = text.lastIndexOf("}");
-    const safe = jsonStart >= 0 && jsonEnd > jsonStart ? text.slice(jsonStart, jsonEnd + 1) : text;
+    // eslint-disable-next-line no-console
+    console.log(`[decode] LLM raw (first 400): ${text.slice(0, 400).replace(/\n/g, " ")}`);
+    const safe = extractFirstJson(text);
+    if (!safe) {
+      // eslint-disable-next-line no-console
+      console.error(`[decode] LLM no devolvió JSON. text=${text.slice(0, 800)}`);
+      throw new Error("La IA no devolvió un JSON válido");
+    }
     const parsed = JSON.parse(safe) as { recommendations?: { slug: string; reason: string }[] };
 
     const picked = (parsed.recommendations ?? []).slice(0, 5);

@@ -1,6 +1,6 @@
-import { AiConfig } from "./ai-config";
+import type { AiConfig } from "./ai-config";
 
-export type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 export type ChatResponse = {
   text: string;
@@ -12,6 +12,44 @@ export function resolveEndpoint(baseUrl: string | null | undefined): string {
   const fallback = "https://api.openai.com/v1";
   const url = (baseUrl ?? fallback).replace(/\/+$/, "");
   return `${url}/chat/completions`;
+}
+
+/**
+ * Extrae el primer objeto JSON balanceado de un texto. Ignora bloques
+ * <think>…</think>, fenced code blocks, prefacios y trailers. Soporta
+ * llaves y corchetes anidados con strings escapadas.
+ */
+export function extractFirstJson(text: string): string | null {
+  // Quita bloques <think>…</think> (modelos con razonamiento)
+  const cleaned = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+  // Busca la primera apertura de objeto
+  const start = cleaned.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  for (let i = start; i < cleaned.length; i += 1) {
+    const ch = cleaned[i];
+    if (escape) {
+      escape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      escape = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (ch === "{") depth += 1;
+    else if (ch === "}") {
+      depth -= 1;
+      if (depth === 0) return cleaned.slice(start, i + 1);
+    }
+  }
+  return null;
 }
 
 export async function chatCompletion(

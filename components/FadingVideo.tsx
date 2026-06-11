@@ -1,25 +1,28 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type FadingVideoProps = {
   src: string;
   className?: string;
   style?: React.CSSProperties;
   scale?: number;
+  poster?: string;
 };
 
 const FADE_MS = 500;
 const FADE_OUT_LEAD = 0.55;
 
-export default function FadingVideo({ src, className, style, scale = 1 }: FadingVideoProps) {
+export default function FadingVideo({ src, className, style, scale = 1, poster }: FadingVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const fadingOutRef = useRef<boolean>(false);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
     video.style.opacity = "0";
+    setFailed(false);
 
     const fadeTo = (target: number, duration: number) => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -63,31 +66,54 @@ export default function FadingVideo({ src, className, style, scale = 1 }: Fading
       }, 100);
     };
 
+    const onError = () => {
+      // eslint-disable-next-line no-console
+      console.warn("[FadingVideo] no se pudo cargar", src);
+      setFailed(true);
+    };
+
     video.addEventListener("loadeddata", onLoaded);
     video.addEventListener("timeupdate", onTimeUpdate);
     video.addEventListener("ended", onEnded);
+    video.addEventListener("error", onError);
 
     return () => {
       video.removeEventListener("loadeddata", onLoaded);
       video.removeEventListener("timeupdate", onTimeUpdate);
       video.removeEventListener("ended", onEnded);
+      video.removeEventListener("error", onError);
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
     };
   }, [src]);
 
-  const computedStyle: React.CSSProperties = scale > 1
-    ? { width: `${scale * 100}%`, height: `${scale * 100}%`, ...style }
-    : { width: "100%", height: "100%", ...style };
+  const computedStyle: React.CSSProperties =
+    scale > 1
+      ? { width: `${scale * 100}%`, height: `${scale * 100}%`, ...style }
+      : { width: "100%", height: "100%", ...style };
 
   return (
-    <video
-      ref={videoRef}
-      src={src}
-      muted
-      playsInline
-      preload="auto"
-      className={className}
-      style={computedStyle}
-    />
+    <>
+      {failed && (
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              "radial-gradient(closest-side, color-mix(in oklch, var(--color-gold) 15%, transparent), transparent 70%)"
+          }}
+        />
+      )}
+      <video
+        ref={videoRef}
+        src={src}
+        poster={poster}
+        muted
+        autoPlay
+        loop
+        playsInline
+        preload="auto"
+        className={className}
+        style={computedStyle}
+      />
+    </>
   );
 }
