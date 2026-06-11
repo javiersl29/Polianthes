@@ -2,34 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { getAiConfig } from "@/lib/ai-config";
 import { getPool } from "@/lib/db";
-import { chatCompletion } from "@/lib/llm";
-import { clamp01to100 } from "@/lib/vectors";
+import { enrichFragrance } from "@/lib/enrich";
 
 export const dynamic = "force-dynamic";
-
-const SYSTEM_PROMPT = `Eres el perfumista documentalista de Polianthes. Recibes el nombre de una fragancia y debes devolver SOLO un JSON estricto con la siguiente forma:
-
-{
-  "description": "…",
-  "family": "una de: Floral|Oriental|Amaderado|Chipre|Cítrico|Gourmand",
-  "mood": "una palabra evocadora en español",
-  "gender": "hombre|mujer|unisex",
-  "top_notes": ["…"],
-  "heart_notes": ["…"],
-  "base_notes": ["…"],
-  "family_axes": {
-    "floral": 0-100, "oriental": 0-100, "amaderado": 0-100,
-    "chipre": 0-100, "citrico": 0-100, "gourmand": 0-100
-  },
-  "mood_axes": {
-    "frescura": 0-100, "misterio": 0-100, "romantico": 0-100,
-    "energia": 0-100, "sofisticado": 0-100, "nostalgico": 0-100
-  }
-}
-
-Sin texto fuera del JSON. Notas en español, máximo 5 por capa. Descripción en español, máximo 2 frases. Para 'gender' usa la convención de la maison: 'pour homme' o nombres típicamente masculinos → hombre; fragancias con '(Mujer)' o nombres femeninos → mujer; el resto → unisex.
-
-Los vectores (family_axes, mood_axes) puntúan la composición aromática real de la fragancia de 0 (ausente) a 100 (dominante). Sé leal a la realidad: si es un cítrico, citrico≈85 y el resto 10-30; si tiene sándalo y oud, amaderado≈70 y oriental≈50. Cada fragancia suele tener 1-2 ejes altos (60-90), 1-2 medios (30-60) y el resto bajos (5-25).`;
 
 type Body = { mode?: "pending" | "all"; limit?: number };
 
@@ -57,31 +32,15 @@ export async function POST(req: NextRequest) {
 
   for (const item of items) {
     try {
-      const completion = await chatCompletion(
-        { ...config, temperature: 0.4 },
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: `Fragancia: ${item.brand} — ${item.name}` }
-        ]
+      const r = await enrichFragrance(config, {
+        brand: item.brand,
+        name: item.name,
+        full_name: item.full_name
+      });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[enrich-batch] ${item.full_name} → family_axes=${JSON.stringify(r.family_axes)} mood_axes=${JSON.stringify(r.mood_axes)} fallback=${r.used_fallback} search=${r.provider}`
       );
-      const text = completion.text.trim();
-      const start = text.indexOf("{");
-      const end = text.lastIndexOf("}");
-      const safe = start >= 0 && end > start ? text.slice(start, end + 1) : text;
-      const data = JSON.parse(safe) as {
-        description?: string;
-        family?: string;
-        mood?: string;
-        gender?: "hombre" | "mujer" | "unisex";
-        top_notes?: string[];
-        heart_notes?: string[];
-        base_notes?: string[];
-        family_axes?: Record<string, unknown>;
-        mood_axes?: Record<string, unknown>;
-      };
-      const gender = data.gender === "hombre" || data.gender === "mujer" ? data.gender : "unisex";
-      const fa = data.family_axes ?? {};
-      const ma = data.mood_axes ?? {};
       await pool.query(
         `UPDATE fragrance SET
           description = COALESCE($1, description),
@@ -99,35 +58,37 @@ export async function POST(req: NextRequest) {
           enriched_at = NOW()
          WHERE id = $21`,
         [
-          data.description ?? null,
-          data.family ?? null,
-          data.mood ?? null,
-          gender,
-          data.top_notes ?? null,
-          data.heart_notes ?? null,
-          data.base_notes ?? null,
-          clamp01to100(fa.floral),
-          clamp01to100(fa.oriental),
-          clamp01to100(fa.amaderado),
-          clamp01to100(fa.chipre),
-          clamp01to100(fa.citrico),
-          clamp01to100(fa.gourmand),
-          clamp01to100(ma.frescura),
-          clamp01to100(ma.misterio),
-          clamp01to100(ma.romantico),
-          clamp01to100(ma.energia),
-          clamp01to100(ma.sofisticado),
-          clamp01to100(ma.nostalgico),
-          JSON.stringify({ family_axes: fa, mood_axes: ma }),
+          r.description,
+          r.family,
+          r.mood,
+          r.gender,
+          r.top_notes.length > 0 ? r.top_notes : null,
+          r.heart_notes.length > 0 ? r.heart_notes : null,
+          r.base_notes.length > 0 ? r.base_notes : null,
+          r.family_axes.floral,
+          r.family_axes.oriental,
+          r.family_axes.amaderado,
+          r.family_axes.chipre,
+          r.family_axes.citrico,
+          r.family_axes.gourmand,
+          r.mood_axes.frescura,
+          r.mood_axes.misterio,
+          r.mood_axes.romantico,
+          r.mood_axes.energia,
+          r.mood_axes.sofisticado,
+          r.mood_axes.nostalgico,
+          JSON.stringify(r.vector_justification),
           item.id
         ]
       );
       updated += 1;
     } catch (err) {
       failed += 1;
-      errors.push({ id: item.id, full_name: item.full_name, error: err instanceof Error ? err.message : "error" });
+      const msg = err instanceof Error ? err.message : "error";
+      errors.push({ id: item.id, full_name: item.full_name, error: msg });
+      // eslint-disable-next-line no-console
+      console.error(`[enrich-batch] error en ${item.full_name}:`, msg);
     }
-    // Pausa para no saturar la API
     await new Promise((r) => setTimeout(r, 250));
   }
 

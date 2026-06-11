@@ -1,34 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAiConfig } from "@/lib/ai-config";
-import { getFragranceBySlug, listFragrances } from "@/lib/fragrances";
-import { chatCompletion } from "@/lib/llm";
-import { clamp01to100 } from "@/lib/vectors";
+import { getFragranceBySlug } from "@/lib/fragrances";
+import { enrichFragrance } from "@/lib/enrich";
+import { getPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
-
-const SYSTEM_PROMPT = `Eres el perfumista documentalista de Polianthes. Recibes el nombre de una fragancia y debes devolver SOLO un JSON estricto con la siguiente forma:
-
-{
-  "description": "…",
-  "family": "una de: Floral|Oriental|Amaderado|Chipre|Cítrico|Gourmand",
-  "mood": "una palabra evocadora en español",
-  "gender": "hombre|mujer|unisex",
-  "top_notes": ["…"],
-  "heart_notes": ["…"],
-  "base_notes": ["…"],
-  "family_axes": {
-    "floral": 0-100, "oriental": 0-100, "amaderado": 0-100,
-    "chipre": 0-100, "citrico": 0-100, "gourmand": 0-100
-  },
-  "mood_axes": {
-    "frescura": 0-100, "misterio": 0-100, "romantico": 0-100,
-    "energia": 0-100, "sofisticado": 0-100, "nostalgico": 0-100
-  }
-}
-
-Sin texto fuera del JSON. Notas en español, máximo 5 por capa. Descripción en español, máximo 2 frases. Para 'gender' usa la convención de la maison: 'pour homme' o nombres típicamente masculinos → hombre; fragancias con '(Mujer)' o nombres femeninos → mujer; el resto → unisex.
-
-Los vectores (family_axes, mood_axes) puntúan la composición aromática real de la fragancia de 0 (ausente) a 100 (dominante). Sé leal a la realidad: si es un cítrico, citrico≈85 y el resto 10-30; si tiene sándalo y oud, amaderado≈70 y oriental≈50. Cada fragancia suele tener 1-2 ejes altos (60-90), 1-2 medios (30-60) y el resto bajos (5-25).`;
 
 export async function POST(req: NextRequest) {
   const { slug } = (await req.json()) as { slug?: string };
@@ -41,84 +17,79 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "API key no configurada" }, { status: 503 });
   }
 
-  const completion = await chatCompletion(
-    { ...config, temperature: 0.4 },
+  const result = await enrichFragrance(config, {
+    brand: detail.brand,
+    name: detail.name,
+    full_name: detail.full_name
+  });
+
+  // eslint-disable-next-line no-console
+  console.log(
+    `[enrich] ${detail.full_name} → family_axes=${JSON.stringify(result.family_axes)} mood_axes=${JSON.stringify(result.mood_axes)} fallback=${result.used_fallback} search=${result.provider} hits=${result.search_hits}`
+  );
+
+  const pool = getPool();
+  await pool.query(
+    `UPDATE fragrance SET
+      description = COALESCE($1, description),
+      family = COALESCE($2, family),
+      mood = COALESCE($3, mood),
+      gender = COALESCE($4, gender),
+      top_notes = COALESCE($5::text[], top_notes),
+      heart_notes = COALESCE($6::text[], heart_notes),
+      base_notes = COALESCE($7::text[], base_notes),
+      vec_floral = $8, vec_oriental = $9, vec_amaderado = $10,
+      vec_chipre = $11, vec_citrico = $12, vec_gourmand = $13,
+      vec_frescura = $14, vec_misterio = $15, vec_romantico = $16,
+      vec_energia = $17, vec_sofisticado = $18, vec_nostalgico = $19,
+      vector_justification = $20::jsonb,
+      enriched_at = NOW()
+     WHERE id = $21`,
     [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: `Fragancia: ${detail.brand} — ${detail.name}` }
+      result.description,
+      result.family,
+      result.mood,
+      result.gender,
+      result.top_notes.length > 0 ? result.top_notes : null,
+      result.heart_notes.length > 0 ? result.heart_notes : null,
+      result.base_notes.length > 0 ? result.base_notes : null,
+      result.family_axes.floral,
+      result.family_axes.oriental,
+      result.family_axes.amaderado,
+      result.family_axes.chipre,
+      result.family_axes.citrico,
+      result.family_axes.gourmand,
+      result.mood_axes.frescura,
+      result.mood_axes.misterio,
+      result.mood_axes.romantico,
+      result.mood_axes.energia,
+      result.mood_axes.sofisticado,
+      result.mood_axes.nostalgico,
+      JSON.stringify(result.vector_justification),
+      detail.id
     ]
   );
-  const text = completion.text.trim();
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  const safe = start >= 0 && end > start ? text.slice(start, end + 1) : text;
-  try {
-    const data = JSON.parse(safe) as {
-      description?: string;
-      family?: string;
-      mood?: string;
-      gender?: "hombre" | "mujer" | "unisex";
-      top_notes?: string[];
-      heart_notes?: string[];
-      base_notes?: string[];
-      family_axes?: Record<string, unknown>;
-      mood_axes?: Record<string, unknown>;
-    };
-    const gender = data.gender === "hombre" || data.gender === "mujer" ? data.gender : "unisex";
-    const fa = data.family_axes ?? {};
-    const ma = data.mood_axes ?? {};
-    const { getPool } = await import("@/lib/db");
-    const pool = getPool();
-    await pool.query(
-      `UPDATE fragrance SET
-        description = COALESCE($1, description),
-        family = COALESCE($2, family),
-        mood = COALESCE($3, mood),
-        gender = COALESCE($4, gender),
-        top_notes = COALESCE($5::text[], top_notes),
-        heart_notes = COALESCE($6::text[], heart_notes),
-        base_notes = COALESCE($7::text[], base_notes),
-        vec_floral = $8, vec_oriental = $9, vec_amaderado = $10,
-        vec_chipre = $11, vec_citrico = $12, vec_gourmand = $13,
-        vec_frescura = $14, vec_misterio = $15, vec_romantico = $16,
-        vec_energia = $17, vec_sofisticado = $18, vec_nostalgico = $19,
-        vector_justification = $20::jsonb,
-        enriched_at = NOW()
-       WHERE id = $21`,
-      [
-        data.description ?? null,
-        data.family ?? null,
-        data.mood ?? null,
-        gender,
-        data.top_notes ?? null,
-        data.heart_notes ?? null,
-        data.base_notes ?? null,
-        clamp01to100(fa.floral),
-        clamp01to100(fa.oriental),
-        clamp01to100(fa.amaderado),
-        clamp01to100(fa.chipre),
-        clamp01to100(fa.citrico),
-        clamp01to100(fa.gourmand),
-        clamp01to100(ma.frescura),
-        clamp01to100(ma.misterio),
-        clamp01to100(ma.romantico),
-        clamp01to100(ma.energia),
-        clamp01to100(ma.sofisticado),
-        clamp01to100(ma.nostalgico),
-        JSON.stringify({ family_axes: fa, mood_axes: ma }),
-        detail.id
-      ]
-    );
-    return NextResponse.json({ ok: true, fragrance: { ...data, gender } });
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "parse error" },
-      { status: 500 }
-    );
-  }
+
+  return NextResponse.json({
+    ok: true,
+    fragrance: {
+      description: result.description,
+      family: result.family,
+      mood: result.mood,
+      gender: result.gender,
+      top_notes: result.top_notes,
+      heart_notes: result.heart_notes,
+      base_notes: result.base_notes,
+      family_axes: result.family_axes,
+      mood_axes: result.mood_axes,
+      used_fallback: result.used_fallback,
+      search_provider: result.provider
+    }
+  });
 }
 
 export async function GET() {
+  const { listFragrances } = await import("@/lib/fragrances");
   const items = await listFragrances();
   return NextResponse.json({ count: items.length, items: items.slice(0, 10) });
 }

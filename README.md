@@ -48,6 +48,8 @@ npm run dev
 | `OPENAI_BASE_URL` | (opcional) Default `https://api.openai.com/v1` |
 | `OPENAI_MODEL` | (opcional) Default `gpt-4o-mini` |
 | `PEXELS_API_KEY` | API key de Pexels para búsqueda de imágenes. Si no, usa Wikimedia Commons |
+| `TAVILY_API_KEY` | (Opcional) Búsqueda web usada para enriquecer fragancias con notas reales. Si no, se apoya solo en el conocimiento del LLM. |
+| `SERPER_API_KEY` | Alternativa a Tavily (Google Serper). Se usa si TAVILY no está configurada. |
 | `ADMIN_USERNAME` | Usuario inicial del panel |
 | `ADMIN_PASSWORD` | Contraseña inicial del panel |
 | `ADMIN_SESSION_SECRET` | Firma HMAC de la cookie de sesión |

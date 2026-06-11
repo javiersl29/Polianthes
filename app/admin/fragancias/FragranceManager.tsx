@@ -138,13 +138,36 @@ export default function FragranceManager() {
       });
       if (res.ok) {
         const data = await res.json();
-        setItems((prev) =>
-          prev.map((p) =>
-            p.slug === slug ? { ...p, ...data.fragrance, enriched_at: new Date().toISOString() } : p
-          )
-        );
+        const frag = data.fragrance ?? {};
+        const fa = frag.family_axes ?? {};
+        const ma = frag.mood_axes ?? {};
+        const patch: Partial<Row> = {
+          description: frag.description ?? null,
+          family: frag.family ?? null,
+          mood: frag.mood ?? null,
+          gender: (frag.gender as Gender) ?? "unisex",
+          top_notes: frag.top_notes ?? [],
+          heart_notes: frag.heart_notes ?? [],
+          base_notes: frag.base_notes ?? [],
+          enriched_at: new Date().toISOString(),
+          vec_floral: fa.floral ?? 50,
+          vec_oriental: fa.oriental ?? 50,
+          vec_amaderado: fa.amaderado ?? 50,
+          vec_chipre: fa.chipre ?? 50,
+          vec_citrico: fa.citrico ?? 50,
+          vec_gourmand: fa.gourmand ?? 50,
+          vec_frescura: ma.frescura ?? 50,
+          vec_misterio: ma.misterio ?? 50,
+          vec_romantico: ma.romantico ?? 50,
+          vec_energia: ma.energia ?? 50,
+          vec_sofisticado: ma.sofisticado ?? 50,
+          vec_nostalgico: ma.nostalgico ?? 50
+        };
+        setItems((prev) => prev.map((p) => (p.slug === slug ? { ...p, ...patch } : p)));
+        const provider = frag.search_provider ?? "ninguno";
+        const fallback = frag.used_fallback ? " (fallback aplicado)" : "";
         setStatus((s) => ({ ...s, [id]: "done" }));
-        setStatusDetail((d) => ({ ...d, [id]: "Listo" }));
+        setStatusDetail((d) => ({ ...d, [id]: `Listo · búsqueda: ${provider}${fallback}` }));
       } else {
         const err = await res.json();
         setStatus((s) => ({ ...s, [id]: "error" }));
@@ -241,11 +264,35 @@ export default function FragranceManager() {
         });
         if (res.ok) {
           const data = await res.json();
-          setItems((prev) =>
-            prev.map((p) => (p.slug === slug ? { ...p, ...data.fragrance, enriched_at: new Date().toISOString() } : p))
-          );
+          const frag = data.fragrance ?? {};
+          const fa = frag.family_axes ?? {};
+          const ma = frag.mood_axes ?? {};
+          const patch: Partial<Row> = {
+            description: frag.description ?? null,
+            family: frag.family ?? null,
+            mood: frag.mood ?? null,
+            gender: (frag.gender as Gender) ?? "unisex",
+            top_notes: frag.top_notes ?? [],
+            heart_notes: frag.heart_notes ?? [],
+            base_notes: frag.base_notes ?? [],
+            enriched_at: new Date().toISOString(),
+            vec_floral: fa.floral ?? 50,
+            vec_oriental: fa.oriental ?? 50,
+            vec_amaderado: fa.amaderado ?? 50,
+            vec_chipre: fa.chipre ?? 50,
+            vec_citrico: fa.citrico ?? 50,
+            vec_gourmand: fa.gourmand ?? 50,
+            vec_frescura: ma.frescura ?? 50,
+            vec_misterio: ma.misterio ?? 50,
+            vec_romantico: ma.romantico ?? 50,
+            vec_energia: ma.energia ?? 50,
+            vec_sofisticado: ma.sofisticado ?? 50,
+            vec_nostalgico: ma.nostalgico ?? 50
+          };
+          setItems((prev) => prev.map((p) => (p.slug === slug ? { ...p, ...patch } : p)));
+          const tag = frag.used_fallback ? " (fallback)" : "";
           setStatus((s) => ({ ...s, [id]: "done" }));
-          setStatusDetail((d) => ({ ...d, [id]: "Listo" }));
+          setStatusDetail((d) => ({ ...d, [id]: `Listo${tag}` }));
           updated += 1;
         } else {
           const err = await res.json().catch(() => ({}));
