@@ -29,12 +29,11 @@ const RADIUS = HEX_SIZE / 2 - 56;
 const CENTER = HEX_SIZE / 2;
 const LABEL_RADIUS = RADIUS + 30;
 
-const THINKING_LINES = [
-  "Leyendo tu afinidad…",
-  "Comparando con 146 fragancias curadas…",
-  "Calculando distancias en el espacio olfativo…",
-  "Entrevistando a las fragancias candidatas…",
-  "Componiendo tu selección personal…"
+const THINKING_STEPS = [
+  { label: "Leyendo tu mapa olfativo", duration: 600 },
+  { label: "Comparando 146 fragancias curadas", duration: 700 },
+  { label: "Calculando distancias en el espacio olfativo", duration: 700 },
+  { label: "Componiendo tu selección personal", duration: 700 }
 ];
 
 const COUNT_OPTIONS = [3, 5, 7, 10];
@@ -62,10 +61,9 @@ export default function Decoder() {
     Object.fromEntries(HEXAGON_SETS.familias.axes.map((a) => [a.id, true]))
   );
   const [gender, setGender] = useState<Gender>("unisex");
-  const [mode, setMode] = useState<"fast" | "rich">("rich");
   const [count, setCount] = useState(5);
   const [loading, setLoading] = useState(false);
-  const [thinkingIdx, setThinkingIdx] = useState(0);
+  const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Recommendation[]>([]);
   const [reflection, setReflection] = useState<string | null>(null);
@@ -103,12 +101,6 @@ export default function Decoder() {
       setActive(Object.fromEntries(currentSet.axes.map((a) => [a.id, true])));
     }
   }, [setId, currentSet]);
-
-  useEffect(() => {
-    if (!loading) return;
-    const t = setInterval(() => setThinkingIdx((i) => (i + 1) % THINKING_LINES.length), 900);
-    return () => clearInterval(t);
-  }, [loading]);
 
   const values = currentSet.axes.map((a) => (active[a.id] ? vector[a.id] ?? 50 : 0));
 
@@ -162,7 +154,7 @@ export default function Decoder() {
       return;
     }
     setLoading(true);
-    setThinkingIdx(0);
+    setStep(0);
     setError(null);
     setResults([]);
     setReflection(null);
@@ -175,6 +167,16 @@ export default function Decoder() {
       }
     }
 
+    // Progreso "teatral": avanzamos por los pasos mientras se hace el fetch
+    const stepTimers: NodeJS.Timeout[] = [];
+    let cumulative = 0;
+    THINKING_STEPS.forEach((s, i) => {
+      stepTimers.push(
+        setTimeout(() => setStep(i), cumulative)
+      );
+      cumulative += s.duration;
+    });
+
     try {
       const res = await fetch("/api/decode", {
         method: "POST",
@@ -183,18 +185,25 @@ export default function Decoder() {
           set: apiSetId,
           vector: effectiveVector,
           gender,
-          mode,
           count,
           reference_slug: referenceSlug || undefined
         })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "No se pudo descifrar la fragancia");
+
+      // Garantizar que se vean todos los pasos (mínimo 2.7s de teatro)
+      const elapsed = Date.now() - (Date.now() - (cumulative - 100));
+      const remaining = Math.max(0, 2700 - (Date.now() % 100) - 0);
+      await new Promise((r) => setTimeout(r, remaining));
+
+      setStep(THINKING_STEPS.length);
       setResults(data.recommendations ?? []);
       setReflection(data.reflection ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error desconocido");
     } finally {
+      stepTimers.forEach(clearTimeout);
       setLoading(false);
     }
   };
@@ -526,24 +535,7 @@ export default function Decoder() {
         </AnimatePresence>
 
         <div className="mt-6 sm:mt-8 max-w-lg mx-auto space-y-3">
-          <div className="liquid-glass rounded-full p-1 flex items-center">
-            <button
-              onClick={() => setMode("fast")}
-              className={`flex-1 px-4 py-2.5 text-xs sm:text-sm rounded-full transition-colors min-h-[44px] ${
-                mode === "fast" ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
-              }`}
-            >
-              Decodificación rápida
-            </button>
-            <button
-              onClick={() => setMode("rich")}
-              className={`flex-1 px-4 py-2.5 text-xs sm:text-sm rounded-full transition-colors min-h-[44px] ${
-                mode === "rich" ? "bg-gold text-bg" : "text-ink/80 hover:text-gold"
-              }`}
-            >
-              Decodificación con IA
-            </button>
-          </div>
+          <ThinkingProgress step={step} loading={loading} />
 
           <button
             onClick={submit}
@@ -553,17 +545,23 @@ export default function Decoder() {
             {loading ? (
               <>
                 <ThinkingVisual />
-                <span key={thinkingIdx} className="animate-fade-in">{THINKING_LINES[thinkingIdx]}</span>
+                <span>Pensando…</span>
               </>
             ) : (
-              mode === "fast" ? "Decodificar rápidamente" : "Descifrar mi fragancia"
+              <>
+                <span className="inline-flex items-center gap-1.5">
+                  Descifrar mi fragancia
+                  <span className="text-gold text-xs">✦ con IA</span>
+                </span>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M7 17 17 7" />
+                  <path d="M7 7h10v10" />
+                </svg>
+              </>
             )}
           </button>
           <p className="text-[10px] text-ink-mute text-center px-2">
-            {mode === "fast"
-              ? "Ranking numérico instantáneo. Sin IA."
-              : "La IA reflexiona sobre tu mapa olfativo y propone una selección personalizada."
-            }
+            La IA analiza tu mapa olfativo contra 146 fragancias curadas.
           </p>
         </div>
 
@@ -594,20 +592,11 @@ export default function Decoder() {
                 transition={{ duration: 0.7, ease: "easeOut" }}
                 className="liquid-glass rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-10 mb-8 sm:mb-10 max-w-3xl mx-auto text-center"
               >
-                <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
-                  <span className={`text-[10px] uppercase tracking-[0.3em] px-2 py-0.5 rounded-full ${
-                    mode === "fast" ? "bg-ink/10 text-ink-mute" : "bg-gold/15 text-gold"
-                  }`}>
-                    {mode === "fast" ? "Lectura numérica" : "Reflexión editorial"}
-                  </span>
-                </div>
                 <p className="font-display italic text-xl sm:text-2xl md:text-3xl text-ink leading-snug">
                   {reflection}
                 </p>
                 <p className="mt-3 sm:mt-4 text-[10px] text-ink-mute">
-                  {mode === "fast"
-                    ? "Análisis objetivo por similitud de vectores. Para una justificación más personal, prueba la decodificación con IA."
-                    : "Polianthes interpreta tu mapa olfativo. Las fragancias son versiones inspiradas en las composiciones originales."}
+                  Polianthes interpreta tu mapa olfativo. Las fragancias son versiones inspiradas en las composiciones originales.
                 </p>
               </motion.div>
             )}
@@ -679,6 +668,53 @@ function ThinkingVisual() {
         />
       </svg>
     </span>
+  );
+}
+
+function ThinkingProgress({ step, loading }: { step: number; loading: boolean }) {
+  return (
+    <AnimatePresence>
+      {loading && (
+        <motion.div
+          initial={{ opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          className="liquid-glass rounded-2xl p-4 space-y-2"
+        >
+          {THINKING_STEPS.map((s, i) => {
+            const done = i < step;
+            const active = i === step;
+            return (
+              <motion.div
+                key={s.label}
+                initial={{ opacity: 0, x: -8 }}
+                animate={{
+                  opacity: done || active ? 1 : 0.4,
+                  x: 0
+                }}
+                transition={{ duration: 0.3 }}
+                className="flex items-center gap-3 text-xs sm:text-sm"
+              >
+                <span className="shrink-0 grid place-items-center w-5 h-5">
+                  {done ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="oklch(0.82 0.13 85)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  ) : active ? (
+                    <span className="block h-2 w-2 rounded-full bg-gold animate-pulse" />
+                  ) : (
+                    <span className="block h-1.5 w-1.5 rounded-full bg-ink-mute/40" />
+                  )}
+                </span>
+                <span className={active ? "text-ink" : done ? "text-ink-mute" : "text-ink-mute/60"}>
+                  {s.label}
+                </span>
+              </motion.div>
+            );
+          })}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
