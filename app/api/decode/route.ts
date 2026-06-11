@@ -6,6 +6,7 @@ import { affinity, FAMILY_AXES, MOOD_AXES } from "@/lib/vectors";
 import { HEXAGON_SETS } from "@/lib/decoder";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 type Gender = "hombre" | "mujer" | "unisex";
 type Body = {
@@ -17,7 +18,20 @@ type Body = {
 const FAMILY_COLUMNS = ["vec_floral", "vec_oriental", "vec_amaderado", "vec_chipre", "vec_citrico", "vec_gourmand"];
 const MOOD_COLUMNS = ["vec_frescura", "vec_misterio", "vec_romantico", "vec_energia", "vec_sofisticado", "vec_nostalgico"];
 
+const SELECT_LIST = [
+  "id",
+  "slug",
+  "brand",
+  "name",
+  "full_name",
+  "family",
+  "mood",
+  "gender",
+  "image_url"
+].join(", ");
+
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now();
   let body: Body;
   try {
     body = (await req.json()) as Body;
@@ -38,11 +52,15 @@ export async function POST(req: NextRequest) {
 
   const pool = getPool();
   const cols = body.set === "familias" ? FAMILY_COLUMNS : MOOD_COLUMNS;
-  const select = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url", ...cols].join(", ");
+  // Concatenamos nombres de columna de forma segura (no vienen del usuario)
+  const colsSql = cols.map((c) => `"${c}"`).join(", ");
+  const genderFilter = gender === "unisex" ? "" : "AND (gender = $1 OR gender = 'unisex')";
+  const params: unknown[] = gender === "unisex" ? [] : [gender];
   const result = await pool.query(
-    `SELECT ${select} FROM fragrance WHERE active = TRUE`
+    `SELECT ${SELECT_LIST}, ${colsSql} FROM fragrance WHERE active = TRUE ${genderFilter}`
   );
-  const catalog = result.rows as Array<Record<string, unknown> & {
+  // 2) Hidratar columnas vec_* en una sola estructura por fila
+  type Row = {
     id: number;
     slug: string;
     brand: string;
@@ -52,61 +70,65 @@ export async function POST(req: NextRequest) {
     mood: string | null;
     gender: Gender;
     image_url: string | null;
-  }>;
+    [k: string]: unknown;
+  };
+  const rows = result.rows as Row[];
 
-  if (catalog.length === 0) {
+  if (rows.length === 0) {
     return NextResponse.json({ error: "El catálogo está vacío." }, { status: 503 });
   }
 
-  // 1) Filtro de género
-  const genderFiltered = gender === "unisex" ? catalog : catalog.filter((f) => f.gender === gender || f.gender === "unisex");
-
-  // 2) Ranking numérico por afinidad coseno
-  const ranked = genderFiltered
+  // 3) Ranking numérico
+  const axisIds = body.set === "familias" ? FAMILY_AXES.map((a) => a.id) : MOOD_AXES.map((a) => a.id);
+  const ranked = rows
     .map((f) => {
       const fragVec: Record<string, number> = {};
-      const axisIds = body.set === "familias" ? FAMILY_AXES.map((a) => a.id) : MOOD_AXES.map((a) => a.id);
-      for (let i = 0; i < cols.length; i += 1) {
-        fragVec[axisIds[i]] = Number(f[cols[i]] ?? 50);
+      for (const col of cols) {
+        const id = col.replace("vec_", "");
+        fragVec[id] = Number(f[col] ?? 50);
       }
       const score = affinity(body.vector, fragVec);
       return { f, score };
     })
     .sort((a, b) => b.score - a.score);
 
-  // 3) Tomar top 12 candidatos para que el LLM elija los 5 mejores
-  const top = ranked.slice(0, 12);
-
+  // 4) Top 6 (antes 12) para que el LLM elija 5 con justificación breve
+  const top = ranked.slice(0, 6);
   if (top.length === 0) {
-    return NextResponse.json({ error: "No hay fragancias que coincidan con el género seleccionado." }, { status: 404 });
+    return NextResponse.json({ error: "No hay fragancias que coincidan." }, { status: 404 });
   }
 
-  const vectorText = set.axes
-    .map((a) => `- ${a.label} (${a.hint}): ${body.vector[a.id] ?? 50}/100`)
-    .join("\n");
-  const catalogText = top
+  // 5) Prompt compacto, baja temperatura
+  const compactList = top
     .map(
-      (c) =>
-        `• ${c.f.brand} — ${c.f.name} (slug: ${c.f.slug}, afinidad numérica: ${c.score}%)${c.f.family ? ` [familia: ${c.f.family}]` : ""}${c.f.mood ? ` [mood: ${c.f.mood}]` : ""} [género: ${c.f.gender}]`
+      (c, i) =>
+        `${i + 1}. ${c.f.brand} — ${c.f.name} | slug=${c.f.slug} | afinidad=${c.score}%${c.f.family ? ` | ${c.f.family}` : ""}`
     )
     .join("\n");
 
-  const userPrompt = `Preferencia de género del cliente: ${gender}.${gender === "unisex" ? " (Considera tanto fragancias de hombre como de mujer; las unisex suelen ser la opción más flexible.)" : " Prioriza fragancias etiquetadas con este género; las unisex también son bienvenidas."}\n\nYa he pre-seleccionado las 12 fragancias con mayor afinidad numérica al vector del cliente (de mayor a menor):\n${catalogText}\n\nVector de afinidad del cliente (${set.id}):\n${vectorText}\n\nDe esa preselección, devuelve exactamente 5 fragancias que mejor encarnen el vector del cliente, reordenadas por relevancia. Para cada una, justifica en una frase breve, máximo 18 palabras, evocadora y segura.`;
+  const compactSystem =
+    "Eres el curador de Polianthes. Recibes una lista de 6 fragancias rankeadas por afinidad al cliente. " +
+    "Devuelve SOLO JSON estricto: {\"recommendations\":[{\"slug\":\"...\",\"reason\":\"frase ≤ 14 palabras en español, evocadora\"}]} " +
+    "con exactamente 5 elementos en el mismo orden de la lista, sin texto fuera del JSON.";
 
-  const messages = [
-    { role: "system" as const, content: config.system_prompt ?? "" },
-    { role: "user" as const, content: userPrompt }
-  ];
+  const userPrompt = `Vector (${body.set}): ${set.axes
+    .map((a) => `${a.label}=${body.vector[a.id] ?? 0}`)
+    .join(", ")}\nGénero: ${gender}\n\nCandidatos:\n${compactList}`;
 
   try {
-    const completion = await chatCompletion(config, messages);
+    const completion = await chatCompletion(
+      { ...config, temperature: 0.3 },
+      [
+        { role: "system", content: compactSystem },
+        { role: "user", content: userPrompt }
+      ]
+    );
     const text = completion.text.trim();
     const jsonStart = text.indexOf("{");
     const jsonEnd = text.lastIndexOf("}");
     const safe = jsonStart >= 0 && jsonEnd > jsonStart ? text.slice(jsonStart, jsonEnd + 1) : text;
     const parsed = JSON.parse(safe) as { recommendations?: { slug: string; reason: string }[] };
 
-    // Si el LLM devuelve menos de 5, completar con el ranking numérico
     const picked = (parsed.recommendations ?? []).slice(0, 5);
     const recommendations = picked
       .map((p) => {
@@ -116,16 +138,21 @@ export async function POST(req: NextRequest) {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null);
 
-    // Rellenar si faltan
+    // Rellenar con ranking numérico si el LLM omitió
     if (recommendations.length < 5) {
       for (const cand of top) {
         if (recommendations.length >= 5) break;
         if (recommendations.find((r) => r.slug === cand.f.slug)) continue;
-        recommendations.push({ ...cand.f, reason: "Coincidencia numérica alta con tu vector.", score: cand.score });
+        recommendations.push({
+          ...cand.f,
+          reason: "Coincidencia numérica alta con tu vector.",
+          score: cand.score
+        });
       }
     }
 
-    return NextResponse.json({ recommendations: recommendations.slice(0, 5), set: body.set });
+    const elapsed = Date.now() - startedAt;
+    return NextResponse.json({ recommendations: recommendations.slice(0, 5), elapsed_ms: elapsed });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Error desconocido";
     return NextResponse.json({ error: message }, { status: 500 });
