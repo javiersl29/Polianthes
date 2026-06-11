@@ -26,7 +26,7 @@ export default function Navbar() {
           className="liquid-glass h-10 w-10 sm:h-12 sm:w-12 rounded-full grid place-items-center shrink-0 overflow-hidden"
         >
           <img
-            src="/brand/Isotipo-color.png"
+            src="/brand/Isotipo-Blanco.png"
             alt=""
             width={36}
             height={36}

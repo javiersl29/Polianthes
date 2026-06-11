@@ -25,11 +25,11 @@ export default function Hero() {
             className="mb-6 sm:mb-8"
           >
             <img
-              src="/brand/Logo-color.png"
+              src="/brand/Logo-Blanco.png"
               alt="Polianthes Parfums"
-              width={280}
-              height={120}
-              className="h-20 sm:h-24 md:h-28 w-auto mx-auto"
+              width={560}
+              height={240}
+              className="h-40 sm:h-48 md:h-56 w-auto mx-auto"
             />
           </motion.div>
 

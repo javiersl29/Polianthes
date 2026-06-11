@@ -5,7 +5,7 @@ export default function Footer() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
           <div className="flex items-center gap-3 sm:gap-4">
             <img
-              src="/brand/Isotipo-color.png"
+              src="/brand/Isotipo-Blanco.png"
               alt=""
               width={48}
               height={48}
@@ -13,7 +13,7 @@ export default function Footer() {
             />
             <div>
               <img
-                src="/brand/Logo-color.png"
+                src="/brand/Logo-Blanco.png"
                 alt="Polianthes"
                 width={180}
                 height={60}

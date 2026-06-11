@@ -14,7 +14,7 @@ export default function AdminSidebar({ username }: { username?: string | null })
     <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-line min-h-[calc(100vh-7rem)] py-8 pr-4">
       <div className="flex items-center gap-2 px-3">
         <img
-          src="/brand/Isotipo-color.png"
+          src="/brand/Isotipo-Blanco.png"
           alt=""
           width={28}
           height={28}
