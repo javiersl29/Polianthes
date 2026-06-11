@@ -53,6 +53,12 @@ export async function POST(req: NextRequest) {
   }
   await ensureColumn(pool, "fragrance", "vector_justification", "JSONB");
 
+  // Migraciones e-commerce (Sprint 1+): columnas extra en `presentation`
+  await ensureColumn(pool, "presentation", "stock", "INTEGER");
+  await ensureColumn(pool, "presentation", "sku", "TEXT");
+  await ensureColumn(pool, "presentation", "compare_at_price_cents", "INTEGER");
+  await ensureColumn(pool, "presentation", "weight_grams", "INTEGER");
+
   const rows = loadCatalog();
   let inserted = 0;
   for (const row of rows) {

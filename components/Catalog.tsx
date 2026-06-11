@@ -14,6 +14,7 @@ type Item = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  min_price_cents: number | null;
 };
 
 const FAMILIES = ["", "Floral", "Oriental", "Amaderado", "Chipre", "Cítrico", "Gourmand"];
@@ -176,6 +177,11 @@ export default function Catalog() {
                 </div>
                 <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5">{it.name}</p>
                 {it.family && <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-[11px] text-gold">{it.family}</p>}
+                {it.min_price_cents !== null && it.min_price_cents > 0 && (
+                  <p className="mt-1 sm:mt-1.5 text-[11px] sm:text-xs text-ink/80">
+                    Desde <span className="text-gold font-medium">${(it.min_price_cents / 100).toLocaleString("es-MX", { maximumFractionDigits: 0 })}</span>
+                  </p>
+                )}
               </Link>
             </motion.div>
           ))}

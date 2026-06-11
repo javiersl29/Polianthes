@@ -12,6 +12,7 @@ export type FragranceListItem = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  min_price_cents: number | null;
   vec_floral: number;
   vec_oriental: number;
   vec_amaderado: number;
@@ -28,10 +29,14 @@ export type FragranceListItem = {
 
 export async function listFragrances(): Promise<FragranceListItem[]> {
   const result = await query<FragranceListItem>(
-    `SELECT id, slug, brand, name, full_name, family, mood, gender, image_url,
-            vec_floral, vec_oriental, vec_amaderado, vec_chipre, vec_citrico, vec_gourmand,
-            vec_frescura, vec_misterio, vec_romantico, vec_energia, vec_sofisticado, vec_nostalgico
-     FROM fragrance WHERE active = TRUE ORDER BY brand, name`
+    `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
+            f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
+            f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
+            (
+              SELECT MIN(p.price_cents) FROM presentation p
+              WHERE p.fragrance_id = f.id AND p.active = TRUE AND p.price_cents IS NOT NULL AND p.price_cents > 0
+            ) AS min_price_cents
+     FROM fragrance f WHERE f.active = TRUE ORDER BY f.brand, f.name`
   );
   return result.rows;
 }
@@ -62,20 +67,34 @@ export async function searchFragrances(
     where += ` AND (gender = $${params.length} OR gender = 'unisex')`;
   }
   const result = await query<FragranceListItem>(
-    `SELECT id, slug, brand, name, full_name, family, mood, gender, image_url
-     FROM fragrance WHERE ${where} ORDER BY brand, name LIMIT 60`,
+    `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
+            f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
+            f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
+            (
+              SELECT MIN(p.price_cents) FROM presentation p
+              WHERE p.fragrance_id = f.id AND p.active = TRUE AND p.price_cents IS NOT NULL AND p.price_cents > 0
+            ) AS min_price_cents
+     FROM fragrance f WHERE ${where} ORDER BY f.brand, f.name LIMIT 60`,
     params
   );
   return result.rows;
 }
 
-export type FragranceDetail = FragranceListItem & {
+export type PresentationDetail = {
+  size_ml: number;
+  price_cents: number | null;
+  compare_at_price_cents: number | null;
+  stock: number | null;
+  sku: string | null;
+};
+
+export type FragranceDetail = Omit<FragranceListItem, "min_price_cents"> & {
   description: string | null;
   top_notes: string[];
   heart_notes: string[];
   base_notes: string[];
   inspiration_image_url: string | null;
-  presentations: { size_ml: number; price_cents: number | null }[];
+  presentations: PresentationDetail[];
 };
 
 export async function getFragranceBySlug(slug: string): Promise<FragranceDetail | null> {
@@ -85,7 +104,13 @@ export async function getFragranceBySlug(slug: string): Promise<FragranceDetail 
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
             COALESCE(
-              (SELECT json_agg(json_build_object('size_ml', p.size_ml, 'price_cents', p.price_cents) ORDER BY p.size_ml)
+              (SELECT json_agg(json_build_object(
+                 'size_ml', p.size_ml,
+                 'price_cents', p.price_cents,
+                 'compare_at_price_cents', p.compare_at_price_cents,
+                 'stock', p.stock,
+                 'sku', p.sku
+               ) ORDER BY p.size_ml)
                FROM presentation p WHERE p.fragrance_id = f.id AND p.active = TRUE),
               '[]'::json
             ) AS presentations
@@ -94,4 +119,55 @@ export async function getFragranceBySlug(slug: string): Promise<FragranceDetail 
   );
   if (result.rows.length === 0) return null;
   return result.rows[0];
+}
+
+export type AdminPresentation = {
+  id: number;
+  fragrance_id: number;
+  size_ml: number;
+  price_cents: number | null;
+  compare_at_price_cents: number | null;
+  stock: number | null;
+  sku: string | null;
+  weight_grams: number | null;
+  active: boolean;
+};
+
+export async function listAdminPresentations(): Promise<Array<{
+  id: number;
+  slug: string;
+  brand: string;
+  name: string;
+  full_name: string;
+  active: boolean;
+  presentations: AdminPresentation[];
+}>> {
+  const result = await query<{
+    id: number;
+    slug: string;
+    brand: string;
+    name: string;
+    full_name: string;
+    active: boolean;
+    presentations: AdminPresentation[];
+  }>(
+    `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.active,
+            COALESCE(
+              (SELECT json_agg(json_build_object(
+                 'id', p.id,
+                 'fragrance_id', p.fragrance_id,
+                 'size_ml', p.size_ml,
+                 'price_cents', p.price_cents,
+                 'compare_at_price_cents', p.compare_at_price_cents,
+                 'stock', p.stock,
+                 'sku', p.sku,
+                 'weight_grams', p.weight_grams,
+                 'active', p.active
+               ) ORDER BY p.size_ml)
+               FROM presentation p WHERE p.fragrance_id = f.id),
+              '[]'::json
+            ) AS presentations
+     FROM fragrance f WHERE f.active = TRUE ORDER BY f.brand, f.name`
+  );
+  return result.rows;
 }

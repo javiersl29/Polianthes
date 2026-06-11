@@ -1,13 +1,9 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { getFragranceBySlug } from "@/lib/fragrances";
+import AddToCart from "@/components/AddToCart";
 
 export const dynamic = "force-dynamic";
-
-function priceLabel(cents: number | null) {
-  if (cents === null || cents === undefined) return "Consultar";
-  return `$${(cents / 100).toFixed(0)} MXN`;
-}
 
 export default async function FragrancePage({ params }: { params: { slug: string } }) {
   const detail = await getFragranceBySlug(params.slug);
@@ -74,26 +70,15 @@ export default async function FragrancePage({ params }: { params: { slug: string
               ))}
             </div>
 
-            <div className="mt-6 sm:mt-8">
-              <p className="text-[10px] sm:text-xs uppercase tracking-wider text-ink-mute mb-2">Presentaciones</p>
-              <div className="flex flex-wrap gap-2">
-                {(detail.presentations ?? []).length === 0 && (
-                  <span className="text-sm text-ink-mute">Sin presentaciones activas.</span>
-                )}
-                {detail.presentations.map((p) => (
-                  <span
-                    key={p.size_ml}
-                    className="liquid-glass rounded-full px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm"
-                  >
-                    {p.size_ml} ml <span className="text-gold ml-1">{priceLabel(p.price_cents)}</span>
-                  </span>
-                ))}
-              </div>
+            <div className="mt-8 sm:mt-10">
+              <AddToCart
+                slug={detail.slug}
+                brand={detail.brand}
+                name={detail.name}
+                image_url={detail.image_url}
+                presentations={detail.presentations}
+              />
             </div>
-
-            <button className="liquid-glass-strong mt-8 sm:mt-10 w-full rounded-full px-5 py-3.5 sm:py-3 text-sm font-medium hover:text-gold transition-colors min-h-[48px]">
-              Solicitar asesoría
-            </button>
           </div>
         </div>
       </div>

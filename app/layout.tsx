@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Cormorant_Garamond, Manrope } from "next/font/google";
+import { Toaster } from "sonner";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
@@ -39,6 +40,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Navbar />
         {children}
         <Footer />
+        <Toaster
+          theme="dark"
+          position="bottom-center"
+          toastOptions={{
+            style: {
+              background: "color-mix(in oklch, var(--color-bg-elev) 90%, transparent)",
+              border: "1px solid color-mix(in oklch, var(--color-gold) 30%, transparent)",
+              color: "var(--color-ink)",
+              backdropFilter: "blur(14px)"
+            }
+          }}
+        />
       </body>
     </html>
   );
