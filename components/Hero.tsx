@@ -103,24 +103,6 @@ export default function Hero() {
             </div>
           </motion.div>
         </div>
-
-        <motion.div
-          initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
-          animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-          transition={{ ...easeOut, delay: 1.4 }}
-          className="flex flex-col items-center gap-3 sm:gap-4 pb-8 sm:pb-10"
-        >
-          <div className="liquid-glass rounded-full px-3 sm:px-3.5 py-1 text-[10px] sm:text-xs text-ink/90">
-            Casas que confluyen en Polianthes
-          </div>
-          <div className="font-display italic text-ink text-xl sm:text-2xl md:text-3xl tracking-tight flex flex-wrap items-center justify-center gap-x-8 sm:gap-x-12 gap-y-2 sm:gap-y-3">
-            <span>Chanel</span>
-            <span>Tom Ford</span>
-            <span>Le Labo</span>
-            <span>Xerjoff</span>
-            <span>Kilian</span>
-          </div>
-        </motion.div>
       </div>
     </section>
   );
