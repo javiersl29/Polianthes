@@ -21,7 +21,11 @@ const body = Manrope({
 
 export const metadata: Metadata = {
   title: "Polianthes — Perfumería de autor",
-  description: "Casa de perfumería de autor. Decodifica tu fragancia y descubre una curaduría de nicho."
+  description: "Casa de perfumería de autor. Decodifica tu fragancia y descubre una curaduría de nicho.",
+  icons: {
+    icon: [{ url: "/brand/Isotipo-color.png", type: "image/png" }],
+    apple: "/brand/Isotipo-color.png"
+  }
 };
 
 export const viewport: Viewport = {

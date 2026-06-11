@@ -21,6 +21,21 @@ export default function Hero() {
           <motion.div
             initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
             animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
+            transition={{ ...easeOut, delay: 0.25 }}
+            className="mb-6 sm:mb-8"
+          >
+            <img
+              src="/brand/Logo-color.png"
+              alt="Polianthes Parfums"
+              width={280}
+              height={120}
+              className="h-20 sm:h-24 md:h-28 w-auto mx-auto"
+            />
+          </motion.div>
+
+          <motion.div
+            initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
+            animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
             transition={{ ...easeOut, delay: 0.4 }}
             className="liquid-glass inline-flex items-center gap-2 sm:gap-3 rounded-full pl-1 pr-3 py-1"
           >

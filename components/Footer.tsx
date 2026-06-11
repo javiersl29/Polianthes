@@ -3,9 +3,24 @@ export default function Footer() {
     <footer className="border-t border-line mt-20 sm:mt-32">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
-          <div>
-            <p className="font-display italic text-xl sm:text-2xl text-gold">Polianthes</p>
-            <p className="mt-1 max-w-sm text-sm text-ink-mute">Perfumería de autor. Curaduría, decodificación y asesoría olfativa en un solo lugar.</p>
+          <div className="flex items-center gap-3 sm:gap-4">
+            <img
+              src="/brand/Isotipo-color.png"
+              alt=""
+              width={48}
+              height={48}
+              className="h-10 w-10 sm:h-12 sm:w-12 object-contain shrink-0"
+            />
+            <div>
+              <img
+                src="/brand/Logo-color.png"
+                alt="Polianthes"
+                width={180}
+                height={60}
+                className="h-9 sm:h-10 w-auto"
+              />
+              <p className="mt-1 max-w-sm text-sm text-ink-mute">Perfumería de autor. Curaduría, decodificación y asesoría olfativa en un solo lugar.</p>
+            </div>
           </div>
           <div className="flex items-center gap-4 sm:gap-6 text-sm text-ink-mute">
             <a href="/admin" className="hover:text-gold transition-colors">Panel</a>

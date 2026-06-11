@@ -23,9 +23,15 @@ export default function Navbar() {
         <Link
           href="/"
           aria-label="Polianthes"
-          className="liquid-glass h-10 w-10 sm:h-12 sm:w-12 rounded-full grid place-items-center text-xl sm:text-2xl font-display italic text-gold shrink-0"
+          className="liquid-glass h-10 w-10 sm:h-12 sm:w-12 rounded-full grid place-items-center shrink-0 overflow-hidden"
         >
-          p
+          <img
+            src="/brand/Isotipo-color.png"
+            alt=""
+            width={36}
+            height={36}
+            className="h-6 w-6 sm:h-7 sm:w-7 object-contain"
+          />
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 liquid-glass rounded-full px-1.5 py-1.5">

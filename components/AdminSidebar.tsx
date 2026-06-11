@@ -12,8 +12,16 @@ export default function AdminSidebar({ username }: { username?: string | null })
   const pathname = usePathname();
   return (
     <aside className="hidden md:flex flex-col w-64 shrink-0 border-r border-line min-h-[calc(100vh-7rem)] py-8 pr-4">
-      <p className="text-[11px] uppercase tracking-[0.2em] text-ink-mute px-3">Polianthes</p>
-      <p className="font-display italic text-3xl text-ink px-3 mt-1">Panel</p>
+      <div className="flex items-center gap-2 px-3">
+        <img
+          src="/brand/Isotipo-color.png"
+          alt=""
+          width={28}
+          height={28}
+          className="h-7 w-7 object-contain"
+        />
+        <p className="font-display italic text-2xl text-ink">Panel</p>
+      </div>
       {username && <p className="text-xs text-ink-mute px-3 mt-1">Sesión: {username}</p>}
       <nav className="mt-8 flex flex-col gap-1">
         {items.map((it) => {
