@@ -22,14 +22,59 @@ type FragranceRow = {
   base_notes: string[];
   active: boolean;
   enriched_at: string | null;
+  vec_floral: number;
+  vec_oriental: number;
+  vec_amaderado: number;
+  vec_chipre: number;
+  vec_citrico: number;
+  vec_gourmand: number;
+  vec_frescura: number;
+  vec_misterio: number;
+  vec_romantico: number;
+  vec_energia: number;
+  vec_sofisticado: number;
+  vec_nostalgico: number;
 };
+
+const VEC_COLUMNS = [
+  "vec_floral",
+  "vec_oriental",
+  "vec_amaderado",
+  "vec_chipre",
+  "vec_citrico",
+  "vec_gourmand",
+  "vec_frescura",
+  "vec_misterio",
+  "vec_romantico",
+  "vec_energia",
+  "vec_sofisticado",
+  "vec_nostalgico"
+] as const;
+
+const SELECT_LIST = [
+  "id",
+  "slug",
+  "brand",
+  "name",
+  "full_name",
+  "family",
+  "mood",
+  "gender",
+  "description",
+  "image_url",
+  "inspiration_image_url",
+  "top_notes",
+  "heart_notes",
+  "base_notes",
+  "active",
+  "enriched_at",
+  ...VEC_COLUMNS
+].join(", ");
 
 export async function GET() {
   if (!isAuthenticated()) return NextResponse.json({ error: "no autorizado" }, { status: 401 });
   const result = await query<FragranceRow>(
-    `SELECT id, slug, brand, name, full_name, family, mood, gender, description, image_url,
-            inspiration_image_url, top_notes, heart_notes, base_notes, active, enriched_at
-     FROM fragrance ORDER BY brand, name`
+    `SELECT ${SELECT_LIST} FROM fragrance ORDER BY brand, name`
   );
   return NextResponse.json({ items: result.rows });
 }
@@ -40,6 +85,8 @@ export async function PATCH(req: NextRequest) {
   if (!body.id) return NextResponse.json({ error: "id requerido" }, { status: 400 });
   const gender: Gender | null =
     body.gender === "hombre" || body.gender === "mujer" || body.gender === "unisex" ? body.gender : null;
+
+  // COALESCE: si el body trae el valor, se usa; si no, se conserva el actual
   await query(
     `UPDATE fragrance SET
        description = COALESCE($1, description),
@@ -51,8 +98,20 @@ export async function PATCH(req: NextRequest) {
        top_notes = COALESCE($7::text[], top_notes),
        heart_notes = COALESCE($8::text[], heart_notes),
        base_notes = COALESCE($9::text[], base_notes),
-       active = COALESCE($10, active)
-     WHERE id = $11`,
+       active = COALESCE($10, active),
+       vec_floral = COALESCE($11, vec_floral),
+       vec_oriental = COALESCE($12, vec_oriental),
+       vec_amaderado = COALESCE($13, vec_amaderado),
+       vec_chipre = COALESCE($14, vec_chipre),
+       vec_citrico = COALESCE($15, vec_citrico),
+       vec_gourmand = COALESCE($16, vec_gourmand),
+       vec_frescura = COALESCE($17, vec_frescura),
+       vec_misterio = COALESCE($18, vec_misterio),
+       vec_romantico = COALESCE($19, vec_romantico),
+       vec_energia = COALESCE($20, vec_energia),
+       vec_sofisticado = COALESCE($21, vec_sofisticado),
+       vec_nostalgico = COALESCE($22, vec_nostalgico)
+     WHERE id = $23`,
     [
       body.description ?? null,
       body.family ?? null,
@@ -64,6 +123,18 @@ export async function PATCH(req: NextRequest) {
       body.heart_notes ?? null,
       body.base_notes ?? null,
       body.active ?? null,
+      body.vec_floral ?? null,
+      body.vec_oriental ?? null,
+      body.vec_amaderado ?? null,
+      body.vec_chipre ?? null,
+      body.vec_citrico ?? null,
+      body.vec_gourmand ?? null,
+      body.vec_frescura ?? null,
+      body.vec_misterio ?? null,
+      body.vec_romantico ?? null,
+      body.vec_energia ?? null,
+      body.vec_sofisticado ?? null,
+      body.vec_nostalgico ?? null,
       body.id
     ]
   );
