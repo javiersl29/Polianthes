@@ -22,7 +22,7 @@ const FAMILY_COLUMNS = ["vec_floral", "vec_oriental", "vec_amaderado", "vec_chip
 const MOOD_COLUMNS = ["vec_frescura", "vec_misterio", "vec_romantico", "vec_energia", "vec_sofisticado", "vec_nostalgico"];
 const ALL_VEC_COLUMNS = [...FAMILY_COLUMNS, ...MOOD_COLUMNS];
 
-const SELECT_LIST = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url"].join(", ");
+const SELECT_LIST = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url", "top_notes", "heart_notes", "base_notes"].join(", ");
 
 const FAST_REASONS = [
   "Afin a tu vector numérico.",
@@ -60,6 +60,29 @@ function buildReferenceReflection(
 ): string {
   const top3 = topItems.slice(0, 3).map((c) => `${c.f.brand} ${c.f.name}`).join(", ");
   return `Si ${refName} define tu gusto, esta selección comparte su misma composición aromática: ${top3}, entre otras. Cada una mantiene el ADN olfativo que reconoces, con matices que sorprenden.`;
+}
+
+function buildFastReflection(
+  vector: Record<string, number>,
+  gender: Gender,
+  topItems: TopItem[]
+): string {
+  const entries = Object.entries(vector).filter(([, v]) => v > 50);
+  entries.sort((a, b) => b[1] - a[1]);
+  const top2 = entries.slice(0, 2);
+  const familyLabel: Record<string, string> = {
+    floral: "floral", oriental: "oriental", amaderado: "amaderado", chipre: "chipre",
+    citrico: "cítrico", gourmand: "gourmand", frescura: "fresco", misterio: "misterioso",
+    romantico: "romántico", energia: "enérgico", sofisticado: "sofisticado", nostalgico: "nostálgico"
+  };
+  const profile = top2.length === 0
+    ? "equilibrado"
+    : top2.length === 1
+      ? familyLabel[top2[0][0]] ?? "definido"
+      : `${familyLabel[top2[0][0]] ?? "definido"} con acentos ${familyLabel[top2[1][0]] ?? "complementarios"}`;
+  const perfil = gender === "hombre" ? "un hombre" : gender === "mujer" ? "una mujer" : "una persona";
+  const topNames = topItems.slice(0, 3).map((c) => `${c.f.brand} ${c.f.name}`).join(", ");
+  return `Selección rápida: ${perfil} con perfil ${profile}. Polianthes identificó afinidad numérica con ${topNames}, entre otras. Esta es la lectura objetiva de tus ejes — para una justificación editorial, prueba la decodificación con IA.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -148,19 +171,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No hay fragancias que coincidan." }, { status: 404 });
   }
 
-  // MODO FAST
+  // MODO FAST: razones con notas reales + mini-reflexión
   if (mode === "fast") {
-    const recommendations = top.slice(0, count).map((c, i) => ({
-      ...c.f,
-      reason: referenceName
-        ? `Comparte composición con ${referenceName}.`
-        : FAST_REASONS[i % FAST_REASONS.length],
-      score: c.score
-    }));
+    const recommendations = top.slice(0, count).map((c) => {
+      let reason: string;
+      if (referenceName) {
+        const notes = [
+          ...((c.f.top_notes as string[] | null) ?? []).slice(0, 2),
+          ...((c.f.heart_notes as string[] | null) ?? []).slice(0, 1)
+        ];
+        const noteText = notes.length > 0 ? ` —notas de ${notes.join(", ")}` : "";
+        reason = `Comparte composición aromática con ${referenceName}${noteText}.`;
+      } else {
+        const heart = (c.f.heart_notes as string[] | null) ?? [];
+        const base = (c.f.base_notes as string[] | null) ?? [];
+        const accent = heart.length > 0 ? heart[0] : base.length > 0 ? base[0] : null;
+        const familyText = c.f.family ? `${c.f.family} ` : "";
+        reason = accent
+          ? `Composición ${familyText}con ${accent} como corazón. Afinidad ${c.score}%.`
+          : `Perfil ${familyText}alineado a tu vector. Afinidad ${c.score}%.`;
+      }
+      return { ...c.f, reason, score: c.score };
+    });
+
+    const fastReflection = referenceName
+      ? buildReferenceReflection(referenceName, top)
+      : buildFastReflection(clientVecForRanking, gender, top);
+
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({
       recommendations,
-      reflection: referenceName ? buildReferenceReflection(referenceName, top) : null,
+      reflection: fastReflection,
       elapsed_ms: elapsed,
       mode: "fast",
       reference: referenceName
@@ -218,13 +259,14 @@ export async function POST(req: NextRequest) {
       for (const cand of top) {
         if (recommendations.length >= count) break;
         if (recommendations.find((r) => r.slug === cand.f.slug)) continue;
-        recommendations.push({
-          ...cand.f,
-          reason: referenceName
-            ? `Comparte composición con ${referenceName}.`
-            : FAST_REASONS[recommendations.length % FAST_REASONS.length],
-          score: cand.score
-        });
+        const heart = (cand.f.heart_notes as string[] | null) ?? [];
+        const accent = heart[0] ?? null;
+        const fallbackReason = referenceName
+          ? `Comparte composición con ${referenceName}.`
+          : accent
+            ? `Composición con ${accent} como corazón. Afinidad ${cand.score}%.`
+            : `Afinidad numérica ${cand.score}% con tu vector.`;
+        recommendations.push({ ...cand.f, reason: fallbackReason, score: cand.score });
       }
     }
 
@@ -242,19 +284,22 @@ export async function POST(req: NextRequest) {
       reference: referenceName
     });
   } catch (err) {
-    const recommendations = top.slice(0, count).map((c, i) => ({
-      ...c.f,
-      reason: referenceName
+    const recommendations = top.slice(0, count).map((c) => {
+      const heart = (c.f.heart_notes as string[] | null) ?? [];
+      const accent = heart[0] ?? null;
+      const reason = referenceName
         ? `Comparte composición con ${referenceName}.`
-        : FAST_REASONS[i % FAST_REASONS.length],
-      score: c.score
-    }));
+        : accent
+          ? `Composición con ${accent} como corazón. Afinidad ${c.score}%.`
+          : `Afinidad numérica ${c.score}% con tu vector.`;
+      return { ...c.f, reason, score: c.score };
+    });
     const elapsed = Date.now() - startedAt;
     return NextResponse.json({
       recommendations,
       reflection: referenceName
         ? buildReferenceReflection(referenceName, top)
-        : buildFallbackReflection(effectiveVector, setId, gender, top),
+        : buildFastReflection(clientVecForRanking, gender, top),
       elapsed_ms: elapsed,
       mode: "fallback",
       reference: referenceName,

@@ -594,12 +594,20 @@ export default function Decoder() {
                 transition={{ duration: 0.7, ease: "easeOut" }}
                 className="liquid-glass rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-10 mb-8 sm:mb-10 max-w-3xl mx-auto text-center"
               >
-                <p className="text-[11px] uppercase tracking-[0.3em] text-gold">Inspiración</p>
-                <p className="mt-3 sm:mt-4 font-display italic text-xl sm:text-2xl md:text-3xl text-ink leading-snug">
+                <div className="flex items-center justify-center gap-2 mb-3 sm:mb-4">
+                  <span className={`text-[10px] uppercase tracking-[0.3em] px-2 py-0.5 rounded-full ${
+                    mode === "fast" ? "bg-ink/10 text-ink-mute" : "bg-gold/15 text-gold"
+                  }`}>
+                    {mode === "fast" ? "Lectura numérica" : "Reflexión editorial"}
+                  </span>
+                </div>
+                <p className="font-display italic text-xl sm:text-2xl md:text-3xl text-ink leading-snug">
                   {reflection}
                 </p>
                 <p className="mt-3 sm:mt-4 text-[10px] text-ink-mute">
-                  Polianthes interpreta tu mapa olfativo. Las fragancias son versiones inspiradas en las composiciones originales.
+                  {mode === "fast"
+                    ? "Análisis objetivo por similitud de vectores. Para una justificación más personal, prueba la decodificación con IA."
+                    : "Polianthes interpreta tu mapa olfativo. Las fragancias son versiones inspiradas en las composiciones originales."}
                 </p>
               </motion.div>
             )}
