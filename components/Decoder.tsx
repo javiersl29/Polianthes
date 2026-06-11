@@ -9,22 +9,32 @@ const DECODER_VIDEO = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOt
 type Gender = "hombre" | "mujer" | "unisex";
 type SetId = "familias" | "mood" | "referencia";
 type Recommendation = {
+  id: number;
   slug: string;
   brand: string;
   name: string;
   full_name: string;
+  display_code: string | null;
+  artistic_name: string | null;
+  inspired_by_name: string | null;
+  inspired_by_brand: string | null;
   image_url: string | null;
   gender: Gender;
   reason: string;
   score?: number;
 };
 type FragranceOption = {
+  id: number;
   slug: string;
   brand: string;
   name: string;
   full_name: string;
   image_url: string | null;
   family: string | null;
+  display_code: string | null;
+  artistic_name: string | null;
+  inspired_by_name: string | null;
+  inspired_by_brand: string | null;
 };
 
 const HEX_SIZE = 360;
@@ -331,9 +341,12 @@ export default function Decoder() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-[10px] text-ink-mute uppercase tracking-wider">{selectedRef.brand}</p>
-                      <p className="font-display italic text-lg text-ink truncate">{selectedRef.name}</p>
-                      {selectedRef.family && <p className="text-[10px] text-gold">{selectedRef.family}</p>}
+                      <p className="text-[10px] text-gold/80 uppercase tracking-wider">{selectedRef.display_code ?? `PLT-${String(selectedRef.id).padStart(3, "0")}`}</p>
+                      <p className="font-display italic text-lg text-ink truncate">{selectedRef.artistic_name ?? selectedRef.name}</p>
+                      <p className="text-[10px] text-ink-mute truncate">
+                        Inspirada en {selectedRef.name}
+                        {selectedRef.brand && ` · ${selectedRef.brand}`}
+                      </p>
                     </div>
                     <button onClick={clearReference} className="text-ink-mute hover:text-gold transition-colors p-2" aria-label="Quitar referencia">
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
@@ -634,12 +647,20 @@ export default function Decoder() {
                     )}
                   </div>
                   <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
-                    <p className="text-[10px] sm:text-xs text-ink-mute uppercase tracking-wider truncate">{r.brand}</p>
+                    <p className="text-[10px] sm:text-xs text-gold/80 uppercase tracking-wider truncate">{r.display_code ?? `PLT-${String(r.id).padStart(3, "0")}`}</p>
                     <span className="liquid-glass rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] text-ink/80 capitalize shrink-0">
                       {r.gender}
                     </span>
                   </div>
-                  <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5">{r.name}</p>
+                  <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 truncate">
+                    {r.artistic_name ?? `Polianthes ${String(r.id).padStart(3, "0")}`}
+                  </p>
+                  {(r.inspired_by_name || r.inspired_by_brand) && (
+                    <p className="mt-0.5 text-[10px] sm:text-[11px] text-ink-mute italic truncate">
+                      Inspirada en {r.inspired_by_name ?? r.name}
+                      {r.inspired_by_brand && ` · ${r.inspired_by_brand}`}
+                    </p>
+                  )}
                   {typeof r.score === "number" && (
                     <p className="mt-0.5 sm:mt-1 text-[10px] text-gold">Afinidad {r.score}%</p>
                   )}

@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS ai_config (
 -- E-commerce (Sprint 1+)
 -- ============================================================
 
+-- Defaults globales de precio/stock/SKU por tamaño (aplica a todas las fragancias)
+CREATE TABLE IF NOT EXISTS pricing_defaults (
+  size_ml INTEGER PRIMARY KEY,
+  price_cents INTEGER NOT NULL,
+  cost_cents INTEGER NOT NULL,
+  stock INTEGER NOT NULL DEFAULT 100,
+  sku_prefix TEXT NOT NULL DEFAULT 'PLT',
+  display_order INTEGER NOT NULL DEFAULT 0
+);
+
 -- Zonas de envío por prefijo de código postal
 CREATE TABLE IF NOT EXISTS shipping_zone (
   id SERIAL PRIMARY KEY,

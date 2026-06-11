@@ -58,6 +58,58 @@ export async function POST(req: NextRequest) {
   await ensureColumn(pool, "presentation", "sku", "TEXT");
   await ensureColumn(pool, "presentation", "compare_at_price_cents", "INTEGER");
   await ensureColumn(pool, "presentation", "weight_grams", "INTEGER");
+  await ensureColumn(pool, "presentation", "cost_cents", "INTEGER");
+
+  // Migraciones: identificación de Polianthes en `fragrance`
+  await ensureColumn(pool, "fragrance", "display_code", "TEXT");
+  await ensureColumn(pool, "fragrance", "inspired_by_name", "TEXT");
+  await ensureColumn(pool, "fragrance", "inspired_by_brand", "TEXT");
+  await ensureColumn(pool, "fragrance", "artistic_name", "TEXT");
+
+  // Seed de pricing_defaults (idempotente — no sobrescribe si ya existe)
+  await pool.query(
+    `INSERT INTO pricing_defaults (size_ml, price_cents, cost_cents, stock, sku_prefix, display_order)
+     VALUES (10, 10000, 7000, 100, 'PLT', 1),
+            (30, 25000, 19000, 100, 'PLT', 2),
+            (60, 35000, 28000, 100, 'PLT', 3),
+            (100, 45000, 36000, 100, 'PLT', 4)
+     ON CONFLICT (size_ml) DO NOTHING`
+  );
+
+  // Backfill A: asegurar 4 presentaciones por fragancia con precios, stock 100 y SKU
+  // (DO NOTHING preserva filas existentes con precio custom)
+  await pool.query(
+    `INSERT INTO presentation (fragrance_id, size_ml, price_cents, cost_cents, stock, sku, active)
+     SELECT f.id, d.size_ml, d.price_cents, d.cost_cents, d.stock,
+            d.sku_prefix || '-' || LPAD(f.id::text, 3, '0') || '-' || d.size_ml,
+            TRUE
+     FROM fragrance f
+     CROSS JOIN pricing_defaults d
+     WHERE f.active = TRUE
+     ON CONFLICT (fragrance_id, size_ml) DO NOTHING`
+  );
+
+  // Backfill B: display_code y parseo de inspired_by_* desde full_name
+  await pool.query(
+    `UPDATE fragrance
+     SET display_code = 'PLT-' || LPAD(id::text, 3, '0')
+     WHERE display_code IS NULL`
+  );
+  await pool.query(
+    `UPDATE fragrance
+     SET inspired_by_brand = SPLIT_PART(full_name, ' - ', 1),
+         inspired_by_name = SPLIT_PART(full_name, ' - ', 2)
+     WHERE (inspired_by_brand IS NULL OR inspired_by_name IS NULL)
+       AND full_name LIKE '% - %'`
+  );
+
+  // Backfill C: SKU para filas que no lo tienen (no toca las que ya lo tienen)
+  await pool.query(
+    `UPDATE presentation p
+     SET sku = d.sku_prefix || '-' || LPAD(p.fragrance_id::text, 3, '0') || '-' || p.size_ml
+     FROM pricing_defaults d
+     WHERE p.sku IS NULL AND p.size_ml = d.size_ml`
+  );
 
   const rows = loadCatalog();
   let inserted = 0;

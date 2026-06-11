@@ -14,6 +14,10 @@ type Item = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  display_code: string | null;
+  artistic_name: string | null;
+  inspired_by_name: string | null;
+  inspired_by_brand: string | null;
   min_price_cents: number | null;
 };
 
@@ -172,11 +176,19 @@ export default function Catalog() {
                   )}
                 </div>
                 <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
-                  <p className="text-[10px] sm:text-[11px] text-ink-mute uppercase tracking-wider truncate">{it.brand}</p>
+                  <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate">{it.display_code ?? `PLT-${String(it.id).padStart(3, "0")}`}</p>
                   <span className="text-[9px] sm:text-[10px] text-ink/70 capitalize shrink-0">{it.gender}</span>
                 </div>
-                <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5">{it.name}</p>
-                {it.family && <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-[11px] text-gold">{it.family}</p>}
+                <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 truncate">
+                  {it.artistic_name ?? `Polianthes ${String(it.id).padStart(3, "0")}`}
+                </p>
+                {(it.inspired_by_name || it.inspired_by_brand) && (
+                  <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-[11px] text-ink-mute italic truncate">
+                    Inspirado en {it.inspired_by_name ?? it.name}
+                    {it.inspired_by_brand && ` · ${it.inspired_by_brand}`}
+                  </p>
+                )}
+                {it.family && <p className="mt-0.5 text-[10px] sm:text-[11px] text-gold/70">{it.family}</p>}
                 {it.min_price_cents !== null && it.min_price_cents > 0 && (
                   <p className="mt-1 sm:mt-1.5 text-[11px] sm:text-xs text-ink/80">
                     Desde <span className="text-gold font-medium">${(it.min_price_cents / 100).toLocaleString("es-MX", { maximumFractionDigits: 0 })}</span>

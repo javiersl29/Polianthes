@@ -19,11 +19,13 @@ const FAMILY_COLUMNS = ["vec_floral", "vec_oriental", "vec_amaderado", "vec_chip
 const MOOD_COLUMNS = ["vec_frescura", "vec_misterio", "vec_romantico", "vec_energia", "vec_sofisticado", "vec_nostalgico"];
 const ALL_VEC_COLUMNS = [...FAMILY_COLUMNS, ...MOOD_COLUMNS];
 
-const SELECT_LIST = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url", "top_notes", "heart_notes", "base_notes"].join(", ");
+const SELECT_LIST = ["id", "slug", "brand", "name", "full_name", "family", "mood", "gender", "image_url", "display_code", "artistic_name", "inspired_by_name", "inspired_by_brand", "top_notes", "heart_notes", "base_notes"].join(", ");
 
 type Row = {
   id: number; slug: string; brand: string; name: string; full_name: string;
   family: string | null; mood: string | null; gender: Gender; image_url: string | null;
+  display_code: string | null; artistic_name: string | null;
+  inspired_by_name: string | null; inspired_by_brand: string | null;
   top_notes: string[] | null; heart_notes: string[] | null; base_notes: string[] | null;
   [k: string]: unknown;
 };

@@ -32,6 +32,9 @@ export default function Footer() {
           <p>Polianthes &copy; {new Date().getFullYear()}</p>
           <p>Curaduría de perfumería de autor</p>
         </div>
+        <p className="mt-3 text-[10px] text-ink-mute/50 text-center max-w-3xl mx-auto leading-relaxed">
+          Polianthes interpreta composiciones olfativas. Las fragancias Polianthes no están afiliadas, patrocinadas ni respaldadas por las casas mencionadas. Los nombres y descripciones son referencias culturales y olfativas.
+        </p>
       </div>
     </footer>
   );

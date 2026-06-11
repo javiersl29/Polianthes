@@ -12,6 +12,10 @@ export type FragranceListItem = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  display_code: string | null;
+  artistic_name: string | null;
+  inspired_by_name: string | null;
+  inspired_by_brand: string | null;
   min_price_cents: number | null;
   vec_floral: number;
   vec_oriental: number;
@@ -30,6 +34,7 @@ export type FragranceListItem = {
 export async function listFragrances(): Promise<FragranceListItem[]> {
   const result = await query<FragranceListItem>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
+            f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
             (
@@ -68,6 +73,7 @@ export async function searchFragrances(
   }
   const result = await query<FragranceListItem>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
+            f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
             (
@@ -100,6 +106,7 @@ export type FragranceDetail = Omit<FragranceListItem, "min_price_cents"> & {
 export async function getFragranceBySlug(slug: string): Promise<FragranceDetail | null> {
   const result = await query<FragranceDetail>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender, f.image_url,
+            f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.description, f.top_notes, f.heart_notes, f.base_notes, f.inspiration_image_url,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,

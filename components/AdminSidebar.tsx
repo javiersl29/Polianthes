@@ -5,7 +5,8 @@ import { usePathname } from "next/navigation";
 const items = [
   { href: "/admin", label: "Resumen", icon: "·" },
   { href: "/admin/fragancias", label: "Fragancias", icon: "❍" },
-  { href: "/admin/precios", label: "Precios e inventario", icon: "$" }
+  { href: "/admin/precios", label: "Precios e inventario", icon: "$" },
+  { href: "/admin/nombres", label: "Nombres artísticos", icon: "✦" }
 ];
 
 export default function AdminSidebar({ username }: { username?: string | null }) {

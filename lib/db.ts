@@ -14,9 +14,9 @@ export function getPool(): Pool {
   return global.__pgPool;
 }
 
-export async function query<T = unknown>(text: string, params: unknown[] = []): Promise<{ rows: T[] }> {
+export async function query<T = unknown>(text: string, params: unknown[] = []): Promise<{ rows: T[]; rowCount: number }> {
   const pool = getPool();
   const result = await pool.query(text, params);
-  return result as unknown as { rows: T[] };
+  return result as unknown as { rows: T[]; rowCount: number };
 }
 

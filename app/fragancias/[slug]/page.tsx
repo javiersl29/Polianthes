@@ -37,10 +37,22 @@ export default async function FragrancePage({ params }: { params: { slug: string
           </div>
 
           <div>
-            <p className="text-[10px] sm:text-xs text-ink-mute uppercase tracking-[0.2em]">{detail.brand}</p>
+            <p className="text-[10px] sm:text-xs text-gold/80 uppercase tracking-[0.2em]">
+              {detail.display_code ?? `PLT-${String(detail.id).padStart(3, "0")}`}
+            </p>
             <h1 className="mt-2 font-display italic text-ink text-4xl sm:text-5xl md:text-6xl leading-[0.9] tracking-[-2px]">
-              {detail.name}
+              {detail.artistic_name ?? `Polianthes ${String(detail.id).padStart(3, "0")}`}
             </h1>
+            {(detail.inspired_by_name || detail.inspired_by_brand) && (
+              <p className="mt-2 text-sm text-ink-mute italic">
+                Inspirado en {detail.inspired_by_name ?? detail.name}
+                {detail.inspired_by_brand && (
+                  <>
+                    {" "}de <span className="text-gold">{detail.inspired_by_brand}</span>
+                  </>
+                )}
+              </p>
+            )}
             {detail.family && (
               <p className="mt-3 text-sm text-gold">Familia: {detail.family}</p>
             )}
