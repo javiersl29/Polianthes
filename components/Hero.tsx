@@ -9,15 +9,15 @@ const easeOut = { duration: 0.8, ease: [0.16, 1, 0.3, 1] as [number, number, num
 
 export default function Hero() {
   return (
-    <section className="relative min-h-screen w-full overflow-hidden">
+    <section className="relative w-full overflow-hidden pt-24 sm:pt-28 pb-20 sm:pb-28 lg:pb-36">
       <FadingVideo
         src={HERO_VIDEO}
         scale={1.2}
         className="absolute inset-0 w-full h-full object-cover object-top z-0"
       />
 
-      <div className="relative z-10 flex flex-col min-h-screen pt-24 sm:pt-28 px-4 sm:px-6">
-        <div className="flex-1 flex flex-col items-center justify-center text-center max-w-3xl mx-auto">
+      <div className="relative z-10 flex flex-col px-4 sm:px-6">
+        <div className="flex flex-col items-center justify-center text-center max-w-3xl mx-auto min-h-[calc(100vh-7rem)]">
           <motion.div
             initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
             animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
