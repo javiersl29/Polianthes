@@ -131,6 +131,10 @@ export default function ImagesPage() {
   // Contador que se incrementa en cada click de "Re-buscar" para forzar
   // variación de queries/páginas en el backend
   const [refetchCounter, setRefetchCounter] = useState(0);
+  // Época que se incrementa cada vez que cambia la imagen de referencia
+  // (búsqueda o upload manual). Se usa como query param en el <img> del
+  // modal para forzar la recarga y evitar cache del navegador.
+  const [refetchEpoch, setRefetchEpoch] = useState(0);
 
   // Cuando el usuario selecciona archivo en el input oculto, procesarlo
   useEffect(() => {
@@ -239,6 +243,7 @@ export default function ImagesPage() {
       });
       const data = await res.json();
       if (data?.ok) {
+        setRefetchEpoch((e) => e + 1);
         toast.success(
           `Referencia para ${row.full_name} guardada (${data.reference?.source})`
         );
@@ -428,6 +433,8 @@ export default function ImagesPage() {
       return;
     }
     setRefetching((p) => new Set(p).add(row.id));
+    // Cerramos el modal antes de subir para que el usuario vea feedback
+    setOpenModalRow(null);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
@@ -445,6 +452,10 @@ export default function ImagesPage() {
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error");
+      // Bump refetchEpoch para forzar al <img> del modal a recargar
+      // (invalida cualquier cache del navegador con un query param nuevo)
+      setRefetchEpoch((e) => e + 1);
+      // Actualizar la card
       setItems((prev) =>
         prev.map((p) =>
           p.id === row.id
@@ -456,8 +467,6 @@ export default function ImagesPage() {
             : p
         )
       );
-      setOpenModalRow(null);
-      setTimeout(() => setOpenModalRow(row), 100); // refrescar modal
       toast.success(`${row.full_name} → ref manual subida (${(data.size_bytes / 1024).toFixed(0)} KB)`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al subir");
@@ -467,6 +476,7 @@ export default function ImagesPage() {
         n.delete(row.id);
         return n;
       });
+      setRefUploadTarget(null);
     }
   };
 
@@ -1032,9 +1042,11 @@ export default function ImagesPage() {
       )}
       {openModalRow && (
         <PreviewModal
+          key={`modal-${openModalRow.id}-${refetchEpoch}`}
           row={openModalRow}
           preview={previews[openModalRow.id]}
           onClose={() => setOpenModalRow(null)}
+          refetchEpoch={refetchEpoch}
           onUploadClick={() => {
             setRefUploadTarget(openModalRow);
             setOpenModalRow(null);
@@ -1068,18 +1080,22 @@ function PreviewModal({
   preview,
   onClose,
   onUploadClick,
-  onRefetchClick
+  onRefetchClick,
+  refetchEpoch
 }: {
   row: Item;
   preview: Preview | undefined;
   onClose: () => void;
   onUploadClick: () => void;
   onRefetchClick: () => void;
+  refetchEpoch: number;
 }) {
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
   const [originalError, setOriginalError] = useState<string | null>(null);
-  const originalImgUrl = `/api/admin/fragrances/original-image/${row.slug}`;
+  // Cada vez que cambia refetchEpoch, la URL cambia (query param único)
+  // y fuerza al <img> a recargar desde el servidor (sin cache).
+  const originalImgUrl = `/api/admin/fragrances/original-image/${row.slug}?v=${refetchEpoch}`;
 
   // Si el preview no está listo, igualmente abrimos el modal para mostrar la
   // referencia original si existe.

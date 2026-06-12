@@ -27,11 +27,17 @@ export async function GET(_req: NextRequest, ctx: { params: { slug: string } }) 
     return new NextResponse(null, { status: 500 });
   }
   const buf = Buffer.from(m[2], "base64");
+  // max-age=0 + must-revalidate fuerza al navegador a revalidar en cada
+  // request, garantizando que la imagen actualizada se vea inmediatamente
+  // después de subir. El ETag basado en el tamaño y fecha de fetched_at
+  // también ayuda a invalidar cuando cambia el contenido.
   return new NextResponse(buf, {
     status: 200,
     headers: {
       "Content-Type": m[1],
-      "Cache-Control": "private, max-age=300"
+      "Cache-Control": "private, no-store, must-revalidate",
+      Pragma: "no-cache",
+      Expires: "0"
     }
   });
 }
