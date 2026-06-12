@@ -10,19 +10,26 @@ export type ImageGenerationInput = {
   heartNotes: string[];
   baseNotes: string[];
   promptOverride?: string;
+  /** Data URL (base64) de la imagen de la botella de la marca (sujeto principal) */
+  brandBottleDataUrl?: string | null;
+  /** Data URL (base64) del perfume original (referencia, ghost detrás) */
+  originalPerfumeDataUrl?: string | null;
 };
 
 export type ImageGenerationResult = {
   ok: boolean;
   url?: string;
   b64?: string;
+  mimeType?: string;
   revisedPrompt?: string;
   model: string;
   endpoint?: string;
-  provider: "minimax" | "mock";
+  provider: ImageProvider | "mock";
   error?: string;
-  errorCode?: number;
+  errorCode?: number | string;
   statusCode?: number;
+  referenceImageUrl?: string;
+  referenceImageSource?: string;
   debug?: Record<string, unknown>;
 };
 
@@ -54,12 +61,24 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     .filter(Boolean)
     .slice(0, 4)
     .join(", ");
+  const hasBrandBottle = Boolean(input.brandBottleDataUrl);
+  const hasOriginal = Boolean(input.originalPerfumeDataUrl);
+
+  const subjectLine = hasBrandBottle
+    ? "In the foreground, center frame, three-quarter angle, eye level: the brand's own perfume bottle with its label as the clear subject, faithfully preserving the bottle's silhouette, proportions, color, cap, and label design."
+    : "In the foreground, center frame, three-quarter angle, eye level: a clean, faceted glass perfume bottle silhouette without any visible label, logo, brand mark, or text. The bottle is the subject.";
+
+  const refLine = hasOriginal
+    ? "Behind the bottle, heavily out-of-focus and bokeh-blurred, a soft ghost-like presence of the original reference perfume — recognizable only as a soft colored glow shape, never sharp, never readable."
+    : "";
+
   return [
-    "Editorial luxury perfume photography.",
-    "A generic faceted glass perfume bottle silhouette in the foreground, center frame, three-quarter angle, eye level, no labels, no logos, no text, no brand markings, no recognizable branded product.",
-    "Behind the bottle, an out-of-focus blurred ghost image of the original perfume referenced (heavily defocused, soft bokeh, low contrast) — recognizable only as a soft colorful glow shape, never sharp or identifiable.",
+    "Editorial luxury perfume photography, high-end campaign composition.",
+    subjectLine,
+    refLine,
     "Background: deep charcoal black (#0c0c0c) with a single soft golden volumetric light from the upper left (#d4af6a, warm, low intensity).",
     "Cinematic 85mm lens, f/2.8, photorealistic, soft bokeh, slight grain.",
+    "Composition: subject in sharp focus, dramatic chiaroscuro, no text overlay, no watermark, no UI elements.",
     familyHint ? `Mood of the fragrance: ${familyHint}.` : "",
     moodHint ? `Atmosphere: ${moodHint}.` : "",
     allNotes ? `Scent cues: ${allNotes}.` : ""
@@ -68,9 +87,11 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     .join(" ");
 }
 
+export type ImageProvider = "minimax" | "gemini" | "openai" | "replicate";
+
 export type ImageApiConfig = {
   id: number;
-  provider: string;
+  provider: ImageProvider;
   endpoint: string;
   api_key: string | null;
   model: string;
@@ -79,19 +100,22 @@ export type ImageApiConfig = {
   prompt_optimizer: boolean;
   n: number;
   active: boolean;
+  serpapi_api_key: string | null;
+  gemini_api_key: string | null;
   updated_at: string;
 };
 
 export async function getImageApiConfig(): Promise<ImageApiConfig | null> {
   const r = await query<ImageApiConfig>(
-    `SELECT id, provider, endpoint, api_key, model, aspect_ratio, response_format,
-            prompt_optimizer, n, active, updated_at
+    `SELECT id, COALESCE(provider, 'minimax') AS provider, endpoint, api_key, model, aspect_ratio, response_format,
+            prompt_optimizer, n, active, serpapi_api_key, gemini_api_key, updated_at
      FROM image_api_config WHERE id = 1`
   );
   return r.rows[0] ?? null;
 }
 
 export type ResolvedImageConfig = {
+  provider: ImageProvider;
   endpoint: string;
   apiKey: string;
   model: string;
@@ -102,34 +126,79 @@ export type ResolvedImageConfig = {
   source: "db" | "env" | "fallback";
 };
 
-const DEFAULT_ENDPOINT = "https://api.minimax.io/v1/image_generation";
-const DEFAULT_MODEL = "image-01";
+const DEFAULT_MINIMAX_ENDPOINT = "https://api.minimax.io/v1/image_generation";
+const DEFAULT_MINIMAX_MODEL = "image-01";
+const DEFAULT_GEMINI_MODEL = "gemini-3.1-flash-image";
 
+/**
+ * Resuelve la config de generación de imagen. Cada provider tiene su propia
+ * key separada (gemini_api_key o api_key, según provider) y su env var
+ * correspondiente.
+ * - Gemini: gemini_api_key (DB) o GEMINI_API_KEY (env)
+ * - MiniMax: api_key (DB) o MINIMAX_API_KEY (env)
+ */
 export async function resolveImageConfig(): Promise<ResolvedImageConfig | null> {
-  // 1) DB image_api_config (preferido)
   const dbCfg = await getImageApiConfig();
-  const envKey = process.env.MINIMAX_API_KEY;
-  const envEndpoint = process.env.MINIMAX_IMAGE_ENDPOINT;
-  const envModel = process.env.MINIMAX_IMAGE_MODEL;
 
-  if (dbCfg && dbCfg.active && dbCfg.api_key) {
+  // Provider preferido: de la DB o inferido de qué env var existe
+  const preferredProvider: ImageProvider =
+    (dbCfg?.provider as ImageProvider) ||
+    (process.env.GEMINI_API_KEY
+      ? "gemini"
+      : process.env.MINIMAX_API_KEY
+      ? "minimax"
+      : "minimax");
+
+  // 1) DB con key específica del provider
+  if (dbCfg && dbCfg.active) {
+    if (preferredProvider === "gemini" && dbCfg.gemini_api_key) {
+      return {
+        provider: "gemini",
+        endpoint: dbCfg.endpoint,
+        apiKey: dbCfg.gemini_api_key,
+        model: dbCfg.model,
+        aspectRatio: dbCfg.aspect_ratio,
+        responseFormat: "base64",
+        n: dbCfg.n,
+        promptOptimizer: false,
+        source: "db"
+      };
+    }
+    if (preferredProvider === "minimax" && dbCfg.api_key) {
+      return {
+        provider: "minimax",
+        endpoint: dbCfg.endpoint,
+        apiKey: dbCfg.api_key,
+        model: dbCfg.model,
+        aspectRatio: dbCfg.aspect_ratio,
+        responseFormat: dbCfg.response_format,
+        n: dbCfg.n,
+        promptOptimizer: dbCfg.prompt_optimizer,
+        source: "db"
+      };
+    }
+  }
+
+  // 2) Variables de entorno según provider
+  if (preferredProvider === "gemini" && process.env.GEMINI_API_KEY) {
     return {
-      endpoint: dbCfg.endpoint,
-      apiKey: dbCfg.api_key,
-      model: dbCfg.model,
-      aspectRatio: dbCfg.aspect_ratio,
-      responseFormat: dbCfg.response_format,
-      n: dbCfg.n,
-      promptOptimizer: dbCfg.prompt_optimizer,
-      source: "db"
+      provider: "gemini",
+      endpoint: `https://generativelanguage.googleapis.com/v1beta/models/${process.env.GEMINI_IMAGE_MODEL || DEFAULT_GEMINI_MODEL}:generateContent`,
+      apiKey: process.env.GEMINI_API_KEY,
+      model: process.env.GEMINI_IMAGE_MODEL || DEFAULT_GEMINI_MODEL,
+      aspectRatio: "1:1",
+      responseFormat: "base64",
+      n: 1,
+      promptOptimizer: false,
+      source: "env"
     };
   }
-  // 2) Variables de entorno
-  if (envKey) {
+  if (process.env.MINIMAX_API_KEY) {
     return {
-      endpoint: envEndpoint || DEFAULT_ENDPOINT,
-      apiKey: envKey,
-      model: envModel || DEFAULT_MODEL,
+      provider: "minimax",
+      endpoint: process.env.MINIMAX_IMAGE_ENDPOINT || DEFAULT_MINIMAX_ENDPOINT,
+      apiKey: process.env.MINIMAX_API_KEY,
+      model: process.env.MINIMAX_IMAGE_MODEL || DEFAULT_MINIMAX_MODEL,
       aspectRatio: "1:1",
       responseFormat: "url",
       n: 1,
@@ -137,13 +206,15 @@ export async function resolveImageConfig(): Promise<ResolvedImageConfig | null> 
       source: "env"
     };
   }
-  // 3) Fallback: ai_config (legacy)
+
+  // 3) Fallback: ai_config legacy (siempre MiniMax)
   const cfg = await getAiConfig();
   if (cfg.api_key) {
     return {
-      endpoint: DEFAULT_ENDPOINT,
+      provider: "minimax",
+      endpoint: DEFAULT_MINIMAX_ENDPOINT,
       apiKey: cfg.api_key,
-      model: DEFAULT_MODEL,
+      model: DEFAULT_MINIMAX_MODEL,
       aspectRatio: "1:1",
       responseFormat: "url",
       n: 1,
@@ -164,15 +235,101 @@ export async function generateImage(
       provider: "minimax",
       model: "?",
       error:
-        "No hay configuración de imagen. Configúrala en /admin/imagenes o define MINIMAX_API_KEY en Railway."
+        "No hay configuración de imagen. Configúrala en /admin/imagenes o define GEMINI_API_KEY / MINIMAX_API_KEY en Railway."
     };
   }
 
   const prompt = buildImagePrompt(input);
-  // Prompt máximo 1500 caracteres según docs
   const trimmedPrompt = prompt.length > 1500 ? prompt.slice(0, 1497) + "..." : prompt;
 
-  const body = {
+  // === DISPATCH POR PROVIDER ===
+  if (cfg.provider === "gemini") {
+    return generateWithGemini(input, trimmedPrompt, cfg);
+  }
+  // Por defecto: MiniMax (legacy)
+  return generateWithMiniMax(input, trimmedPrompt, cfg);
+}
+
+/** ============= GEMINI ============= */
+async function generateWithGemini(
+  input: ImageGenerationInput,
+  prompt: string,
+  cfg: ResolvedImageConfig
+): Promise<ImageGenerationResult> {
+  const { generateGeminiImage, dataUrlToInline, resolveGeminiConfig } = await import("./gemini-image");
+  const gcfg = resolveGeminiConfig({
+    api_key: cfg.apiKey,
+    model: cfg.model,
+    aspect_ratio: cfg.aspectRatio
+  });
+  if (!gcfg) {
+    return {
+      ok: false,
+      provider: "gemini",
+      model: cfg.model,
+      error: "No se pudo construir la config de Gemini"
+    };
+  }
+
+  const refImages: { mimeType: string; data: string }[] = [];
+  if (input.brandBottleDataUrl) {
+    const r = dataUrlToInline(input.brandBottleDataUrl);
+    if (r) refImages.push(r);
+  }
+  if (input.originalPerfumeDataUrl) {
+    const r = dataUrlToInline(input.originalPerfumeDataUrl);
+    if (r) refImages.push(r);
+  }
+
+  const r = await generateGeminiImage(
+    {
+      referenceImages: refImages,
+      prompt,
+      aspectRatio: cfg.aspectRatio,
+      imageSize: cfg.n > 1 ? "1K" : "2K",
+      thinkingLevel: "high"
+    },
+    gcfg
+  );
+
+  if (!r.ok) {
+    return {
+      ok: false,
+      provider: "gemini",
+      model: r.model,
+      endpoint: r.endpoint,
+      statusCode: r.statusCode,
+      error: r.error,
+      debug: r.debug
+    };
+  }
+  return {
+    ok: true,
+    b64: r.imageBase64,
+    mimeType: r.mimeType ?? "image/png",
+    model: r.model,
+    endpoint: r.endpoint,
+    provider: "gemini",
+    debug: { ...r.debug, mime_type: r.mimeType, thoughts: r.thoughts }
+  };
+}
+
+/** ============= MINIMAX (legacy) ============= */
+async function generateWithMiniMax(
+  input: ImageGenerationInput,
+  trimmedPrompt: string,
+  cfg: ResolvedImageConfig
+): Promise<ImageGenerationResult> {
+  // image_reference (singular): solo UNA imagen de referencia. El modelo image-01
+  // no acepta múltiples refs en la misma llamada (error 2013: image_reference must be one).
+  let imageReference: { type: "character"; image_file: string } | null = null;
+  if (input.brandBottleDataUrl) {
+    imageReference = { type: "character", image_file: input.brandBottleDataUrl };
+  } else if (input.originalPerfumeDataUrl) {
+    imageReference = { type: "character", image_file: input.originalPerfumeDataUrl };
+  }
+
+  const body: Record<string, unknown> = {
     model: cfg.model,
     prompt: trimmedPrompt,
     aspect_ratio: cfg.aspectRatio,
@@ -180,6 +337,9 @@ export async function generateImage(
     n: cfg.n,
     prompt_optimizer: cfg.promptOptimizer
   };
+  if (imageReference) {
+    body.image_reference = imageReference;
+  }
 
   let response: Response;
   try {
@@ -264,7 +424,8 @@ export async function generateImage(
       debug: {
         success_count: data.metadata?.success_count,
         failed_count: data.metadata?.failed_count,
-        image_count: imageUrls.length
+        image_count: imageUrls.length,
+        image_ref_used: imageReference ? "yes" : "no"
       }
     };
   }
@@ -279,6 +440,7 @@ export async function generateImage(
         success_count: data.metadata?.success_count,
         failed_count: data.metadata?.failed_count,
         image_count: imageB64.length,
+        image_ref_used: imageReference ? "yes" : "no",
         note: "response_format=base64: se guardará directamente sin descarga"
       }
     };
@@ -290,7 +452,7 @@ export async function generateImage(
     model: cfg.model,
     endpoint: cfg.endpoint,
     error: "La API no devolvió imágenes (ni urls ni base64)",
-    debug: { response: data, source: cfg.source }
+    debug: { response: data, source: cfg.source, image_ref_used: imageReference ? "yes" : "no" }
   };
 }
 

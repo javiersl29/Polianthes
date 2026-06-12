@@ -25,7 +25,13 @@ CREATE TABLE IF NOT EXISTS fragrance (
   vec_nostalgico INTEGER NOT NULL DEFAULT 50,
   vector_justification JSONB,
   image_url TEXT,
+  image_data TEXT,
   inspiration_image_url TEXT,
+  original_image_data TEXT,
+  original_image_source TEXT,
+  original_image_url TEXT,
+  original_image_fetched_at TIMESTAMPTZ,
+  use_brand_bottle_override BOOLEAN NOT NULL DEFAULT FALSE,
   enriched_at TIMESTAMPTZ,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -194,7 +200,19 @@ CREATE TABLE IF NOT EXISTS image_api_config (
   prompt_optimizer BOOLEAN NOT NULL DEFAULT FALSE,
   n INTEGER NOT NULL DEFAULT 1 CHECK (n BETWEEN 1 AND 9),
   active BOOLEAN NOT NULL DEFAULT TRUE,
+  serpapi_api_key TEXT,
+  gemini_api_key TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT single_row_image_config CHECK (id = 1)
+);
+
+-- Imagen de la botella de la marca (referencia para todas las generaciones)
+CREATE TABLE IF NOT EXISTS brand_bottle_image (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  image_data TEXT,
+  filename TEXT,
+  mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT single_row_brand_bottle CHECK (id = 1)
 );
 

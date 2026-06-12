@@ -66,6 +66,16 @@ export async function POST(req: NextRequest) {
   await ensureColumn(pool, "fragrance", "inspired_by_brand", "TEXT");
   await ensureColumn(pool, "fragrance", "artistic_name", "TEXT");
 
+  // Migraciones: imágenes (refs originales, botella de marca, resultado IA en base64)
+  await ensureColumn(pool, "fragrance", "image_data", "TEXT");
+  await ensureColumn(pool, "fragrance", "original_image_data", "TEXT");
+  await ensureColumn(pool, "fragrance", "original_image_source", "TEXT");
+  await ensureColumn(pool, "fragrance", "original_image_url", "TEXT");
+  await ensureColumn(pool, "fragrance", "original_image_fetched_at", "TIMESTAMPTZ");
+  await ensureColumn(pool, "fragrance", "use_brand_bottle_override", "BOOLEAN NOT NULL DEFAULT FALSE");
+  await ensureColumn(pool, "image_api_config", "serpapi_api_key", "TEXT");
+  await ensureColumn(pool, "image_api_config", "gemini_api_key", "TEXT");
+
   // Seed de pricing_defaults (idempotente — no sobrescribe si ya existe)
   await pool.query(
     `INSERT INTO pricing_defaults (size_ml, price_cents, cost_cents, stock, sku_prefix, display_order)
@@ -115,6 +125,12 @@ export async function POST(req: NextRequest) {
   await pool.query(
     `INSERT INTO image_api_config (id, provider, endpoint, model, aspect_ratio, response_format)
      VALUES (1, 'minimax', 'https://api.minimax.io/v1/image_generation', 'image-01', '1:1', 'url')
+     ON CONFLICT (id) DO NOTHING`
+  );
+
+  // Seed brand_bottle_image (idempotente, una sola fila)
+  await pool.query(
+    `INSERT INTO brand_bottle_image (id, mime_type) VALUES (1, 'image/jpeg')
      ON CONFLICT (id) DO NOTHING`
   );
 

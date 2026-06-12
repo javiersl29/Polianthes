@@ -10,10 +10,77 @@ export async function GET() {
     return NextResponse.json({ error: "no autorizado" }, { status: 401 });
   }
   const cfg = await getImageApiConfig();
+  const envSerp = process.env.SERPAPI_API_KEY ?? null;
+  const envMiniMax = process.env.MINIMAX_API_KEY ?? null;
+  const envGemini = process.env.GEMINI_API_KEY ?? null;
+  const serpSrc: "db" | "env" | "none" = cfg?.serpapi_api_key
+    ? "db"
+    : envSerp
+    ? "env"
+    : "none";
+
+  // Cada provider tiene su key separada
+  const geminiSrc: "db" | "env" | "none" = cfg?.gemini_api_key
+    ? "db"
+    : envGemini
+    ? "env"
+    : "none";
+  const minimaxSrc: "db" | "env" | "none" = cfg?.api_key
+    ? "db"
+    : envMiniMax
+    ? "env"
+    : "none";
+  const preferredProvider = (cfg?.provider ?? (envGemini ? "gemini" : "minimax")) as string;
+  const genSrc: "db" | "env" | "none" =
+    preferredProvider === "gemini" ? geminiSrc : minimaxSrc;
+
   if (!cfg) {
-    return NextResponse.json({ config: null });
+    return NextResponse.json({
+      config: null,
+      sources: {
+        serpapi: serpSrc,
+        gen: genSrc,
+        gemini: geminiSrc,
+        minimax: minimaxSrc,
+        env_serpapi_length: envSerp?.length ?? 0,
+        env_gemini_length: envGemini?.length ?? 0,
+        env_minimax_length: envMiniMax?.length ?? 0,
+        preferred_provider: preferredProvider
+      }
+    });
   }
-  return NextResponse.json({ config: { ...cfg, api_key: cfg.api_key ? maskKey(cfg.api_key) : null } });
+  return NextResponse.json({
+    config: {
+      ...cfg,
+      api_key:
+        cfg.api_key
+          ? maskKey(cfg.api_key)
+          : envMiniMax
+          ? `${maskKey(envMiniMax)} (env:MINIMAX_API_KEY)`
+          : null,
+      gemini_api_key:
+        cfg.gemini_api_key
+          ? maskKey(cfg.gemini_api_key)
+          : envGemini
+          ? `${maskKey(envGemini)} (env:GEMINI_API_KEY)`
+          : null,
+      serpapi_api_key: cfg.serpapi_api_key
+        ? maskKey(cfg.serpapi_api_key)
+        : envSerp
+        ? `${maskKey(envSerp)} (env:SERPAPI_API_KEY)`
+        : null
+    },
+    sources: {
+      serpapi: serpSrc,
+      gen: genSrc,
+      gemini: geminiSrc,
+      minimax: minimaxSrc,
+      env_serpapi_length: envSerp?.length ?? 0,
+      env_gemini_length: envGemini?.length ?? 0,
+      env_minimax_length: envMiniMax?.length ?? 0,
+      preferred_provider: preferredProvider
+    }
+  });
 }
 
 export async function PUT(req: NextRequest) {
@@ -25,6 +92,10 @@ export async function PUT(req: NextRequest) {
     endpoint?: string;
     api_key?: string | null;
     clear_api_key?: boolean;
+    gemini_api_key?: string | null;
+    clear_gemini_api_key?: boolean;
+    serpapi_api_key?: string | null;
+    clear_serpapi_api_key?: boolean;
     model?: string;
     aspect_ratio?: string;
     response_format?: "url" | "base64";
@@ -53,6 +124,20 @@ export async function PUT(req: NextRequest) {
   } else if (body.api_key && body.api_key.trim().length > 0) {
     fields.push(`api_key = $${i++}`);
     params.push(body.api_key.trim());
+  }
+  if (body.clear_gemini_api_key) {
+    fields.push(`gemini_api_key = $${i++}`);
+    params.push(null);
+  } else if (body.gemini_api_key && body.gemini_api_key.trim().length > 0) {
+    fields.push(`gemini_api_key = $${i++}`);
+    params.push(body.gemini_api_key.trim());
+  }
+  if (body.clear_serpapi_api_key) {
+    fields.push(`serpapi_api_key = $${i++}`);
+    params.push(null);
+  } else if (body.serpapi_api_key && body.serpapi_api_key.trim().length > 0) {
+    fields.push(`serpapi_api_key = $${i++}`);
+    params.push(body.serpapi_api_key.trim());
   }
   if (body.model) {
     fields.push(`model = $${i++}`);
@@ -111,7 +196,13 @@ export async function PUT(req: NextRequest) {
   const updated = await getImageApiConfig();
   return NextResponse.json({
     ok: true,
-    config: updated ? { ...updated, api_key: updated.api_key ? maskKey(updated.api_key) : null } : null
+    config: updated
+      ? {
+          ...updated,
+          api_key: updated.api_key ? maskKey(updated.api_key) : null,
+          serpapi_api_key: updated.serpapi_api_key ? maskKey(updated.serpapi_api_key) : null
+        }
+      : null
   });
 }
 

@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type Item = {
@@ -13,14 +13,20 @@ type Item = {
   image_url: string | null;
   family: string | null;
   mood: string | null;
+  has_original_reference?: boolean;
+  original_image_url?: string | null;
+  original_image_source?: string | null;
+  use_brand_bottle_override?: boolean;
 };
 
 type Preview = {
   id: number;
   slug: string;
   status: "idle" | "generating" | "ready" | "error";
-  url: string | null;
+  dataUrl?: string | null;
   message?: string;
+  usedBrandBottle?: boolean;
+  hasOriginalReference?: boolean;
 };
 
 type ImageConfig = {
@@ -28,6 +34,8 @@ type ImageConfig = {
   provider: string;
   endpoint: string;
   api_key: string | null;
+  gemini_api_key: string | null;
+  serpapi_api_key: string | null;
   model: string;
   aspect_ratio: string;
   response_format: "url" | "base64";
@@ -58,6 +66,25 @@ type TestResult = {
   error?: string;
 };
 
+type BrandBottleInfo = {
+  has_image: boolean;
+  filename: string | null;
+  size_bytes: number;
+  updated_at: string | null;
+};
+
+type SerpApiTestResult = {
+  ok: boolean;
+  source?: string;
+  db_key_length?: number;
+  env_key_length?: number;
+  elapsed_ms?: number;
+  image_count?: number;
+  first_image?: { url: string; width?: number; height?: number; source?: string } | null;
+  error?: string;
+  debug?: Record<string, unknown>;
+};
+
 const MAX_SELECTION = 10;
 const ASPECT_RATIOS = ["1:1", "16:9", "4:3", "3:2", "2:3", "3:4", "9:16", "21:9"];
 
@@ -67,62 +94,81 @@ export default function ImagesPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [previews, setPreviews] = useState<Record<number, Preview>>({});
   const [batchRunning, setBatchRunning] = useState(false);
+  const [refetching, setRefetching] = useState<Set<number>>(new Set());
   const [search, setSearch] = useState("");
   const [config, setConfig] = useState<ImageConfig | null>(null);
   const [diag, setDiag] = useState<Diag | null>(null);
   const [showConfig, setShowConfig] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [configForm, setConfigForm] = useState<{
-    provider: string;
-    endpoint: string;
-    api_key: string;
-    clear_api_key: boolean;
-    model: string;
-    aspect_ratio: string;
-    response_format: "url" | "base64";
-    prompt_optimizer: boolean;
-    n: number;
-    active: boolean;
-  }>({
-    provider: "minimax",
+  const [serpTesting, setSerpTesting] = useState(false);
+  const [serpResult, setSerpResult] = useState<SerpApiTestResult | null>(null);
+  const [brandBottle, setBrandBottle] = useState<BrandBottleInfo | null>(null);
+  const [searchStatus, setSearchStatus] = useState<{ has_serpapi_key: boolean; has_tavily: boolean; has_serper: boolean; has_pexels: boolean } | null>(null);
+  const [configForm, setConfigForm] = useState({
+    provider: "minimax" as "minimax" | "gemini" | "openai" | "replicate",
     endpoint: "https://api.minimax.io/v1/image_generation",
     api_key: "",
     clear_api_key: false,
+    gemini_api_key: "",
+    clear_gemini_api_key: false,
+    serpapi_api_key: "",
+    clear_serpapi_api_key: false,
     model: "image-01",
     aspect_ratio: "1:1",
-    response_format: "url",
+    response_format: "url" as "url" | "base64",
     prompt_optimizer: false,
     n: 1,
     active: true
   });
   const [savingConfig, setSavingConfig] = useState(false);
+  const brandBottleFileRef = useRef<HTMLInputElement | null>(null);
+
+  const [sources, setSources] = useState<{
+    serpapi: "db" | "env" | "none";
+    gen: "db" | "env" | "none";
+    gemini: "db" | "env" | "none";
+    minimax: "db" | "env" | "none";
+    env_serpapi_length: number;
+    env_gemini_length: number;
+    env_minimax_length: number;
+    preferred_provider: string;
+  } | null>(null);
 
   const loadAll = async () => {
     try {
-      const [fr, cfg, di] = await Promise.all([
+      const [fr, cfg, di, bb] = await Promise.all([
         fetch("/api/admin/fragrances").then((r) => r.json()),
         fetch("/api/admin/image-config").then((r) => r.json()),
-        fetch("/api/admin/fragrances/generate-image", { method: "GET" }).then((r) => r.json())
+        fetch("/api/admin/fragrances/generate-image", { method: "GET" }).then((r) => r.json()),
+        fetch("/api/admin/brand-bottle").then((r) => r.json())
       ]);
       setItems(fr.items ?? []);
       setLoading(false);
       if (cfg.config) {
         setConfig(cfg.config);
-        setConfigForm({
+        setConfigForm((prev) => ({
+          ...prev,
           provider: cfg.config.provider ?? "minimax",
           endpoint: cfg.config.endpoint ?? "https://api.minimax.io/v1/image_generation",
           api_key: "",
           clear_api_key: false,
+          gemini_api_key: "",
+          clear_gemini_api_key: false,
+          serpapi_api_key: "",
+          clear_serpapi_api_key: false,
           model: cfg.config.model ?? "image-01",
           aspect_ratio: cfg.config.aspect_ratio ?? "1:1",
           response_format: cfg.config.response_format ?? "url",
           prompt_optimizer: cfg.config.prompt_optimizer ?? false,
           n: cfg.config.n ?? 1,
           active: cfg.config.active ?? true
-        });
+        }));
       }
+      setSources(cfg.sources ?? null);
       setDiag(di);
+      setBrandBottle(di.brand_bottle ?? bb);
+      setSearchStatus(di.search ?? null);
     } catch {
       setLoading(false);
     }
@@ -149,8 +195,50 @@ export default function ImagesPage() {
 
   const clearSelection = () => setSelected(new Set());
 
+  const findReferenceFor = async (row: Item): Promise<boolean> => {
+    setRefetching((p) => new Set(p).add(row.id));
+    try {
+      const res = await fetch("/api/admin/fragrances/find-reference", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug: row.slug, persist: true })
+      });
+      const data = await res.json();
+      if (data?.ok) {
+        toast.success(
+          `Referencia para ${row.full_name} guardada (${data.reference?.source})`
+        );
+        setItems((prev) =>
+          prev.map((p) =>
+            p.id === row.id
+              ? {
+                  ...p,
+                  has_original_reference: true,
+                  original_image_url: data.reference?.url ?? p.original_image_url,
+                  original_image_source: data.reference?.source ?? p.original_image_source
+                }
+              : p
+          )
+        );
+        return true;
+      } else {
+        toast.error(data?.message || data?.error || "No se encontró imagen de referencia");
+        return false;
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+      return false;
+    } finally {
+      setRefetching((p) => {
+        const n = new Set(p);
+        n.delete(row.id);
+        return n;
+      });
+    }
+  };
+
   const generateOne = async (row: Item): Promise<Preview> => {
-    setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "generating", url: null } }));
+    setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "generating" } }));
     try {
       const res = await fetch("/api/admin/fragrances/generate-image", {
         method: "POST",
@@ -158,29 +246,42 @@ export default function ImagesPage() {
         body: JSON.stringify({ slug: row.slug, save: false })
       });
       const data = await res.json();
-      if (data?.reason === "generation_failed" || data?.reason === "no_url") {
+      if (data?.reason === "generation_failed" || data?.reason === "no_data") {
         const lines = [
           data.message,
           data.endpoint ? `endpoint: ${data.endpoint}` : "",
           data.model ? `modelo: ${data.model}` : "",
-          data.statusCode !== undefined ? `HTTP ${data.statusCode}` : ""
+          data.used_brand_bottle !== undefined ? `botella de marca: ${data.used_brand_bottle ? "sí" : "no"}` : "",
+          data.has_original_reference !== undefined ? `ref original: ${data.has_original_reference ? "sí" : "no"}` : ""
         ].filter(Boolean);
         const msg = lines.join(" · ");
-        setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", url: null, message: msg } }));
-        return { id: row.id, slug: row.slug, status: "error", url: null, message: msg };
+        setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", message: msg } }));
+        return { id: row.id, slug: row.slug, status: "error", message: msg };
       }
       if (!res.ok) throw new Error(data.error || "Error");
-      if (data.reason === "no_provider") {
-        const msg = data.message || "Configura la API de imágenes en el panel inferior antes de generar.";
-        setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", url: null, message: msg } }));
-        return { id: row.id, slug: row.slug, status: "error", url: null, message: msg };
-      }
-      setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "ready", url: data.url } }));
-      return { id: row.id, slug: row.slug, status: "ready", url: data.url };
+      setPreviews((p) => ({
+        ...p,
+        [row.id]: {
+          id: row.id,
+          slug: row.slug,
+          status: "ready",
+          dataUrl: data.data_url,
+          usedBrandBottle: data.used_brand_bottle,
+          hasOriginalReference: data.has_original_reference
+        }
+      }));
+      return {
+        id: row.id,
+        slug: row.slug,
+        status: "ready",
+        dataUrl: data.data_url,
+        usedBrandBottle: data.used_brand_bottle,
+        hasOriginalReference: data.has_original_reference
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Error";
-      setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", url: null, message: msg } }));
-      return { id: row.id, slug: row.slug, status: "error", url: null, message: msg };
+      setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", message: msg } }));
+      return { id: row.id, slug: row.slug, status: "error", message: msg };
     }
   };
 
@@ -189,11 +290,20 @@ export default function ImagesPage() {
       toast.error("Selecciona al menos una fragancia");
       return;
     }
+    if (!brandBottle?.has_image) {
+      toast.error("Sube la imagen de la botella de marca antes de generar");
+      return;
+    }
     setBatchRunning(true);
     const targets = items.filter((i) => selected.has(i.id));
     for (const row of targets) {
+      if (!row.has_original_reference && searchStatus?.has_serpapi_key) {
+        await findReferenceFor(row);
+      } else if (!row.has_original_reference) {
+        toast.warning(`${row.full_name}: sin referencia original, se generará solo con la botella de marca`);
+      }
       await generateOne(row);
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 400));
     }
     setBatchRunning(false);
     toast.success("Generación completa.");
@@ -201,7 +311,7 @@ export default function ImagesPage() {
 
   const acceptOne = async (row: Item) => {
     const preview = previews[row.id];
-    if (!preview || preview.status !== "ready") return;
+    if (!preview || preview.status !== "ready" || !preview.dataUrl) return;
     try {
       const res = await fetch("/api/admin/fragrances/generate-image", {
         method: "POST",
@@ -209,9 +319,9 @@ export default function ImagesPage() {
         body: JSON.stringify({ slug: row.slug, save: true })
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error");
+      if (!res.ok) throw new Error(data.error || data.message || "Error");
       setItems((prev) => prev.map((p) => (p.id === row.id ? { ...p, image_url: data.image_url } : p)));
-      setPreviews((p) => ({ ...p, [row.id]: { ...p[row.id]!, status: "idle", url: null } }));
+      setPreviews((p) => ({ ...p, [row.id]: { ...p[row.id]!, status: "idle", dataUrl: null } }));
       toast.success(`${row.full_name} → imagen guardada`);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
@@ -227,23 +337,88 @@ export default function ImagesPage() {
     for (const id of ready) {
       const row = items.find((i) => i.id === id);
       if (row) await acceptOne(row);
-      await new Promise((r) => setTimeout(r, 200));
+      await new Promise((r) => setTimeout(r, 250));
     }
   };
 
   const runTestConnection = async () => {
     setTesting(true);
     setTestResult(null);
+    const endpoint =
+      configForm.provider === "gemini"
+        ? "/api/admin/image-config/test-gemini"
+        : "/api/admin/image-config/test";
+    const method = configForm.provider === "gemini" ? "GET" : "POST";
     try {
-      const r = await fetch("/api/admin/image-config/test", { method: "POST" });
+      const r = await fetch(endpoint, { method });
       const data = (await r.json()) as TestResult;
       setTestResult(data);
-      if (data.ok) toast.success("Conexión exitosa");
+      if (data.ok) toast.success(`Conexión ${configForm.provider} exitosa`);
       else toast.error(data.error || "Falló la prueba");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
     } finally {
       setTesting(false);
+    }
+  };
+
+  const runSerpApiTest = async () => {
+    setSerpTesting(true);
+    setSerpResult(null);
+    try {
+      const r = await fetch("/api/admin/image-config/test-serpapi", { method: "GET" });
+      const data = (await r.json()) as SerpApiTestResult;
+      setSerpResult(data);
+      if (data.ok) toast.success(`SerpAPI OK · ${data.image_count} imágenes`);
+      else toast.error(data.error || "SerpAPI falló");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
+    } finally {
+      setSerpTesting(false);
+    }
+  };
+
+  const uploadBrandBottle = async (file: File) => {
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("Máximo 8 MB");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Formato: JPG, PNG o WebP");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = async () => {
+      const dataUrl = reader.result as string;
+      try {
+        const res = await fetch("/api/admin/brand-bottle", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data_url: dataUrl, filename: file.name, mime_type: file.type })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Error");
+        toast.success("Imagen de marca guardada");
+        await loadAll();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Error");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearBrandBottle = async () => {
+    try {
+      const res = await fetch("/api/admin/brand-bottle", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clear: true })
+      });
+      if (!res.ok) throw new Error("Error");
+      toast.success("Imagen de marca eliminada");
+      await loadAll();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error");
     }
   };
 
@@ -265,6 +440,16 @@ export default function ImagesPage() {
       } else if (configForm.api_key.trim().length > 0) {
         payload.api_key = configForm.api_key.trim();
       }
+      if (configForm.clear_gemini_api_key) {
+        payload.clear_gemini_api_key = true;
+      } else if (configForm.gemini_api_key.trim().length > 0) {
+        payload.gemini_api_key = configForm.gemini_api_key.trim();
+      }
+      if (configForm.clear_serpapi_api_key) {
+        payload.clear_serpapi_api_key = true;
+      } else if (configForm.serpapi_api_key.trim().length > 0) {
+        payload.serpapi_api_key = configForm.serpapi_api_key.trim();
+      }
       const r = await fetch("/api/admin/image-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -273,7 +458,15 @@ export default function ImagesPage() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Error");
       toast.success("Configuración guardada");
-      setConfigForm((f) => ({ ...f, api_key: "", clear_api_key: false }));
+      setConfigForm((f) => ({
+        ...f,
+        api_key: "",
+        clear_api_key: false,
+        gemini_api_key: "",
+        clear_gemini_api_key: false,
+        serpapi_api_key: "",
+        clear_serpapi_api_key: false
+      }));
       await loadAll();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
@@ -292,17 +485,39 @@ export default function ImagesPage() {
 
   const selectedCount = selected.size;
   const readyCount = selectedIds(items, previews).length;
+  const hasMiniMaxKey = Boolean(config?.api_key);
+  const hasGeminiKey = Boolean(config?.gemini_api_key);
+  const hasSerpKey = Boolean(config?.serpapi_api_key);
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="font-display italic text-2xl sm:text-3xl text-ink">Imágenes con IA</h1>
         <p className="mt-1 text-sm text-ink-mute">
-          Genera imágenes con plantilla de marca. Selecciona hasta {MAX_SELECTION} fragancias, previsualiza, y guarda las que te gusten.
+          1) Sube la imagen de la botella de tu marca. 2) Busca la referencia del perfume original. 3) Genera y guarda.
         </p>
       </div>
 
-      {diag && <DiagPanel diag={diag} testResult={testResult} />}
+      <BrandBottlePanel
+        brandBottle={brandBottle}
+        onPickFile={() => brandBottleFileRef.current?.click()}
+        onClear={clearBrandBottle}
+        fileInputRef={brandBottleFileRef}
+        onFile={uploadBrandBottle}
+      />
+
+      <StatusBadges
+        hasMiniMaxKey={hasMiniMaxKey || sources?.minimax !== "none"}
+        hasGeminiKey={hasGeminiKey || sources?.gemini !== "none"}
+        hasSerpKey={hasSerpKey || sources?.serpapi !== "none"}
+        minimaxSrc={sources?.minimax ?? "none"}
+        geminiSrc={sources?.gemini ?? "none"}
+        serpSrc={sources?.serpapi ?? "none"}
+        provider={config?.provider ?? "minimax"}
+        searchStatus={searchStatus}
+      />
+
+      {diag && <DiagPanel diag={diag} testResult={testResult} serpResult={serpResult} />}
 
       <ConfigPanel
         show={showConfig}
@@ -311,27 +526,31 @@ export default function ImagesPage() {
         setForm={setConfigForm}
         onSave={saveConfig}
         onTest={runTestConnection}
+        onTestSerpApi={runSerpApiTest}
         saving={savingConfig}
         testing={testing}
+        serpTesting={serpTesting}
         testResult={testResult}
         config={config}
+        serpResult={serpResult}
+        sources={sources}
       />
 
       <div className="liquid-glass rounded-2xl p-4 sm:p-5 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
           <label className="flex-1 block">
-            <span className="text-[10px] uppercase tracking-wider text-ink-mute">Buscar fragancia</span>
+            <span className="field-label">Buscar fragancia</span>
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar por nombre, marca, código…"
-              className="mt-1 w-full liquid-glass rounded-full px-3 sm:px-4 py-2 text-sm bg-transparent outline-none placeholder:text-ink-mute"
+              className="field-input"
             />
           </label>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={runBatch}
-              disabled={batchRunning || selectedCount === 0}
+              disabled={batchRunning || selectedCount === 0 || !brandBottle?.has_image}
               className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
               {batchRunning ? "Generando…" : `Generar ${selectedCount || ""} previews`}
@@ -354,8 +573,13 @@ export default function ImagesPage() {
           </div>
         </div>
         <p className="text-[11px] text-ink-mute">
-          {selectedCount}/{MAX_SELECTION} seleccionadas
+          {selectedCount}/{MAX_SELECTION} seleccionadas · {readyCount} previews listas
         </p>
+        {!brandBottle?.has_image && (
+          <p className="text-[11px] text-rose-300">
+            Sube la imagen de la botella de marca para habilitar la generación.
+          </p>
+        )}
       </div>
 
       {loading ? (
@@ -365,6 +589,7 @@ export default function ImagesPage() {
           {filtered.map((row) => {
             const isSelected = selected.has(row.id);
             const preview = previews[row.id];
+            const isFetching = refetching.has(row.id);
             return (
               <div
                 key={row.id}
@@ -389,9 +614,23 @@ export default function ImagesPage() {
                     <p className="text-[10px] text-ink-mute truncate">{row.brand}</p>
                   </div>
                 </label>
-                <div className="aspect-square bg-bg-elev/40 grid place-items-center text-xs text-ink-mute">
-                  {preview?.status === "ready" && preview.url ? (
-                    <img src={preview.url} alt={`Preview IA de ${row.full_name}`} className="w-full h-full object-cover" />
+                <div className="relative aspect-square bg-black/30 grid place-items-center text-xs text-ink-mute">
+                  {preview?.status === "ready" && preview.dataUrl ? (
+                    <>
+                      <img src={preview.dataUrl} alt={`Preview IA de ${row.full_name}`} className="w-full h-full object-cover" />
+                      <div className="absolute top-1.5 left-1.5 flex flex-col gap-0.5">
+                        {preview.usedBrandBottle && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-black/70 text-[9px] text-ink uppercase tracking-wider">
+                            botella marca
+                          </span>
+                        )}
+                        {preview.hasOriginalReference && (
+                          <span className="px-1.5 py-0.5 rounded-full bg-black/70 text-[9px] text-ink uppercase tracking-wider">
+                            ref original
+                          </span>
+                        )}
+                      </div>
+                    </>
                   ) : preview?.status === "generating" ? (
                     <span className="text-gold">Generando…</span>
                   ) : preview?.status === "error" ? (
@@ -402,23 +641,39 @@ export default function ImagesPage() {
                     <span>Sin imagen</span>
                   )}
                 </div>
-                {preview?.status === "ready" && (
-                  <div className="p-2 flex gap-2">
+                <div className="p-2 flex flex-col gap-2">
+                  <div className="flex items-center justify-between text-[10px] text-ink-mute px-1">
+                    <span>
+                      {row.has_original_reference
+                        ? `Ref: ${row.original_image_source ?? "OK"}`
+                        : "Sin ref original"}
+                    </span>
                     <button
-                      onClick={() => acceptOne(row)}
-                      className="flex-1 liquid-glass-strong rounded-full px-3 py-1.5 text-xs hover:text-gold"
+                      onClick={() => findReferenceFor(row)}
+                      disabled={isFetching}
+                      className="text-gold hover:text-gold/80 disabled:opacity-50"
                     >
-                      Guardar
-                    </button>
-                    <button
-                      onClick={() => generateOne(row)}
-                      disabled={batchRunning}
-                      className="flex-1 liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold"
-                    >
-                      Regenerar
+                      {isFetching ? "Buscando…" : row.has_original_reference ? "Re-buscar" : "Buscar ref"}
                     </button>
                   </div>
-                )}
+                  {preview?.status === "ready" && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => acceptOne(row)}
+                        className="flex-1 liquid-glass-strong rounded-full px-3 py-1.5 text-xs hover:text-gold"
+                      >
+                        Guardar
+                      </button>
+                      <button
+                        onClick={() => generateOne(row)}
+                        disabled={batchRunning}
+                        className="flex-1 liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold"
+                      >
+                        Regenerar
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -432,35 +687,198 @@ function selectedIds(items: Item[], previews: Record<number, Preview>): number[]
   return items.filter((i) => previews[i.id]?.status === "ready").map((i) => i.id);
 }
 
-function DiagPanel({ diag, testResult }: { diag: Diag; testResult: TestResult | null }) {
+function StatusBadges({
+  hasMiniMaxKey,
+  hasGeminiKey,
+  hasSerpKey,
+  minimaxSrc,
+  geminiSrc,
+  serpSrc,
+  provider,
+  searchStatus
+}: {
+  hasMiniMaxKey: boolean;
+  hasGeminiKey: boolean;
+  hasSerpKey: boolean;
+  minimaxSrc: "db" | "env" | "none";
+  geminiSrc: "db" | "env" | "none";
+  serpSrc: "db" | "env" | "none";
+  provider: string;
+  searchStatus: { has_serpapi_key: boolean; has_tavily: boolean; has_serper: boolean; has_pexels: boolean } | null;
+}) {
+  return (
+    <div className="liquid-glass rounded-2xl p-3 sm:p-4">
+      <p className="field-label mb-2">Estado de configuración</p>
+      <div className="flex flex-wrap items-center gap-2 text-[11px]">
+        <span
+          className={`px-2 py-1 rounded-full ${
+            provider === "gemini"
+              ? hasGeminiKey
+                ? "badge-ok"
+                : "badge-err"
+              : provider === "minimax"
+              ? hasMiniMaxKey
+                ? "badge-ok"
+                : "badge-err"
+              : "badge-off"
+          }`}
+        >
+          {provider === "gemini" ? "🤖 Gemini" : "🔷 MiniMax"}:{" "}
+          {provider === "gemini"
+            ? hasGeminiKey
+              ? `activa${geminiSrc === "db" ? " (db)" : geminiSrc === "env" ? " (env)" : ""}`
+              : "falta"
+            : provider === "minimax"
+            ? hasMiniMaxKey
+              ? `activa${minimaxSrc === "db" ? " (db)" : minimaxSrc === "env" ? " (env)" : ""}`
+              : "falta"
+            : "—"}
+        </span>
+        <span className={`px-2 py-1 rounded-full ${hasSerpKey ? "badge-ok" : "badge-warn"}`}>
+          {hasSerpKey ? "✓ SerpAPI" : "⚠ Sin SerpAPI"}
+          {serpSrc === "db" ? " (db)" : serpSrc === "env" ? " (env)" : ""}
+          {!hasSerpKey && " — cae a Tavily/Serper/Pexels"}
+        </span>
+        {searchStatus?.has_tavily && (
+          <span className="px-2 py-1 rounded-full badge-info">Tavily</span>
+        )}
+        {searchStatus?.has_serper && (
+          <span className="px-2 py-1 rounded-full badge-info">Serper</span>
+        )}
+        {searchStatus?.has_pexels && (
+          <span className="px-2 py-1 rounded-full badge-info">Pexels</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function BrandBottlePanel({
+  brandBottle,
+  onPickFile,
+  onClear,
+  fileInputRef,
+  onFile
+}: {
+  brandBottle: BrandBottleInfo | null;
+  onPickFile: () => void;
+  onClear: () => void;
+  fileInputRef: React.RefObject<HTMLInputElement>;
+  onFile: (file: File) => void;
+}) {
+  return (
+    <div className="liquid-glass rounded-2xl p-4 sm:p-5 space-y-3">
+      <div className="flex items-start gap-4">
+        <div className="w-24 h-24 rounded-xl overflow-hidden bg-black/30 grid place-items-center text-ink-mute text-xs shrink-0">
+          {brandBottle?.has_image ? (
+            <img src="/api/image/brand-bottle" alt="Botella de la marca" className="w-full h-full object-cover" />
+          ) : (
+            <span>Sin imagen</span>
+          )}
+        </div>
+        <div className="flex-1 min-w-0 space-y-1">
+          <p className="text-sm font-medium text-ink">Botella de la marca</p>
+          <p className="text-[11px] text-ink-mute">
+            Sube una foto de la botella con la etiqueta de tu marca. Se usará como sujeto principal en cada generación.
+            {brandBottle?.has_image && brandBottle.size_bytes > 0 && (
+              <> · Tamaño: {(brandBottle.size_bytes / 1024).toFixed(0)} KB{brandBottle.filename ? ` · ${brandBottle.filename}` : ""}</>
+            )}
+          </p>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={onPickFile}
+              className="liquid-glass-strong rounded-full px-3 py-1.5 text-xs hover:text-gold"
+            >
+              {brandBottle?.has_image ? "Reemplazar" : "Subir imagen"}
+            </button>
+            {brandBottle?.has_image && (
+              <button
+                onClick={onClear}
+                className="liquid-glass rounded-full px-3 py-1.5 text-xs text-rose-300 hover:text-rose-200"
+              >
+                Quitar
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f) onFile(f);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+}
+
+function DiagPanel({
+  diag,
+  testResult,
+  serpResult
+}: {
+  diag: Diag;
+  testResult: TestResult | null;
+  serpResult: SerpApiTestResult | null;
+}) {
   const resolved = diag.resolved;
   const hasKey = diag.has_db_config || diag.has_env_key;
   return (
-    <div className="liquid-glass rounded-2xl p-3 sm:p-4 text-xs space-y-2">
-      <div className="flex items-center gap-2 text-ink-mute">
-        <span className={`h-2 w-2 rounded-full ${hasKey ? "bg-amber-400" : "bg-rose-400"}`} />
-        <span className="font-medium">
-          {hasKey
-            ? `Configuración encontrada (origen: ${resolved?.source ?? "?"})`
-            : "Sin configuración — completa el panel de abajo antes de generar"}
-        </span>
-        {testResult && (
+    <div className="liquid-glass rounded-2xl p-3 sm:p-4 space-y-2">
+      <p className="field-label">Diagnóstico</p>
+      {resolved && (
+        <div className="space-y-1">
+          <div className="kv-row">
+            <span className="kv-key">Endpoint generación:</span>
+            <span className="kv-value">{resolved.endpoint}</span>
+          </div>
+          <div className="kv-row">
+            <span className="kv-key">Modelo:</span>
+            <span className="kv-value">{resolved.model}</span>
+          </div>
+          <div className="kv-row">
+            <span className="kv-key">Origen config:</span>
+            <span className="kv-value">{resolved.source}</span>
+          </div>
+        </div>
+      )}
+      {testResult && (
+        <div className="kv-row">
+          <span className="kv-key">Último test gen:</span>
           <span
-            className={`ml-2 px-2 py-0.5 rounded-full text-[10px] ${
-              testResult.ok
-                ? "bg-emerald-400/20 text-emerald-300"
-                : "bg-rose-400/20 text-rose-300"
+            className={`px-2 py-0.5 rounded-full text-[10px] ${
+              testResult.ok ? "badge-ok" : "badge-err"
             }`}
           >
-            {testResult.ok ? `test OK · ${testResult.image_count} img · ${testResult.elapsed_ms}ms` : "test falló"}
+            {testResult.ok
+              ? `OK · ${testResult.image_count} img · ${testResult.elapsed_ms}ms`
+              : `falló · ${testResult.error ?? ""}`}
           </span>
-        )}
-      </div>
-      {resolved && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4 gap-y-1 text-[11px] text-ink-mute">
-          <div><span className="text-ink-mute/60">Endpoint:</span> <code className="text-ink">{resolved.endpoint}</code></div>
-          <div><span className="text-ink-mute/60">Modelo:</span> <code className="text-ink">{resolved.model}</code></div>
-          <div><span className="text-ink-mute/60">Origen:</span> <code className="text-ink">{resolved.source}</code></div>
+        </div>
+      )}
+      {serpResult && (
+        <div className="kv-row">
+          <span className="kv-key">Último test SerpAPI:</span>
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] ${
+              serpResult.ok ? "badge-ok" : "badge-err"
+            }`}
+          >
+            {serpResult.ok
+              ? `OK · ${serpResult.image_count} img · ${serpResult.elapsed_ms}ms${
+                  serpResult.source ? ` · fuente: ${serpResult.source}` : ""
+                }`
+              : `falló · ${serpResult.error ?? ""}${
+                  serpResult.db_key_length !== undefined
+                    ? ` · DB key len: ${serpResult.db_key_length}, ENV key len: ${serpResult.env_key_length}`
+                    : ""
+                }`}
+          </span>
         </div>
       )}
     </div>
@@ -474,18 +892,26 @@ function ConfigPanel({
   setForm,
   onSave,
   onTest,
+  onTestSerpApi,
   saving,
   testing,
+  serpTesting,
   testResult,
-  config
+  config,
+  serpResult,
+  sources
 }: {
   show: boolean;
   setShow: (v: boolean) => void;
   form: {
-    provider: string;
+    provider: "minimax" | "gemini" | "openai" | "replicate";
     endpoint: string;
     api_key: string;
     clear_api_key: boolean;
+    gemini_api_key: string;
+    clear_gemini_api_key: boolean;
+    serpapi_api_key: string;
+    clear_serpapi_api_key: boolean;
     model: string;
     aspect_ratio: string;
     response_format: "url" | "base64";
@@ -496,10 +922,19 @@ function ConfigPanel({
   setForm: React.Dispatch<React.SetStateAction<typeof form>>;
   onSave: () => void;
   onTest: () => void;
+  onTestSerpApi: () => void;
   saving: boolean;
   testing: boolean;
+  serpTesting: boolean;
   testResult: TestResult | null;
   config: ImageConfig | null;
+  serpResult: SerpApiTestResult | null;
+  sources: {
+    serpapi: "db" | "env" | "none";
+    gen: "db" | "env" | "none";
+    gemini: "db" | "env" | "none";
+    minimax: "db" | "env" | "none";
+  } | null;
 }) {
   return (
     <div className="liquid-glass rounded-2xl p-4 sm:p-5 space-y-3">
@@ -507,69 +942,237 @@ function ConfigPanel({
         onClick={() => setShow(!show)}
         className="flex items-center gap-2 w-full text-left"
       >
-        <span className="text-sm font-medium text-ink">⚙ Configuración del proveedor de imágenes</span>
-        <span className="text-[11px] text-ink-mute">
-          {config?.api_key ? `(api_key guardada · ${config.api_key})` : "(sin api_key)"}
-        </span>
-        <span className="ml-auto text-[10px] text-ink-mute/60">{show ? "ocultar" : "mostrar"}</span>
+        <span className="text-sm font-medium text-ink">⚙ Configuración del proveedor de imágenes y búsqueda</span>
+        <span className="ml-auto text-[10px] text-ink-mute/80">{show ? "ocultar" : "mostrar"}</span>
       </button>
       {show && (
         <div className="space-y-3 pt-2">
+          {/* === Estado actual de las keys === */}
+          <div className="space-y-1 border border-line/30 rounded-lg p-3 bg-black/40">
+            <p className="field-label">Keys activas</p>
+            <div className="kv-row">
+              <span className="kv-key">🔷 MiniMax (gen):</span>
+              <span className="kv-value">
+                {config?.api_key ?? (sources?.minimax === "env" ? "(env:MINIMAX_API_KEY)" : "(no guardada)")}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                  sources?.minimax !== "none" ? "badge-ok" : "badge-err"
+                }`}
+              >
+                {sources?.minimax === "db" ? "DB ✓" : sources?.minimax === "env" ? "ENV ✓" : "falta"}
+              </span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">🤖 Gemini (gen):</span>
+              <span className="kv-value">
+                {config?.gemini_api_key ?? (sources?.gemini === "env" ? "(env:GEMINI_API_KEY)" : "(no guardada)")}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                  sources?.gemini !== "none" ? "badge-ok" : "badge-err"
+                }`}
+              >
+                {sources?.gemini === "db" ? "DB ✓" : sources?.gemini === "env" ? "ENV ✓" : "falta"}
+              </span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">🔍 SerpAPI (búsqueda):</span>
+              <span className="kv-value">
+                {config?.serpapi_api_key ?? (sources?.serpapi === "env" ? "(env:SERPAPI_API_KEY)" : "(no guardada)")}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                  sources?.serpapi !== "none" ? "badge-ok" : "badge-warn"
+                }`}
+              >
+                {sources?.serpapi === "db" ? "DB ✓" : sources?.serpapi === "env" ? "ENV ✓" : "falta"}
+              </span>
+            </div>
+            <p className="text-[10px] text-ink-mute/80 pt-1">
+              Cada key es independiente. DB toma precedencia si está guardada. ENV se usa como fallback.
+              Configura el provider arriba para usar Gemini o MiniMax.
+            </p>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">Proveedor</span>
-              <input
+              <span className="field-label">Proveedor de generación</span>
+              <select
                 value={form.provider}
-                onChange={(e) => setForm((f) => ({ ...f, provider: e.target.value }))}
-                className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
-              />
+                onChange={(e) => {
+                  const p = e.target.value as "minimax" | "gemini" | "openai" | "replicate";
+                  setForm((f) => {
+                    if (p === "gemini") {
+                      return {
+                        ...f,
+                        provider: p,
+                        endpoint: "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image:generateContent",
+                        model: "gemini-3.1-flash-image",
+                        response_format: "base64",
+                        n: 1,
+                        prompt_optimizer: false
+                      };
+                    }
+                    if (p === "minimax") {
+                      return {
+                        ...f,
+                        provider: p,
+                        endpoint: "https://api.minimax.io/v1/image_generation",
+                        model: "image-01",
+                        response_format: "url",
+                        n: 1
+                      };
+                    }
+                    return { ...f, provider: p };
+                  });
+                }}
+                className="field-select"
+              >
+                <option value="gemini">Google Gemini (Nano Banana 2) — multi-ref ✓</option>
+                <option value="minimax">MiniMax (image-01) — 1 ref</option>
+                <option value="openai">OpenAI (próximamente)</option>
+                <option value="replicate">Replicate (próximamente)</option>
+              </select>
+              <p className="text-[10px] text-ink-mute/80 pt-1">
+                {form.provider === "gemini"
+                  ? "Gemini acepta hasta 14 imágenes de referencia. La botella de tu marca y el perfume original se usan ambos."
+                  : form.provider === "minimax"
+                  ? "MiniMax image-01 acepta solo 1 imagen de referencia. Se usa solo la botella de marca."
+                  : "Próximamente"}
+              </p>
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">Endpoint</span>
+              <span className="field-label">Endpoint</span>
               <input
                 value={form.endpoint}
                 onChange={(e) => setForm((f) => ({ ...f, endpoint: e.target.value }))}
-                placeholder="https://api.minimax.io/v1/image_generation"
-                className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold font-mono"
+                placeholder={form.provider === "gemini" ? "https://generativelanguage.googleapis.com/..." : "https://api.minimax.io/v1/image_generation"}
+                className="field-input font-mono"
+                style={{ fontSize: 12 }}
               />
             </label>
-            <label className="block sm:col-span-2">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">API Key (deja vacío para no cambiar)</span>
-              <div className="mt-1 flex gap-2">
+
+            {/* === MiniMax key (solo si provider = minimax) === */}
+            {form.provider === "minimax" && (
+              <div className="sm:col-span-2 space-y-1">
+                <span className="field-label">🔷 API Key de MiniMax (generación)</span>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={form.api_key}
+                    onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value, clear_api_key: false }))}
+                    placeholder={config?.api_key ?? "sk-..."}
+                    className="field-input font-mono"
+                    style={{ fontSize: 12 }}
+                  />
+                  <button
+                    onClick={() => setForm((f) => ({ ...f, clear_api_key: !f.clear_api_key, api_key: "" }))}
+                    className={`px-3 py-2 rounded-md text-xs whitespace-nowrap ${
+                      form.clear_api_key
+                        ? "badge-err"
+                        : "liquid-glass text-ink-mute hover:text-rose-300"
+                    }`}
+                  >
+                    {form.clear_api_key ? "Borrará al guardar" : "Borrar"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-ink-mute/80">
+                  Si la dejas vacía, se usa <code>MINIMAX_API_KEY</code> de Railway.
+                </p>
+              </div>
+            )}
+
+            {/* === Gemini key (solo si provider = gemini) === */}
+            {form.provider === "gemini" && (
+              <div className="sm:col-span-2 space-y-1">
+                <span className="field-label">🤖 API Key de Google Gemini (Google AI Studio)</span>
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    value={form.gemini_api_key}
+                    onChange={(e) => setForm((f) => ({ ...f, gemini_api_key: e.target.value, clear_gemini_api_key: false }))}
+                    placeholder={config?.gemini_api_key ?? "AIza..."}
+                    className="field-input font-mono"
+                    style={{ fontSize: 12 }}
+                  />
+                  <button
+                    onClick={() => setForm((f) => ({ ...f, clear_gemini_api_key: !f.clear_gemini_api_key, gemini_api_key: "" }))}
+                    className={`px-3 py-2 rounded-md text-xs whitespace-nowrap ${
+                      form.clear_gemini_api_key
+                        ? "badge-err"
+                        : "liquid-glass text-ink-mute hover:text-rose-300"
+                    }`}
+                  >
+                    {form.clear_gemini_api_key ? "Borrará al guardar" : "Borrar"}
+                  </button>
+                </div>
+                <p className="text-[10px] text-ink-mute/80">
+                  Distinta de SerpAPI. Obtén la tuya en{" "}
+                  <a
+                    href="https://aistudio.google.com/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-gold hover:underline"
+                  >
+                    aistudio.google.com/apikey
+                  </a>
+                  . Si la dejas vacía, se usa <code>GEMINI_API_KEY</code> de Railway.
+                </p>
+              </div>
+            )}
+
+            {/* === SerpAPI key === */}
+            <div className="sm:col-span-2 space-y-1">
+              <span className="field-label">
+                API Key de SerpAPI (Google Images) — opcional pero recomendado
+              </span>
+              <div className="flex gap-2">
                 <input
                   type="password"
-                  value={form.api_key}
-                  onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value, clear_api_key: false }))}
-                  placeholder={config?.api_key ?? "sk-..."}
-                  className="flex-1 bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold font-mono"
+                  value={form.serpapi_api_key}
+                  onChange={(e) => setForm((f) => ({ ...f, serpapi_api_key: e.target.value, clear_serpapi_api_key: false }))}
+                  placeholder={config?.serpapi_api_key ?? "serpapi key…"}
+                  className="field-input font-mono"
+                  style={{ fontSize: 12 }}
                 />
                 <button
-                  onClick={() => setForm((f) => ({ ...f, clear_api_key: !f.clear_api_key, api_key: "" }))}
+                  onClick={() => setForm((f) => ({ ...f, clear_serpapi_api_key: !f.clear_serpapi_api_key, serpapi_api_key: "" }))}
                   className={`px-3 py-2 rounded-md text-xs whitespace-nowrap ${
-                    form.clear_api_key
-                      ? "bg-rose-400/20 text-rose-300"
+                    form.clear_serpapi_api_key
+                      ? "badge-err"
                       : "liquid-glass text-ink-mute hover:text-rose-300"
                   }`}
                 >
-                  {form.clear_api_key ? "Borrará al guardar" : "Borrar api_key"}
+                  {form.clear_serpapi_api_key ? "Borrará al guardar" : "Borrar"}
                 </button>
               </div>
-            </label>
+              <a
+                href="https://serpapi.com/manage-api-key"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-gold hover:underline mt-1 inline-block"
+              >
+                Obtener api_key en serpapi.com →
+              </a>
+            </div>
+
             <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">Modelo</span>
+              <span className="field-label">Modelo</span>
               <input
                 value={form.model}
                 onChange={(e) => setForm((f) => ({ ...f, model: e.target.value }))}
                 placeholder="image-01"
-                className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold font-mono"
+                className="field-input font-mono"
+                style={{ fontSize: 12 }}
               />
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">Aspect ratio</span>
+              <span className="field-label">Aspect ratio</span>
               <select
                 value={form.aspect_ratio}
                 onChange={(e) => setForm((f) => ({ ...f, aspect_ratio: e.target.value }))}
-                className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+                className="field-select"
               >
                 {ASPECT_RATIOS.map((a) => (
                   <option key={a} value={a}>{a}</option>
@@ -577,25 +1180,25 @@ function ConfigPanel({
               </select>
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">Response format</span>
+              <span className="field-label">Response format</span>
               <select
                 value={form.response_format}
                 onChange={(e) => setForm((f) => ({ ...f, response_format: e.target.value as "url" | "base64" }))}
-                className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+                className="field-select"
               >
-                <option value="url">url (expira en 24h, descarga rápido)</option>
-                <option value="base64">base64 (persistente, sin descarga)</option>
+                <option value="url">url (recomendado — se descarga y guarda)</option>
+                <option value="base64">base64 (sin descarga, más persistente)</option>
               </select>
             </label>
             <label className="block">
-              <span className="text-[10px] uppercase tracking-wider text-ink-mute">N imágenes por request</span>
+              <span className="field-label">N imágenes por request</span>
               <input
                 type="number"
                 min={1}
                 max={9}
                 value={form.n}
                 onChange={(e) => setForm((f) => ({ ...f, n: Math.max(1, Math.min(9, Number(e.target.value))) }))}
-                className="mt-1 w-full bg-bg-elev/60 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-gold"
+                className="field-input"
               />
             </label>
             <label className="block sm:col-span-2 flex items-center gap-2 text-sm">
@@ -631,32 +1234,49 @@ function ConfigPanel({
               disabled={testing}
               className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
-              {testing ? "Probando…" : "Probar conexión"}
+              {testing
+                ? "Probando…"
+                : form.provider === "gemini"
+                ? "Probar Gemini"
+                : form.provider === "minimax"
+                ? "Probar MiniMax"
+                : "Probar generación"}
+            </button>
+            <button
+              onClick={onTestSerpApi}
+              disabled={serpTesting}
+              className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
+            >
+              {serpTesting ? "Probando…" : "Probar SerpAPI"}
             </button>
             {testResult && (
               <span
                 className={`text-[11px] px-2 py-1 rounded-full ${
-                  testResult.ok
-                    ? "bg-emerald-400/20 text-emerald-300"
-                    : "bg-rose-400/20 text-rose-300"
+                  testResult.ok ? "badge-ok" : "badge-err"
                 }`}
               >
                 {testResult.ok
-                  ? `OK · ${testResult.image_count ?? 0} img · ${testResult.elapsed_ms ?? 0}ms · HTTP ${testResult.status_code}`
-                  : `Falló · HTTP ${testResult.status_code ?? "?"} · ${testResult.error ?? ""}`}
+                  ? `gen OK · ${testResult.image_count ?? 0} img · ${testResult.elapsed_ms ?? 0}ms`
+                  : `gen falló · ${testResult.error ?? ""}`}
               </span>
             )}
-          </div>
-
-          <div className="text-[10px] text-ink-mute/80 leading-relaxed border-t border-line/30 pt-2">
-            <p className="text-ink/80 font-medium">Para MiniMax (image-01):</p>
-            <ul className="list-disc list-inside space-y-0.5 mt-1">
-              <li>Endpoint fijo: <code className="text-ink">https://api.minimax.io/v1/image_generation</code></li>
-              <li>Modelo: <code className="text-ink">image-01</code> (única opción)</li>
-              <li>API key: obtén la tuya en <a className="text-gold hover:underline" href="https://platform.minimax.io/user-center/basic-information/interface-key" target="_blank" rel="noreferrer">platform.minimax.io</a></li>
-              <li>URLs expiran en 24h (por eso descargamos a <code className="text-ink">public/fragancias/</code>)</li>
-              <li>Status codes de error: 1004 (auth), 1008 (sin saldo), 1026 (prompt sensible), 2049 (key inválida)</li>
-            </ul>
+            {serpResult && (
+              <span
+                className={`text-[11px] px-2 py-1 rounded-full ${
+                  serpResult.ok ? "badge-ok" : "badge-err"
+                }`}
+              >
+                {serpResult.ok
+                  ? `serp OK · ${serpResult.image_count ?? 0} img · ${serpResult.elapsed_ms ?? 0}ms${
+                      serpResult.source ? ` · ${serpResult.source}` : ""
+                    }`
+                  : `serp falló · ${serpResult.error ?? ""}${
+                      serpResult.db_key_length !== undefined
+                        ? ` · DB:${serpResult.db_key_length}c ENV:${serpResult.env_key_length}c`
+                        : ""
+                    }`}
+              </span>
+            )}
           </div>
         </div>
       )}

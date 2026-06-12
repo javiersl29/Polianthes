@@ -72,6 +72,11 @@ const SELECT_LIST = [
   "artistic_name",
   "inspired_by_name",
   "inspired_by_brand",
+  "(original_image_data IS NOT NULL) AS has_original_reference",
+  "original_image_url",
+  "original_image_source",
+  "original_image_fetched_at",
+  "use_brand_bottle_override",
   ...VEC_COLUMNS
 ].join(", ");
 
