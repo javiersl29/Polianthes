@@ -19,23 +19,69 @@ const TAVILY_URL = "https://api.tavily.com/search";
 const SERPER_IMAGES_URL = "https://google.serper.dev/images";
 
 /**
+ * Hostnames de tiendas conocidas. Para estos, confiamos más en el dominio
+ * que en el título (porque muchos listings de Amazon/Mercado Libre tienen
+ * títulos genéricos tipo "Eau de Parfum Bottle 100ml" + sólo la URL tiene
+ * el nombre real del perfume). Si el host es de confianza y la query ya
+ * incluye brand+name entre comillas, la imagen es muy probablemente la
+ * correcta.
+ */
+const TRUSTED_SHOP_HOSTS: RegExp[] = [
+  /(^|\.)amazon\./i,
+  /(^|\.)mercadolibre\.com\.mx$/i,
+  /(^|\.)mercadolibre\.com$/i,
+  /(^|\.)articulo\.mercadolibre\.com\.mx$/i,
+  /(^|\.)sephora\.com$/i,
+  /(^|\.)ulta\.com$/i,
+  /(^|\.)fragrancenet\.com$/i,
+  /(^|\.)macys\.com$/i,
+  /(^|\.)liverpool\.com\.mx$/i,
+  /(^|\.)walmart\.com\.mx$/i,
+  /(^|\.)walmart\.com$/i,
+  /(^|\.)coppel\.com$/i,
+  /(^|\.)ebay\.com$/i
+];
+
+function isTrustedShopHost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return TRUSTED_SHOP_HOSTS.some((re) => re.test(u.hostname));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Valida que una imagen de resultado realmente corresponde al perfume
- * que estamos buscando. Revisa que el título y la fuente mencionen
- * AMBAS palabras (brand y name). Esto es crítico porque muchos nombres
- * de perfume son palabras comunes (Fierce, Cloud, Noir, etc.) y Google
- * puede devolver resultados de productos no relacionados.
+ * que estamos buscando. Versión más permisiva: para tiendas conocidas
+ * (Amazon, Mercado Libre, etc.) confiamos en el dominio, y para otros
+ * sitios pedimos match del nombre del perfume en el título.
+ *
+ * El brand es opcional (muchas imágenes de producto no mencionan la
+ * marca en el title — la tienen en la URL o en la imagen misma). El
+ * nombre del perfume sí lo requerimos, con match parcial: al menos
+ * la mitad de los tokens significativos del name.
  */
 function matchesPerfume(
-  img: { title?: string; source?: string },
+  img: { title?: string; source?: string; url: string },
   brand: string,
   name: string
 ): boolean {
+  // Tienda conocida → confiamos en el dominio (la query ya tiene comillas
+  // exactas con brand+name, Google no devuelve perfumes no relacionados
+  // en estas URLs)
+  if (isTrustedShopHost(img.url)) return true;
+
   const haystack = `${img.title ?? ""} ${img.source ?? ""}`.toLowerCase();
-  if (!haystack.trim()) return true; // si no hay metadata, no podemos validar
-  const brandLc = brand.toLowerCase();
+  if (!haystack.trim()) return true; // sin metadata, no podemos validar
+
   const nameLc = name.toLowerCase();
-  // Quitamos tokens de marca y nombre muy cortos (1-2 chars) y stopwords
-  const stop = new Set(["de", "la", "el", "los", "las", "y", "of", "the", "a", "an", "&", "by", "for", "in", "on", "to"]);
+  const brandLc = brand.toLowerCase();
+  const stop = new Set([
+    "de", "la", "el", "los", "las", "y", "of", "the", "a", "an", "&", "by",
+    "for", "in", "on", "to", "with", "edt", "edp", "parfum", "toilette",
+    "perfume", "fragrance", "bottle", "spray", "cologne", "new", "ml", "oz"
+  ]);
   const tokens = (s: string) =>
     s
       .replace(/[""«»']/g, "")
@@ -44,12 +90,21 @@ function matchesPerfume(
       .filter((t) => t.length >= 3 && !stop.has(t));
   const brandTokens = tokens(brandLc);
   const nameTokens = tokens(nameLc);
-  // Si no pudimos tokenizar nada (nombre muy corto), aceptamos
-  if (brandTokens.length === 0 && nameTokens.length === 0) return true;
-  // Requerir al menos un token de brand Y un token de name
-  const hasBrand = brandTokens.length === 0 || brandTokens.some((t) => haystack.includes(t));
-  const hasName = nameTokens.length === 0 || nameTokens.some((t) => haystack.includes(t));
-  return hasBrand && hasName;
+
+  // Si no hay tokens significativos del name, aceptamos
+  if (nameTokens.length === 0) return true;
+
+  // Match parcial: al menos 50% de los tokens del name deben aparecer
+  const matched = nameTokens.filter((t) => haystack.includes(t)).length;
+  if (matched / nameTokens.length >= 0.5) return true;
+
+  // Si no, intentamos también con el brand como match secundario
+  if (brandTokens.length > 0) {
+    const brandMatched = brandTokens.filter((t) => haystack.includes(t)).length;
+    if (brandMatched / brandTokens.length >= 0.5) return true;
+  }
+
+  return false;
 }
 
 async function fromSerpApi(
@@ -79,32 +134,34 @@ async function fromSerpApi(
   //  3. Sephora / Ulta / FragranceNet / Macy's — fotos oficiales de marca
   //  4. Liverpool / Walmart / Coppel — tiendas departamentales mexicanas
   //  5. Ebay — listings variados (a veces muy buena calidad)
+  //
+  // Queries cortas (max ~50 chars) — Google devuelve más resultados.
   const queryPool: { q: string; page: number }[] = [
     // 1. Amazon prioritario (mejor calidad de listing, más resultados)
-    { q: `${b} ${n} 100ml site:amazon.com OR site:amazon.com.mx`, page: 0 },
+    { q: `${b} ${n} 100ml site:amazon.com`, page: 0 },
     // 2. Mercado Libre (excelente para perfumes vendidos en Latam)
-    { q: `${b} ${n} 100ml site:mercadolibre.com.mx OR site:articulo.mercadolibre.com.mx`, page: 0 },
-    // 3. Amazon + Mercado Libre combinados
-    { q: `${b} ${n} perfume site:amazon.com OR site:amazon.com.mx OR site:mercadolibre.com.mx`, page: 0 },
+    { q: `${b} ${n} 100ml site:mercadolibre.com.mx`, page: 0 },
+    // 3. Amazon.com.mx
+    { q: `${b} ${n} 100ml site:amazon.com.mx`, page: 0 },
     // 4. Sephora / Ulta / FragranceNet (marcas oficiales)
-    { q: `${b} ${n} 100ml site:sephora.com OR site:ulta.com OR site:fragrancenet.com OR site:macys.com`, page: 0 },
+    { q: `${b} ${n} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`, page: 0 },
     // 5. Tiendas departamentales mexicanas
-    { q: `${b} ${n} site:liverpool.com.mx OR site:walmart.com.mx OR site:coppel.com`, page: 0 },
+    { q: `${b} ${n} site:liverpool.com.mx OR site:walmart.com.mx`, page: 0 },
     // 6. Ebay (listings variados)
     { q: `${b} ${n} 100ml site:ebay.com`, page: 0 },
     // 7. Genérica con tamaño
     { q: `${b} ${n} 100ml eau de parfum bottle ${neg}`, page: 0 },
-    // 8. Con "buy" prioriza listings de producto
-    { q: `${b} ${n} perfume buy ${neg}`, page: 0 },
-    // 9. Tamaño US 100ml
+    // 8. Tamaño US 100ml
     { q: `${b} ${n} 3.4oz fragrance ${neg}`, page: 0 },
-    // 10. Fallback genérico
-    { q: `${b} ${n} eau de parfum bottle ${neg}`, page: 0 },
-    // 11. Página 2 de Amazon (más resultados)
-    { q: `${b} ${n} 100ml site:amazon.com OR site:amazon.com.mx`, page: 1 },
+    // 9. Fallback genérico (sin tamaño)
+    { q: `${b} ${n} perfume bottle ${neg}`, page: 0 },
+    // 10. Con "buy" prioriza listings
+    { q: `${b} ${n} perfume buy ${neg}`, page: 0 },
+    // 11. Página 2 de Amazon
+    { q: `${b} ${n} 100ml site:amazon.com`, page: 1 },
     // 12. Página 2 de Mercado Libre
-    { q: `${b} ${n} 100ml site:mercadolibre.com.mx OR site:articulo.mercadolibre.com.mx`, page: 1 },
-    // 13. Oficial de marca
+    { q: `${b} ${n} 100ml site:mercadolibre.com.mx`, page: 1 },
+    // 13. Oficial
     { q: `${b} ${n} official fragrance bottle`, page: 0 },
     // 14. Walmart US
     { q: `${b} ${n} 100ml site:walmart.com`, page: 0 }
@@ -119,7 +176,8 @@ async function fromSerpApi(
     queryPool[(offset + 2) % queryPool.length]
   ];
 
-  // Recolectar candidatos únicos de múltiples queries
+  // Recolectar candidatos únicos de múltiples queries. Filtros más
+  // permisivos para no descartar imágenes legítimas de tamaño medio.
   const allCandidates: SerpApiImage[] = [];
   const seenUrls = new Set<string>();
   for (const { q, page } of selected) {
@@ -128,11 +186,13 @@ async function fromSerpApi(
     for (const img of r.images) {
       if (!img.url || seenUrls.has(img.url)) continue;
       if (!matchesPerfume(img, brand, name)) continue;
-      // Validación de tamaño
+      // Validación de tamaño más permisiva: ≥400px lado mayor, ratio
+      // 0.4-2.5 (incluye botellas verticales y cuadradas, excluye
+      // banners y logos)
       if (img.width && img.height) {
         const ratio = img.width / img.height;
-        if (ratio < 0.3 || ratio > 3) continue;
-        if (Math.max(img.width, img.height) < 600) continue;
+        if (ratio < 0.4 || ratio > 2.5) continue;
+        if (Math.max(img.width, img.height) < 400) continue;
       }
       seenUrls.add(img.url);
       allCandidates.push(img);
