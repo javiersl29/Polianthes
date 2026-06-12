@@ -114,7 +114,7 @@ export async function generateGeminiImage(
   const parts: unknown[] = [];
   for (const img of input.referenceImages) {
     parts.push({
-      inline_data: { mime_type: img.mimeType, data: img.data }
+      inlineData: { mimeType: img.mimeType, data: img.data }
     });
   }
   parts.push({ text: input.prompt });
@@ -131,15 +131,13 @@ export async function generateGeminiImage(
 
   const generationConfig: Record<string, unknown> = {
     response_modalities: ["TEXT", "IMAGE"],
-    // La API de Gemini (Nano Banana 2) usa `response_format.image` con snake_case
-    // (aspect_ratio, image_size). El campo `imageConfig` top-level pertenece al
-    // spec de la API de Vision (no es el mismo endpoint). Ver:
-    // https://ai.google.dev/gemini-api/docs/image-generation
-    response_format: {
-      image: {
-        aspect_ratio: validAspect,
-        image_size: validSize
-      }
+    // IMPORTANTE: la API real (verificada con llamada directa) usa `imageConfig`
+    // top-level con camelCase (aspectRatio, imageSize). El ejemplo de la doc en
+    // español que muestra `response_format.image` con snake_case NO funciona
+    // con gemini-3.1-flash-image actualmente y devuelve INVALID_ARGUMENT.
+    imageConfig: {
+      aspectRatio: validAspect,
+      imageSize: validSize
     }
   };
   // Thinking config solo aplica a modelos 3.x
@@ -176,7 +174,15 @@ export async function generateGeminiImage(
   const text = await response.text();
   let data: {
     candidates?: {
-      content?: { parts?: { text?: string; inline_data?: { mime_type: string; data: string }; thought?: boolean }[] };
+      content?: {
+        parts?: {
+          text?: string;
+          // Acepta tanto camelCase (formato real de la API) como snake_case (defensivo)
+          inlineData?: { mimeType: string; data: string };
+          inline_data?: { mime_type: string; data: string };
+          thought?: boolean;
+        }[];
+      };
       finish_reason?: string;
     }[];
     error?: { code: number; message: string; status: string };
@@ -243,9 +249,12 @@ export async function generateGeminiImage(
       if (part.text) thought = (thought ?? "") + part.text;
       continue;
     }
-    if (part.inline_data?.data) {
-      imageBase64 = part.inline_data.data;
-      mimeType = part.inline_data.mime_type ?? "image/png";
+    // Acepta camelCase (formato real) o snake_case (defensivo)
+    const imgData = part.inlineData ?? part.inline_data;
+    if (imgData?.data) {
+      imageBase64 = imgData.data;
+      const anyImg = imgData as { mimeType?: string; mime_type?: string };
+      mimeType = anyImg.mimeType ?? anyImg.mime_type ?? "image/png";
     } else if (part.text) {
       textOut = (textOut ?? "") + part.text;
     }
