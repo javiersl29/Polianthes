@@ -95,6 +95,9 @@ export default function ImagesPage() {
   const [previews, setPreviews] = useState<Record<number, Preview>>({});
   const [batchRunning, setBatchRunning] = useState(false);
   const [refetching, setRefetching] = useState<Set<number>>(new Set());
+  const [batchRefRunning, setBatchRefRunning] = useState(false);
+  const [batchRefProgress, setBatchRefProgress] = useState<{ done: number; total: number } | null>(null);
+  const [openModalRow, setOpenModalRow] = useState<Item | null>(null);
   const [search, setSearch] = useState("");
   const [config, setConfig] = useState<ImageConfig | null>(null);
   const [diag, setDiag] = useState<Diag | null>(null);
@@ -234,6 +237,74 @@ export default function ImagesPage() {
         n.delete(row.id);
         return n;
       });
+    }
+  };
+
+  const batchFindReferences = async () => {
+    if (selected.size === 0) {
+      toast.error("Selecciona al menos una fragancia");
+      return;
+    }
+    if (!searchStatus?.has_serpapi_key) {
+      const proceed = window.confirm(
+        "No tienes SerpAPI configurada. La búsqueda usará Tavily/Serper/Pexels como fallback (calidad inferior). ¿Continuar?"
+      );
+      if (!proceed) return;
+    }
+    setBatchRefRunning(true);
+    const targets = items.filter((i) => selected.has(i.id));
+    setBatchRefProgress({ done: 0, total: targets.length });
+    let done = 0;
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of targets) {
+      setRefetching((p) => new Set(p).add(row.id));
+      try {
+        const res = await fetch("/api/admin/fragrances/find-reference", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: row.slug, persist: true })
+        });
+        const data = await res.json();
+        if (data?.ok) {
+          setItems((prev) =>
+            prev.map((p) =>
+              p.id === row.id
+                ? {
+                    ...p,
+                    has_original_reference: true,
+                    original_image_url: data.reference?.url ?? p.original_image_url,
+                    original_image_source: data.reference?.source ?? p.original_image_source
+                  }
+                : p
+            )
+          );
+          succeeded += 1;
+        } else {
+          failed += 1;
+        }
+      } catch {
+        failed += 1;
+      } finally {
+        done += 1;
+        setBatchRefProgress({ done, total: targets.length });
+        setRefetching((p) => {
+          const n = new Set(p);
+          n.delete(row.id);
+          return n;
+        });
+        // Pequeña pausa para no saturar SerpAPI
+        await new Promise((r) => setTimeout(r, 300));
+      }
+    }
+    setBatchRefRunning(false);
+    setBatchRefProgress(null);
+    if (succeeded > 0 && failed === 0) {
+      toast.success(`Referencias guardadas (${succeeded})`);
+    } else if (succeeded > 0) {
+      toast.warning(`OK ${succeeded}, fallaron ${failed}`);
+    } else {
+      toast.error(`No se pudo guardar ninguna referencia (${failed})`);
     }
   };
 
@@ -579,6 +650,15 @@ export default function ImagesPage() {
           </label>
           <div className="flex items-center gap-2 flex-wrap">
             <button
+              onClick={batchFindReferences}
+              disabled={batchRefRunning || selectedCount === 0}
+              className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
+            >
+              {batchRefRunning && batchRefProgress
+                ? `Buscando refs ${batchRefProgress.done}/${batchRefProgress.total}…`
+                : `Buscar refs (${selectedCount || 0})`}
+            </button>
+            <button
               onClick={runBatch}
               disabled={batchRunning || selectedCount === 0 || !brandBottle?.has_image}
               className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
@@ -644,7 +724,11 @@ export default function ImagesPage() {
                     <p className="text-[10px] text-ink-mute truncate">{row.brand}</p>
                   </div>
                 </label>
-                <div className="relative aspect-square bg-black/30 grid place-items-center text-xs text-ink-mute">
+                <div
+                  className="relative aspect-square bg-black/30 grid place-items-center text-xs text-ink-mute cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => setOpenModalRow(row)}
+                  title="Click para ver preview + referencia original"
+                >
                   {preview?.status === "ready" && preview.dataUrl ? (
                     <>
                       <img src={preview.dataUrl} alt={`Preview IA de ${row.full_name}`} className="w-full h-full object-cover" />
@@ -659,6 +743,9 @@ export default function ImagesPage() {
                             ref original
                           </span>
                         )}
+                      </div>
+                      <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-black/70 text-[9px] text-gold uppercase tracking-wider">
+                        ⤢ ver
                       </div>
                     </>
                   ) : preview?.status === "generating" ? (
@@ -709,6 +796,211 @@ export default function ImagesPage() {
           })}
         </div>
       )}
+      {openModalRow && (
+        <PreviewModal
+          row={openModalRow}
+          preview={previews[openModalRow.id]}
+          onClose={() => setOpenModalRow(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function PreviewModal({
+  row,
+  preview,
+  onClose
+}: {
+  row: Item;
+  preview: Preview | undefined;
+  onClose: () => void;
+}) {
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null);
+  const [originalLoading, setOriginalLoading] = useState(false);
+  const [originalError, setOriginalError] = useState<string | null>(null);
+  const originalImgUrl = `/api/admin/fragrances/original-image/${row.slug}`;
+
+  // Si el preview no está listo, igualmente abrimos el modal para mostrar la
+  // referencia original si existe.
+  useEffect(() => {
+    if (!row.has_original_reference) return;
+    setOriginalLoading(true);
+    setOriginalError(null);
+    fetch(originalImgUrl, { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) {
+          setOriginalError(`HTTP ${r.status}`);
+          return;
+        }
+        const ct = r.headers.get("content-type") ?? "image/jpeg";
+        const blob = await r.blob();
+        const reader = new FileReader();
+        reader.onload = () => {
+          setOriginalUrl(reader.result as string);
+          setOriginalLoading(false);
+        };
+        reader.readAsDataURL(blob);
+      })
+      .catch((err) => {
+        setOriginalError(err instanceof Error ? err.message : "Error");
+        setOriginalLoading(false);
+      });
+  }, [row.id, row.has_original_reference, originalImgUrl]);
+
+  const downloadOriginal = () => {
+    if (!originalUrl) return;
+    const a = document.createElement("a");
+    a.href = originalUrl;
+    a.download = `ref-${row.slug}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const downloadPreview = () => {
+    if (!preview?.dataUrl) return;
+    const a = document.createElement("a");
+    a.href = preview.dataUrl;
+    a.download = `preview-${row.slug}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/85 grid place-items-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="liquid-glass-strong rounded-2xl p-4 sm:p-5 max-w-5xl w-full max-h-[92vh] overflow-auto space-y-3"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="text-[10px] text-gold uppercase tracking-wider">
+              {row.display_code ?? `PLT-${String(row.id).padStart(3, "0")}`}
+            </p>
+            <p className="font-display italic text-lg sm:text-xl text-ink truncate">
+              {row.artistic_name ?? row.name}
+            </p>
+            <p className="text-xs text-ink-mute truncate">
+              {row.full_name}
+              {row.original_image_source
+                ? ` · ref: ${row.original_image_source}`
+                : ""}
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold shrink-0"
+            aria-label="Cerrar modal"
+          >
+            ✕ Cerrar
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+          {/* === IZQUIERDA: Referencia original === */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider">
+              <span className="text-gold/80 font-semibold">Referencia original</span>
+              {originalUrl && (
+                <button
+                  onClick={downloadOriginal}
+                  className="text-gold hover:text-gold/80 normal-case tracking-normal"
+                >
+                  ⬇ Descargar
+                </button>
+              )}
+            </div>
+            <div className="aspect-square bg-black/30 rounded-xl overflow-hidden grid place-items-center text-xs text-ink-mute">
+              {row.has_original_reference ? (
+                originalLoading ? (
+                  <span className="text-gold">Cargando…</span>
+                ) : originalError ? (
+                  <span className="text-rose-300 px-3 text-center text-[11px]">
+                    Error: {originalError}
+                  </span>
+                ) : originalUrl ? (
+                  <img
+                    src={originalUrl}
+                    alt={`Referencia original de ${row.full_name}`}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span>Sin imagen</span>
+                )
+              ) : (
+                <span className="px-3 text-center text-[11px]">
+                  Sin ref. Click &quot;Buscar ref&quot; en la card para encontrar una.
+                </span>
+              )}
+            </div>
+            {row.original_image_url && (
+              <a
+                href={row.original_image_url}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-[10px] text-ink-mute hover:text-gold truncate"
+                title={row.original_image_url}
+              >
+                🔗 {row.original_image_url}
+              </a>
+            )}
+          </div>
+
+          {/* === DERECHA: Preview IA actual === */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[10px] uppercase tracking-wider">
+              <span className="text-gold/80 font-semibold">Preview IA (último)</span>
+              {preview?.dataUrl && (
+                <button
+                  onClick={downloadPreview}
+                  className="text-gold hover:text-gold/80 normal-case tracking-normal"
+                >
+                  ⬇ Descargar
+                </button>
+              )}
+            </div>
+            <div className="aspect-square bg-black/30 rounded-xl overflow-hidden grid place-items-center text-xs text-ink-mute">
+              {preview?.status === "ready" && preview.dataUrl ? (
+                <img
+                  src={preview.dataUrl}
+                  alt={`Preview IA de ${row.full_name}`}
+                  className="w-full h-full object-cover"
+                />
+              ) : preview?.status === "generating" ? (
+                <span className="text-gold">Generando…</span>
+              ) : preview?.status === "error" ? (
+                <span className="text-rose-300 px-3 text-center text-[11px]">
+                  {preview.message || "Error"}
+                </span>
+              ) : row.image_url ? (
+                <img
+                  src={row.image_url}
+                  alt={row.full_name}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <span>Sin preview. Click &quot;Generar preview&quot;.</span>
+              )}
+            </div>
+            {preview?.usedBrandBottle && (
+              <p className="text-[10px] text-ink-mute">✓ Usa botella de marca</p>
+            )}
+            {preview?.hasOriginalReference && (
+              <p className="text-[10px] text-ink-mute">✓ Usa ref original</p>
+            )}
+          </div>
+        </div>
+
+        <div className="text-[10px] text-ink-mute/80 border-t border-line/30 pt-2">
+          La imagen final guardada se sirve desde <code>/api/image/&lt;slug&gt;</code> y la ref desde
+          <code> /api/admin/fragrances/original-image/&lt;slug&gt;</code>.
+        </div>
+      </div>
     </div>
   );
 }
