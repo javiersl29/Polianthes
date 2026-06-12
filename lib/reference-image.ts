@@ -70,16 +70,44 @@ async function fromSerpApi(
 
   // Variamos queries según el intento (attempt) para que re-buscar no
   // devuelva la misma imagen siempre. Cada attempt usa una combinación
-  // diferente de queries + páginas.
+  // diferente de queries + páginas. Priorizamos marketplaces y tiendas
+  // con fotos de producto de alta calidad.
+  //
+  // Tienda ranking (mejor -> peor para calidad de foto de producto):
+  //  1. Amazon (amazon.com / amazon.com.mx) — fotos de listing profesionales
+  //  2. Mercado Libre (mercadolibre.com.mx) — fotos de listing de vendedores
+  //  3. Sephora / Ulta / FragranceNet / Macy's — fotos oficiales de marca
+  //  4. Liverpool / Walmart / Coppel — tiendas departamentales mexicanas
+  //  5. Ebay — listings variados (a veces muy buena calidad)
   const queryPool: { q: string; page: number }[] = [
-    { q: `${b} ${n} 100ml site:sephora.com OR site:ulta.com OR site:fragrancenet.com OR site:macys.com OR site:amazon.com`, page: 0 },
+    // 1. Amazon prioritario (mejor calidad de listing, más resultados)
+    { q: `${b} ${n} 100ml site:amazon.com OR site:amazon.com.mx`, page: 0 },
+    // 2. Mercado Libre (excelente para perfumes vendidos en Latam)
+    { q: `${b} ${n} 100ml site:mercadolibre.com.mx OR site:articulo.mercadolibre.com.mx`, page: 0 },
+    // 3. Amazon + Mercado Libre combinados
+    { q: `${b} ${n} perfume site:amazon.com OR site:amazon.com.mx OR site:mercadolibre.com.mx`, page: 0 },
+    // 4. Sephora / Ulta / FragranceNet (marcas oficiales)
+    { q: `${b} ${n} 100ml site:sephora.com OR site:ulta.com OR site:fragrancenet.com OR site:macys.com`, page: 0 },
+    // 5. Tiendas departamentales mexicanas
+    { q: `${b} ${n} site:liverpool.com.mx OR site:walmart.com.mx OR site:coppel.com`, page: 0 },
+    // 6. Ebay (listings variados)
+    { q: `${b} ${n} 100ml site:ebay.com`, page: 0 },
+    // 7. Genérica con tamaño
     { q: `${b} ${n} 100ml eau de parfum bottle ${neg}`, page: 0 },
+    // 8. Con "buy" prioriza listings de producto
     { q: `${b} ${n} perfume buy ${neg}`, page: 0 },
+    // 9. Tamaño US 100ml
     { q: `${b} ${n} 3.4oz fragrance ${neg}`, page: 0 },
+    // 10. Fallback genérico
     { q: `${b} ${n} eau de parfum bottle ${neg}`, page: 0 },
-    { q: `${b} ${n} official fragrance`, page: 0 },
-    { q: `${b} ${n} site:sephora.com OR site:ulta.com`, page: 1 },
-    { q: `${b} ${n} 100ml perfume bottle ${neg}`, page: 1 }
+    // 11. Página 2 de Amazon (más resultados)
+    { q: `${b} ${n} 100ml site:amazon.com OR site:amazon.com.mx`, page: 1 },
+    // 12. Página 2 de Mercado Libre
+    { q: `${b} ${n} 100ml site:mercadolibre.com.mx OR site:articulo.mercadolibre.com.mx`, page: 1 },
+    // 13. Oficial de marca
+    { q: `${b} ${n} official fragrance bottle`, page: 0 },
+    // 14. Walmart US
+    { q: `${b} ${n} 100ml site:walmart.com`, page: 0 }
   ];
 
   // Cada attempt usa un offset diferente en el pool para garantizar
