@@ -14,6 +14,7 @@ type Item = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  image_version?: number | null;
   display_code: string | null;
   artistic_name: string | null;
   inspired_by_name: string | null;
@@ -170,7 +171,11 @@ export default function Catalog() {
               >
                 <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
                   {it.image_url ? (
-                    <img src={it.image_url} alt={it.full_name} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                    <img
+                      src={it.image_version != null ? `${it.image_url}?v=${it.image_version}` : it.image_url}
+                      alt={it.full_name}
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                    />
                   ) : (
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>
                   )}

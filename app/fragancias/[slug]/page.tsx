@@ -24,7 +24,11 @@ export default async function FragrancePage({ params }: { params: { slug: string
           <div className="space-y-4">
             <div className="aspect-[3/4] rounded-2xl sm:rounded-3xl liquid-glass overflow-hidden grid place-items-center">
               {detail.image_url ? (
-                <img src={detail.image_url} alt={detail.full_name} className="w-full h-full object-cover" />
+                <img
+                  src={detail.image_version != null ? `${detail.image_url}?v=${detail.image_version}` : detail.image_url}
+                  alt={detail.full_name}
+                  className="w-full h-full object-cover"
+                />
               ) : (
                 <span className="font-display italic text-gold text-6xl sm:text-7xl">{detail.brand[0]}</span>
               )}

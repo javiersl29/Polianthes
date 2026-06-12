@@ -72,6 +72,7 @@ const SELECT_LIST = [
   "artistic_name",
   "inspired_by_name",
   "inspired_by_brand",
+  "LENGTH(image_data) AS image_version",
   "(original_image_data IS NOT NULL) AS has_original_reference",
   "original_image_url",
   "original_image_source",

@@ -8,13 +8,21 @@ import { toast } from "sonner";
  * de navegador/CDN). Sin esto, después de guardar una nueva imagen
  * generada por IA, el <img> del admin seguía mostrando la versión
  * anterior porque el browser cachea por URL.
+ *
+ * Acepta una versión arbitraria (puede ser `image_version` del
+ * backend = bytes de image_data, o un `epoch` local que bumpeamos
+ * tras cada save). Cualquier cambio en el valor fuerza un nuevo fetch.
  */
-function bustImageUrl(url: string | null | undefined, epoch: number): string {
+function bustImageUrl(
+  url: string | null | undefined,
+  version: string | number | null | undefined
+): string {
   if (!url) return "";
   // Solo aplicar a URLs de nuestra API interna
   if (!url.startsWith("/api/image/")) return url;
+  const v = version ?? Date.now();
   const sep = url.includes("?") ? "&" : "?";
-  return `${url}${sep}v=${epoch}`;
+  return `${url}${sep}v=${v}`;
 }
 
 /**
@@ -72,6 +80,7 @@ type Item = {
   family: string | null;
   mood: string | null;
   gender?: "hombre" | "mujer" | "unisex" | null;
+  image_version?: number | null;
   has_original_reference?: boolean;
   original_image_url?: string | null;
   original_image_source?: string | null;
@@ -1065,7 +1074,7 @@ export default function ImagesPage() {
                   ) : preview?.status === "error" ? (
                     <span className="text-rose-300 px-3 text-center text-[11px]">{preview.message || "Error"}</span>
                   ) : row.image_url ? (
-                    <img src={bustImageUrl(row.image_url, refetchEpoch)} alt={row.full_name} className="w-full h-full object-cover" />
+                    <img src={bustImageUrl(row.image_url, row.image_version ?? refetchEpoch)} alt={row.full_name} className="w-full h-full object-cover" />
                   ) : (
                     <span>Sin imagen</span>
                   )}
@@ -1410,7 +1419,7 @@ function PreviewModal({
                 </span>
               ) : row.image_url ? (
                 <img
-                  src={bustImageUrl(row.image_url, refetchEpoch)}
+                  src={bustImageUrl(row.image_url, row.image_version ?? refetchEpoch)}
                   alt={row.full_name}
                   className="w-full h-full object-cover"
                 />

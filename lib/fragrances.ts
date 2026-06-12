@@ -12,6 +12,14 @@ export type FragranceListItem = {
   mood: string | null;
   gender: Gender;
   image_url: string | null;
+  /**
+   * Versión de la imagen (tamaño en bytes de `image_data`). Se usa
+   * como query param `?v=<image_version>` en el `<img src>` del
+   * catálogo público para forzar al browser a recargar la imagen
+   * cuando el admin guarda una nueva. Sin esto, el navegador puede
+   * seguir mostrando la versión anterior cacheada en disco.
+   */
+  image_version: number | null;
   display_code: string | null;
   artistic_name: string | null;
   inspired_by_name: string | null;
@@ -39,6 +47,7 @@ export async function listFragrances(): Promise<FragranceListItem[]> {
               WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
               ELSE f.image_url
             END AS image_url,
+            LENGTH(f.image_data) AS image_version,
             f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
@@ -83,6 +92,7 @@ export async function searchFragrances(
               WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
               ELSE f.image_url
             END AS image_url,
+            LENGTH(f.image_data) AS image_version,
             f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
@@ -121,6 +131,7 @@ export async function getFragranceBySlug(slug: string): Promise<FragranceDetail 
               WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
               ELSE f.image_url
             END AS image_url,
+            LENGTH(f.image_data) AS image_version,
             f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.description, f.top_notes, f.heart_notes, f.base_notes, f.inspiration_image_url,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
