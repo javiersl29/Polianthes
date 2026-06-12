@@ -199,8 +199,117 @@ export async function listAdminPresentations(): Promise<Array<{
                ) ORDER BY p.size_ml)
                FROM presentation p WHERE p.fragrance_id = f.id),
               '[]'::json
-            ) AS presentations
+             ) AS presentations
      FROM fragrance f WHERE f.active = TRUE ORDER BY f.brand, f.name`
   );
   return result.rows;
+}
+
+const VEC_COLUMNS_ALL = [
+  "vec_floral",
+  "vec_oriental",
+  "vec_amaderado",
+  "vec_chipre",
+  "vec_citrico",
+  "vec_gourmand",
+  "vec_frescura",
+  "vec_misterio",
+  "vec_romantico",
+  "vec_energia",
+  "vec_sofisticado",
+  "vec_nostalgico"
+] as const;
+
+export type SimilarFragrance = {
+  id: number;
+  slug: string;
+  brand: string;
+  name: string;
+  full_name: string;
+  family: string | null;
+  mood: string | null;
+  gender: Gender;
+  image_url: string | null;
+  image_version: number | null;
+  display_code: string | null;
+  artistic_name: string | null;
+  min_price_cents: number | null;
+  score: number;
+};
+
+/**
+ * Devuelve las N fragancias con mayor afinidad olfativa (cosine
+ * similarity sobre 12 dimensiones) a la fragancia con `slug`.
+ * Se excluye la referencia y solo se incluyen fragancias activas.
+ */
+export async function getSimilarFragrances(
+  slug: string,
+  limit: number = 5
+): Promise<SimilarFragrance[]> {
+  // 1) Vector de la referencia
+  const refRes = await query<Record<string, unknown>>(
+    `SELECT ${VEC_COLUMNS_ALL.map((c) => `"${c}"`).join(", ")}
+     FROM fragrance WHERE slug = $1 AND active = TRUE`,
+    [slug]
+  );
+  if (refRes.rows.length === 0) return [];
+  const ref = refRes.rows[0];
+  const refVec: Record<string, number> = {};
+  for (const col of VEC_COLUMNS_ALL) {
+    refVec[col.replace("vec_", "")] = Number(ref[col] ?? 50);
+  }
+
+  // 2) Candidatas (excluye la referencia). Se seleccionan los
+  //    campos necesarios para la card del catálogo público.
+  const candRes = await query<Record<string, unknown>>(
+    `SELECT id, slug, brand, name, full_name, family, mood, gender,
+            CASE
+              WHEN image_data IS NOT NULL THEN '/api/image/' || slug
+              WHEN image_url IS NULL OR image_url LIKE '/fragancias/%' THEN NULL
+              ELSE image_url
+            END AS image_url,
+            LENGTH(image_data) AS image_version,
+            display_code, artistic_name,
+            (
+              SELECT MIN(p.price_cents) FROM presentation p
+              WHERE p.fragrance_id = fragrance.id AND p.active = TRUE
+                AND p.price_cents IS NOT NULL AND p.price_cents > 0
+            ) AS min_price_cents,
+            ${VEC_COLUMNS_ALL.map((c) => `"${c}"`).join(", ")}
+     FROM fragrance WHERE active = TRUE AND slug != $1`,
+    [slug]
+  );
+
+  // 3) Rankear por cosine similarity (import lazy para no acoplar
+  //    este módulo a la lógica de vectores en el server bundle).
+  const { affinity } = await import("./vectors");
+  const ranked = candRes.rows
+    .map((row) => {
+      const vec: Record<string, number> = {};
+      for (const col of VEC_COLUMNS_ALL) {
+        vec[col.replace("vec_", "")] = Number(row[col] ?? 50);
+      }
+      const score = affinity(refVec, vec);
+      return { row, score };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return ranked.map(({ row, score }) => ({
+    id: Number(row.id),
+    slug: String(row.slug),
+    brand: String(row.brand),
+    name: String(row.name),
+    full_name: String(row.full_name),
+    family: (row.family as string | null) ?? null,
+    mood: (row.mood as string | null) ?? null,
+    gender: row.gender as Gender,
+    image_url: (row.image_url as string | null) ?? null,
+    image_version: row.image_version == null ? null : Number(row.image_version),
+    display_code: (row.display_code as string | null) ?? null,
+    artistic_name: (row.artistic_name as string | null) ?? null,
+    min_price_cents:
+      row.min_price_cents == null ? null : Number(row.min_price_cents),
+    score
+  }));
 }

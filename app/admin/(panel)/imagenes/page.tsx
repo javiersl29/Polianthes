@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { genderBadge } from "@/lib/visual";
 
 /**
  * Añade un query param de versión a una URL `/api/image/...` para
@@ -23,49 +24,6 @@ function bustImageUrl(
   const v = version ?? Date.now();
   const sep = url.includes("?") ? "&" : "?";
   return `${url}${sep}v=${v}`;
-}
-
-/**
- * Visual del badge de género en el generador de imágenes. Permite
- * distinguir a simple vista si el perfume es para hombre, mujer o
- * unisex sin tener que abrir la ficha completa.
- */
-function genderBadge(gender: "hombre" | "mujer" | "unisex" | null | undefined): {
-  label: string;
-  short: string;
-  icon: string;
-  classes: string;
-} {
-  switch (gender) {
-    case "hombre":
-      return {
-        label: "Hombre",
-        short: "♂",
-        icon: "♂",
-        classes: "bg-sky-400/15 text-sky-200 border-sky-300/30"
-      };
-    case "mujer":
-      return {
-        label: "Mujer",
-        short: "♀",
-        icon: "♀",
-        classes: "bg-pink-400/15 text-pink-200 border-pink-300/30"
-      };
-    case "unisex":
-      return {
-        label: "Unisex",
-        short: "⚥",
-        icon: "⚥",
-        classes: "bg-amber-400/15 text-amber-200 border-amber-300/30"
-      };
-    default:
-      return {
-        label: "Sin género",
-        short: "?",
-        icon: "?",
-        classes: "bg-white/5 text-ink-mute border-white/10"
-      };
-  }
 }
 
 type Item = {

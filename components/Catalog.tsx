@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { genderBadge } from "@/lib/visual";
 
 type Gender = "hombre" | "mujer" | "unisex";
 type Item = {
@@ -182,7 +183,18 @@ export default function Catalog() {
                 </div>
                 <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
                   <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate">{it.display_code ?? `PLT-${String(it.id).padStart(3, "0")}`}</p>
-                  <span className="text-[9px] sm:text-[10px] text-ink/70 capitalize shrink-0">{it.gender}</span>
+                  {(() => {
+                    const g = genderBadge(it.gender);
+                    return (
+                      <span
+                        title={`Género: ${g.label}`}
+                        className={`shrink-0 inline-flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-px rounded-full text-[9px] sm:text-[10px] font-semibold uppercase tracking-wide border ${g.classes}`}
+                      >
+                        <span className="text-[10px] sm:text-[11px] leading-none">{g.icon}</span>
+                        <span className="hidden sm:inline">{g.label}</span>
+                      </span>
+                    );
+                  })()}
                 </div>
                 <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 truncate">
                   {it.artistic_name ?? `Polianthes ${String(it.id).padStart(3, "0")}`}
