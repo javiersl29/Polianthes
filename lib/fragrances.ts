@@ -34,7 +34,11 @@ export type FragranceListItem = {
 export async function listFragrances(): Promise<FragranceListItem[]> {
   const result = await query<FragranceListItem>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender,
-            CASE WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug ELSE f.image_url END AS image_url,
+            CASE
+              WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug
+              WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
+              ELSE f.image_url
+            END AS image_url,
             f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
@@ -74,7 +78,11 @@ export async function searchFragrances(
   }
   const result = await query<FragranceListItem>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender,
-            CASE WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug ELSE f.image_url END AS image_url,
+            CASE
+              WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug
+              WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
+              ELSE f.image_url
+            END AS image_url,
             f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,
             f.vec_frescura, f.vec_misterio, f.vec_romantico, f.vec_energia, f.vec_sofisticado, f.vec_nostalgico,
@@ -108,7 +116,11 @@ export type FragranceDetail = Omit<FragranceListItem, "min_price_cents"> & {
 export async function getFragranceBySlug(slug: string): Promise<FragranceDetail | null> {
   const result = await query<FragranceDetail>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender,
-            CASE WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug ELSE f.image_url END AS image_url,
+            CASE
+              WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug
+              WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
+              ELSE f.image_url
+            END AS image_url,
             f.display_code, f.artistic_name, f.inspired_by_name, f.inspired_by_brand,
             f.description, f.top_notes, f.heart_notes, f.base_notes, f.inspiration_image_url,
             f.vec_floral, f.vec_oriental, f.vec_amaderado, f.vec_chipre, f.vec_citrico, f.vec_gourmand,

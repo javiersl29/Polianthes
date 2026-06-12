@@ -9,6 +9,7 @@ export async function GET() {
     `SELECT id, slug, brand, name, full_name, family,
             CASE
               WHEN image_data IS NOT NULL THEN '/api/image/' || slug
+              WHEN image_url IS NULL OR image_url LIKE '/fragancias/%' THEN NULL
               ELSE image_url
             END AS image_url,
             display_code, artistic_name, inspired_by_name, inspired_by_brand
