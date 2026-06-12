@@ -24,14 +24,17 @@ export async function GET(_req: NextRequest, ctx: { params: { slug: string } }) 
     status: 200,
     headers: {
       "Content-Type": m[1],
-      // 5 minutos: tiempo suficiente para que el catálogo público cachee
-      // (perfume = 1 actualización cada varios días) y lo suficientemente
-      // corto para que el admin vea la nueva imagen al guardar sin
-      // recargar manualmente. NO usar `immutable` porque si un admin
-      // sube una nueva imagen, el navegador/CDN no debe seguir sirviendo
-      // la versión vieja 24h. El `must-revalidate` fuerza re-fetch si la
-      // copia está stale.
-      "Cache-Control": "public, max-age=300, must-revalidate"
+      // `no-store` porque el endpoint SIEMPRE lee de la DB (force-dynamic)
+      // y queremos que el catálogo público vea la imagen más reciente al
+      // instante cuando un admin guarda una nueva. Sin esto, los clientes
+      // que tenían la versión vieja en su cache seguían viéndola 5 min
+      // después del update del admin. El "costo" de `no-store` es que el
+      // cliente público hace 1 request por cada <img> en cada page load,
+      // pero la respuesta es solo 1 SQL query + binario — perfectamente
+      // manejable para 146 fragancias.
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0"
     }
   });
 }

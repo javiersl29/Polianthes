@@ -17,6 +17,49 @@ function bustImageUrl(url: string | null | undefined, epoch: number): string {
   return `${url}${sep}v=${epoch}`;
 }
 
+/**
+ * Visual del badge de género en el generador de imágenes. Permite
+ * distinguir a simple vista si el perfume es para hombre, mujer o
+ * unisex sin tener que abrir la ficha completa.
+ */
+function genderBadge(gender: "hombre" | "mujer" | "unisex" | null | undefined): {
+  label: string;
+  short: string;
+  icon: string;
+  classes: string;
+} {
+  switch (gender) {
+    case "hombre":
+      return {
+        label: "Hombre",
+        short: "♂",
+        icon: "♂",
+        classes: "bg-sky-400/15 text-sky-200 border-sky-300/30"
+      };
+    case "mujer":
+      return {
+        label: "Mujer",
+        short: "♀",
+        icon: "♀",
+        classes: "bg-pink-400/15 text-pink-200 border-pink-300/30"
+      };
+    case "unisex":
+      return {
+        label: "Unisex",
+        short: "⚥",
+        icon: "⚥",
+        classes: "bg-amber-400/15 text-amber-200 border-amber-300/30"
+      };
+    default:
+      return {
+        label: "Sin género",
+        short: "?",
+        icon: "?",
+        classes: "bg-white/5 text-ink-mute border-white/10"
+      };
+  }
+}
+
 type Item = {
   id: number;
   slug: string;
@@ -28,6 +71,7 @@ type Item = {
   image_url: string | null;
   family: string | null;
   mood: string | null;
+  gender?: "hombre" | "mujer" | "unisex" | null;
   has_original_reference?: boolean;
   original_image_url?: string | null;
   original_image_source?: string | null;
@@ -962,7 +1006,21 @@ export default function ImagesPage() {
                     aria-label={`Seleccionar ${row.full_name}`}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-gold/80 uppercase tracking-wider truncate">{row.display_code ?? `PLT-${String(row.id).padStart(3, "0")}`}</p>
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-[10px] text-gold/80 uppercase tracking-wider truncate">{row.display_code ?? `PLT-${String(row.id).padStart(3, "0")}`}</p>
+                      {(() => {
+                        const g = genderBadge(row.gender);
+                        return (
+                          <span
+                            title={`Género: ${g.label}`}
+                            className={`shrink-0 inline-flex items-center gap-0.5 px-1.5 py-px rounded-full text-[9px] font-semibold uppercase tracking-wide border ${g.classes}`}
+                          >
+                            <span className="text-[10px] leading-none">{g.icon}</span>
+                            <span className="hidden sm:inline">{g.label}</span>
+                          </span>
+                        );
+                      })()}
+                    </div>
                     <p className="font-display italic text-sm text-ink truncate">
                       {row.artistic_name ?? row.name}
                     </p>
@@ -1186,9 +1244,23 @@ function PreviewModal({
       >
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] text-gold uppercase tracking-wider">
-              {row.display_code ?? `PLT-${String(row.id).padStart(3, "0")}`}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] text-gold uppercase tracking-wider">
+                {row.display_code ?? `PLT-${String(row.id).padStart(3, "0")}`}
+              </p>
+              {(() => {
+                const g = genderBadge(row.gender);
+                return (
+                  <span
+                    title={`Género: ${g.label}`}
+                    className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border ${g.classes}`}
+                  >
+                    <span className="text-[11px] leading-none">{g.icon}</span>
+                    <span>{g.label}</span>
+                  </span>
+                );
+              })()}
+            </div>
             <p className="font-display italic text-lg sm:text-xl text-ink truncate">
               {row.artistic_name ?? row.name}
             </p>
