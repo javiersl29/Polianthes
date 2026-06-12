@@ -131,6 +131,10 @@ export async function generateGeminiImage(
 
   const generationConfig: Record<string, unknown> = {
     response_modalities: ["TEXT", "IMAGE"],
+    // La API de Gemini (Nano Banana 2) usa `response_format.image` con snake_case
+    // (aspect_ratio, image_size). El campo `imageConfig` top-level pertenece al
+    // spec de la API de Vision (no es el mismo endpoint). Ver:
+    // https://ai.google.dev/gemini-api/docs/image-generation
     response_format: {
       image: {
         aspect_ratio: validAspect,

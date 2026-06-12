@@ -87,7 +87,7 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     .join(" ");
 }
 
-export type ImageProvider = "minimax" | "gemini" | "openai" | "replicate";
+export type ImageProvider = "minimax" | "gemini" | "imagen" | "openai" | "replicate";
 
 export type ImageApiConfig = {
   id: number;

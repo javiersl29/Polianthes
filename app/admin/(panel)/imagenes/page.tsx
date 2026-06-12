@@ -106,7 +106,7 @@ export default function ImagesPage() {
   const [brandBottle, setBrandBottle] = useState<BrandBottleInfo | null>(null);
   const [searchStatus, setSearchStatus] = useState<{ has_serpapi_key: boolean; has_tavily: boolean; has_serper: boolean; has_pexels: boolean } | null>(null);
   const [configForm, setConfigForm] = useState({
-    provider: "minimax" as "minimax" | "gemini" | "openai" | "replicate",
+    provider: "minimax" as "minimax" | "gemini" | "imagen" | "openai" | "replicate",
     endpoint: "https://api.minimax.io/v1/image_generation",
     api_key: "",
     clear_api_key: false,
@@ -934,7 +934,7 @@ function ConfigPanel({
   show: boolean;
   setShow: (v: boolean) => void;
   form: {
-    provider: "minimax" | "gemini" | "openai" | "replicate";
+    provider: "minimax" | "gemini" | "imagen" | "openai" | "replicate";
     endpoint: string;
     api_key: string;
     clear_api_key: boolean;
@@ -1031,7 +1031,7 @@ function ConfigPanel({
               <select
                 value={form.provider}
                 onChange={(e) => {
-                  const p = e.target.value as "minimax" | "gemini" | "openai" | "replicate";
+                  const p = e.target.value as "minimax" | "gemini" | "imagen" | "openai" | "replicate";
                   setForm((f) => {
                     if (p === "gemini") {
                       return {
