@@ -14,6 +14,12 @@ type Body = {
   slug: string;
   /** opcional: si true, también descarga y guarda base64 en fragrance.original_image_data */
   persist?: boolean;
+  /**
+   * Contador de re-búsqueda del cliente. Cada click de "Re-buscar"
+   * incrementa este valor para forzar queries/páginas DIFERENTES
+   * (de lo contrario siempre devolvería la misma primera imagen).
+   */
+  refetch_count?: number;
 };
 
 type FragranceRow = {
@@ -49,16 +55,20 @@ export async function POST(req: NextRequest) {
   const cfg = await getImageApiConfig();
   const serpApiKey = cfg?.serpapi_api_key ?? process.env.SERPAPI_API_KEY ?? null;
 
-  // Hacemos hasta 3 intentos de búsqueda (cada vez con queries diferentes)
-  // hasta encontrar una imagen que NO esté en host bloqueado Y que
-  // se pueda descargar y validar como imagen real.
+  // Hacemos hasta 3 intentos de búsqueda con queries/páginas DIFERENTES
+  // para garantizar variación entre llamadas. Cada intento pasa un
+  // "attempt" que cambia el offset en el pool de queries y hace que
+  // fromSerpApi recolecte candidatos diferentes. El LLM-as-judge
+  // selecciona el mejor de los candidatos recolectados.
+  const baseAttempt = Number(body.refetch_count ?? 0) * 3;
   let ref = null;
   let lastError: string | null = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    const candidate = await findReferenceImage(row.brand, row.name, serpApiKey);
+  for (let offset = 0; offset < 3; offset += 1) {
+    const attempt = baseAttempt + offset;
+    const candidate = await findReferenceImage(row.brand, row.name, serpApiKey, attempt);
     if (!candidate) {
       lastError = "no_results";
-      break;
+      continue;
     }
     if (isBlockedHost(candidate.url)) {
       lastError = `blocked_host:${new URL(candidate.url).hostname}`;

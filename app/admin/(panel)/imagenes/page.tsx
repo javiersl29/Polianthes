@@ -128,6 +128,9 @@ export default function ImagesPage() {
   const brandBottleFileRef = useRef<HTMLInputElement | null>(null);
   const [refUploadTarget, setRefUploadTarget] = useState<Item | null>(null);
   const refUploadFileRef = useRef<HTMLInputElement | null>(null);
+  // Contador que se incrementa en cada click de "Re-buscar" para forzar
+  // variación de queries/páginas en el backend
+  const [refetchCounter, setRefetchCounter] = useState(0);
 
   // Cuando el usuario selecciona archivo en el input oculto, procesarlo
   useEffect(() => {
@@ -223,10 +226,16 @@ export default function ImagesPage() {
             : p
         )
       );
+      const currentCount = refetchCounter;
+      setRefetchCounter((c) => c + 1);
       const res = await fetch("/api/admin/fragrances/find-reference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: row.slug, persist: true })
+        body: JSON.stringify({
+          slug: row.slug,
+          persist: true,
+          refetch_count: currentCount
+        })
       });
       const data = await res.json();
       if (data?.ok) {
@@ -283,10 +292,16 @@ export default function ImagesPage() {
     for (const row of targets) {
       setRefetching((p) => new Set(p).add(row.id));
       try {
+        const currentCount = refetchCounter;
+        setRefetchCounter((c) => c + 1);
         const res = await fetch("/api/admin/fragrances/find-reference", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slug: row.slug, persist: true })
+          body: JSON.stringify({
+            slug: row.slug,
+            persist: true,
+            refetch_count: currentCount
+          })
         });
         const data = await res.json();
         if (data?.ok) {

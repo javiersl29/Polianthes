@@ -1,4 +1,5 @@
-import { searchSerpApiImages } from "./serpapi";
+import { searchSerpApiImages, type SerpApiImage, type SerpApiResult } from "./serpapi";
+import { pickBestReference } from "./reference-judge";
 
 export type ReferenceImage = {
   url: string;
@@ -51,7 +52,12 @@ function matchesPerfume(
   return hasBrand && hasName;
 }
 
-async function fromSerpApi(brand: string, name: string, apiKey: string): Promise<ReferenceImage | null> {
+async function fromSerpApi(
+  brand: string,
+  name: string,
+  apiKey: string,
+  attempt = 0
+): Promise<ReferenceImage | null> {
   if (!apiKey) return null;
 
   // Limpieza y quoting estricto: cada token entre comillas para forzar
@@ -60,56 +66,168 @@ async function fromSerpApi(brand: string, name: string, apiKey: string): Promise
   const quote = (s: string) => `"${s.replace(/"/g, "")}"`;
   const b = quote(brand);
   const n = quote(name);
-  // Negative keywords para descartar categorías que comparten nombres
   const neg = "-shoes -clothing -apparel -shirt -jacket -sneaker -t-shirt -poster -wallpaper -logo -svg";
 
-  // Cascada de queries, cada una más específica que la anterior
-  const queries = [
-    // 1. Coincidencia exacta de la frase completa en tiendas reales
-    `${b} ${n} 100ml site:sephora.com OR site:ulta.com OR site:fragrancenet.com OR site:macys.com OR site:amazon.com`,
-    // 2. Mismo pero sin restricción de sitio, agregando negative keywords
-    `${b} ${n} 100ml eau de parfum bottle ${neg}`,
-    // 3. Con "buy" para priorizar listings de producto
-    `${b} ${n} perfume buy ${neg}`,
-    // 4. Versión 3.4oz (tamaño US 100ml)
-    `${b} ${n} 3.4oz fragrance ${neg}`,
-    // 5. Fallback genérico (último recurso, más ruidoso)
-    `${b} ${n} eau de parfum bottle ${neg}`
+  // Variamos queries según el intento (attempt) para que re-buscar no
+  // devuelva la misma imagen siempre. Cada attempt usa una combinación
+  // diferente de queries + páginas.
+  const queryPool: { q: string; page: number }[] = [
+    { q: `${b} ${n} 100ml site:sephora.com OR site:ulta.com OR site:fragrancenet.com OR site:macys.com OR site:amazon.com`, page: 0 },
+    { q: `${b} ${n} 100ml eau de parfum bottle ${neg}`, page: 0 },
+    { q: `${b} ${n} perfume buy ${neg}`, page: 0 },
+    { q: `${b} ${n} 3.4oz fragrance ${neg}`, page: 0 },
+    { q: `${b} ${n} eau de parfum bottle ${neg}`, page: 0 },
+    { q: `${b} ${n} official fragrance`, page: 0 },
+    { q: `${b} ${n} site:sephora.com OR site:ulta.com`, page: 1 },
+    { q: `${b} ${n} 100ml perfume bottle ${neg}`, page: 1 }
   ];
 
-  for (const q of queries) {
-    const r = await searchSerpApiImages(q, apiKey, 15);
+  // Cada attempt usa un offset diferente en el pool para garantizar
+  // variación entre llamadas
+  const offset = (attempt * 3) % queryPool.length;
+  const selected = [
+    queryPool[offset % queryPool.length],
+    queryPool[(offset + 1) % queryPool.length],
+    queryPool[(offset + 2) % queryPool.length]
+  ];
+
+  // Recolectar candidatos únicos de múltiples queries
+  const allCandidates: SerpApiImage[] = [];
+  const seenUrls = new Set<string>();
+  for (const { q, page } of selected) {
+    const r = await searchSerpApiImagesWithPage(q, apiKey, 15, page);
     if (!r.ok || r.images.length === 0) continue;
-
-    // Validamos CADA imagen contra brand + name antes de devolver
-    const candidates = r.images
-      .filter((img) => matchesPerfume(img, brand, name))
-      .filter((img) => {
-        if (img.width && img.height) {
-          const ratio = img.width / img.height;
-          if (ratio < 0.3 || ratio > 3) return false;
-          if (Math.max(img.width, img.height) < 600) return false;
-        }
-        return true;
-      })
-      .sort((a, b) => (b.width ?? 0) - (a.width ?? 0));
-
-    if (candidates.length === 0) {
-      // Esta query no produjo coincidencias; pasamos a la siguiente
-      continue;
+    for (const img of r.images) {
+      if (!img.url || seenUrls.has(img.url)) continue;
+      if (!matchesPerfume(img, brand, name)) continue;
+      // Validación de tamaño
+      if (img.width && img.height) {
+        const ratio = img.width / img.height;
+        if (ratio < 0.3 || ratio > 3) continue;
+        if (Math.max(img.width, img.height) < 600) continue;
+      }
+      seenUrls.add(img.url);
+      allCandidates.push(img);
     }
+  }
+  if (allCandidates.length === 0) return null;
 
-    const best = candidates[0];
+  // Si solo hay 1 candidato, lo devolvemos directo (no vale la pena
+  // gastar tokens del LLM). Si hay 2+, usamos el LLM-as-judge.
+  if (allCandidates.length === 1) {
+    return { ...allCandidates[0], source: "serpapi" as const };
+  }
+  const topCandidates = allCandidates
+    .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))
+    .slice(0, 6); // máximo 6 candidatos al LLM
+
+  let chosenUrl: string | null = null;
+  let judgeReason: string | undefined;
+  try {
+    const judge = await pickBestReference(brand, name, topCandidates);
+    if (judge) {
+      chosenUrl = judge.bestUrl;
+      judgeReason = judge.reason;
+    }
+  } catch {
+    /* LLM falló, fallback */
+  }
+  if (!chosenUrl) {
+    // Fallback: el de mayor resolución
+    const best = topCandidates[0];
+    chosenUrl = best.url;
+  }
+  const best = allCandidates.find((c) => c.url === chosenUrl) ?? topCandidates[0];
+  return {
+    url: best.url,
+    thumbnail: best.thumbnail,
+    source: "serpapi",
+    title: best.title ?? judgeReason,
+    width: best.width,
+    height: best.height
+  };
+}
+
+/**
+ * Variante de searchSerpApiImages que permite especificar el número
+ * de página (ijn) para que re-buscar traiga imágenes diferentes.
+ */
+async function searchSerpApiImagesWithPage(
+  query: string,
+  apiKey: string,
+  limit: number,
+  page: number
+): Promise<SerpApiResult> {
+  // Construimos manualmente la URL para poder pasar ijn
+  const url = new URL("https://serpapi.com/search.json");
+  url.searchParams.set("engine", "google_images");
+  url.searchParams.set("q", query);
+  url.searchParams.set("api_key", apiKey);
+  url.searchParams.set("ijn", String(page));
+  url.searchParams.set("num", String(Math.max(1, Math.min(50, limit))));
+  url.searchParams.set("gl", "us");
+  url.searchParams.set("hl", "en");
+  url.searchParams.set("google_domain", "google.com");
+  url.searchParams.set("imgsz", "l");
+  url.searchParams.set("imgar", "t");
+  url.searchParams.set("image_type", "photo");
+  url.searchParams.set("tbs", "itp:photo,iar:t,isz:l,ift:jpg");
+  url.searchParams.set("safe", "active");
+  try {
+    const res = await fetch(url.toString(), {
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+      },
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!res.ok) {
+      return {
+        ok: false,
+        source: "serpapi",
+        query,
+        images: [],
+        statusCode: res.status,
+        error: `SerpAPI HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`
+      };
+    }
+    const data = (await res.json()) as {
+      images_results?: {
+        original?: string;
+        thumbnail?: string;
+        title?: string;
+        source?: string;
+        source_logo?: string;
+        link?: string;
+        original_width?: number;
+        original_height?: number;
+        is_product?: boolean;
+      }[];
+      error?: string;
+    };
+    if (data.error) {
+      return { ok: false, source: "serpapi", query, images: [], error: data.error };
+    }
+    const images: SerpApiImage[] = (data.images_results ?? [])
+      .map((r) => ({
+        url: r.original ?? "",
+        thumbnail: r.thumbnail,
+        title: r.title,
+        source: r.source,
+        width: r.original_width,
+        height: r.original_height
+      }))
+      .filter((i) => i.url && /^https?:\/\//.test(i.url));
+    return { ok: true, source: "serpapi", query, images };
+  } catch (err) {
     return {
-      url: best.url,
-      thumbnail: best.thumbnail,
+      ok: false,
       source: "serpapi",
-      title: best.title,
-      width: best.width,
-      height: best.height
+      query,
+      images: [],
+      error: err instanceof Error ? err.message : "Error de red"
     };
   }
-  return null;
 }
 
 async function fromTavily(brand: string, name: string): Promise<ReferenceImage | null> {
@@ -226,11 +344,12 @@ async function fromUnsplashFallback(query: string): Promise<ReferenceImage | nul
 export async function findReferenceImage(
   brand: string,
   name: string,
-  serpApiKey?: string | null
+  serpApiKey?: string | null,
+  attempt = 0
 ): Promise<ReferenceImage | null> {
   // 1) SerpAPI Google Images (preferido cuando hay api_key)
   if (serpApiKey) {
-    const r = await fromSerpApi(brand, name, serpApiKey);
+    const r = await fromSerpApi(brand, name, serpApiKey, attempt);
     if (r) return r;
   }
 
