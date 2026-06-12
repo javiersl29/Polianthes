@@ -24,7 +24,14 @@ export async function GET(_req: NextRequest, ctx: { params: { slug: string } }) 
     status: 200,
     headers: {
       "Content-Type": m[1],
-      "Cache-Control": "public, max-age=86400, immutable"
+      // 5 minutos: tiempo suficiente para que el catálogo público cachee
+      // (perfume = 1 actualización cada varios días) y lo suficientemente
+      // corto para que el admin vea la nueva imagen al guardar sin
+      // recargar manualmente. NO usar `immutable` porque si un admin
+      // sube una nueva imagen, el navegador/CDN no debe seguir sirviendo
+      // la versión vieja 24h. El `must-revalidate` fuerza re-fetch si la
+      // copia está stale.
+      "Cache-Control": "public, max-age=300, must-revalidate"
     }
   });
 }

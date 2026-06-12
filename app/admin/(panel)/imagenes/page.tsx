@@ -2,6 +2,21 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
+/**
+ * Añade un query param de versión a una URL `/api/image/...` para
+ * forzar al navegador a recargar la imagen (invalida cualquier cache
+ * de navegador/CDN). Sin esto, después de guardar una nueva imagen
+ * generada por IA, el <img> del admin seguía mostrando la versión
+ * anterior porque el browser cachea por URL.
+ */
+function bustImageUrl(url: string | null | undefined, epoch: number): string {
+  if (!url) return "";
+  // Solo aplicar a URLs de nuestra API interna
+  if (!url.startsWith("/api/image/")) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}v=${epoch}`;
+}
+
 type Item = {
   id: number;
   slug: string;
@@ -510,6 +525,10 @@ export default function ImagesPage() {
       if (!res.ok) throw new Error(data.error || data.message || "Error");
       setItems((prev) => prev.map((p) => (p.id === row.id ? { ...p, image_url: data.image_url } : p)));
       setPreviews((p) => ({ ...p, [row.id]: { ...p[row.id]!, status: "idle", dataUrl: null } }));
+      // Bump refetchEpoch para forzar a TODOS los <img> que muestran
+      // row.image_url a recargar (cache-bust). Sin esto, el browser
+      // muestra la imagen vieja cacheada.
+      setRefetchEpoch((e) => e + 1);
       toast.success(`${row.full_name} → imagen guardada (${(data.size_bytes / 1024).toFixed(0)} KB)`);
     } catch (err) {
       // Volver a "ready" para que el usuario pueda reintentar
@@ -557,6 +576,9 @@ export default function ImagesPage() {
     } else {
       toast.error(`No se pudo guardar ninguna (${failed})`);
     }
+    // Bump refetchEpoch una sola vez al final para invalidar cache de
+    // todas las imágenes recién guardadas
+    if (succeeded > 0) setRefetchEpoch((e) => e + 1);
   };
 
   const generateAndSaveAll = async () => {
@@ -622,6 +644,8 @@ export default function ImagesPage() {
     } else {
       toast.error(`No se pudo generar ninguna (${failed})`);
     }
+    // Bump refetchEpoch una vez al final para invalidar cache
+    if (succeeded > 0) setRefetchEpoch((e) => e + 1);
   };
 
   const runTestConnection = async () => {
@@ -817,6 +841,7 @@ export default function ImagesPage() {
         onClear={clearBrandBottle}
         fileInputRef={brandBottleFileRef}
         onFile={uploadBrandBottle}
+        refetchEpoch={refetchEpoch}
       />
 
       <StatusBadges
@@ -982,7 +1007,7 @@ export default function ImagesPage() {
                   ) : preview?.status === "error" ? (
                     <span className="text-rose-300 px-3 text-center text-[11px]">{preview.message || "Error"}</span>
                   ) : row.image_url ? (
-                    <img src={row.image_url} alt={row.full_name} className="w-full h-full object-cover" />
+                    <img src={bustImageUrl(row.image_url, refetchEpoch)} alt={row.full_name} className="w-full h-full object-cover" />
                   ) : (
                     <span>Sin imagen</span>
                   )}
@@ -1313,7 +1338,7 @@ function PreviewModal({
                 </span>
               ) : row.image_url ? (
                 <img
-                  src={row.image_url}
+                  src={bustImageUrl(row.image_url, refetchEpoch)}
                   alt={row.full_name}
                   className="w-full h-full object-cover"
                 />
@@ -1414,20 +1439,22 @@ function BrandBottlePanel({
   onPickFile,
   onClear,
   fileInputRef,
-  onFile
+  onFile,
+  refetchEpoch
 }: {
   brandBottle: BrandBottleInfo | null;
   onPickFile: () => void;
   onClear: () => void;
   fileInputRef: React.RefObject<HTMLInputElement>;
   onFile: (file: File) => void;
+  refetchEpoch: number;
 }) {
   return (
     <div className="liquid-glass rounded-2xl p-4 sm:p-5 space-y-3">
       <div className="flex items-start gap-4">
         <div className="w-24 h-24 rounded-xl overflow-hidden bg-black/30 grid place-items-center text-ink-mute text-xs shrink-0">
           {brandBottle?.has_image ? (
-            <img src="/api/image/brand-bottle" alt="Botella de la marca" className="w-full h-full object-cover" />
+            <img src={bustImageUrl("/api/image/brand-bottle", refetchEpoch)} alt="Botella de la marca" className="w-full h-full object-cover" />
           ) : (
             <span>Sin imagen</span>
           )}
