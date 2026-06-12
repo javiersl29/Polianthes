@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAuthenticated } from "@/lib/auth";
 import { query } from "@/lib/db";
-import { findReferenceImage, fetchAsDataUrl } from "@/lib/reference-image";
+import {
+  findReferenceImage,
+  fetchAsDataUrl,
+  isBlockedHost
+} from "@/lib/reference-image";
 import { getImageApiConfig } from "@/lib/ai-image";
 
 export const dynamic = "force-dynamic";
@@ -45,12 +49,40 @@ export async function POST(req: NextRequest) {
   const cfg = await getImageApiConfig();
   const serpApiKey = cfg?.serpapi_api_key ?? process.env.SERPAPI_API_KEY ?? null;
 
-  const ref = await findReferenceImage(row.brand, row.name, serpApiKey);
+  // Hacemos hasta 3 intentos de búsqueda (cada vez con queries diferentes)
+  // hasta encontrar una imagen que NO esté en host bloqueado Y que
+  // se pueda descargar y validar como imagen real.
+  let ref = null;
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const candidate = await findReferenceImage(row.brand, row.name, serpApiKey);
+    if (!candidate) {
+      lastError = "no_results";
+      break;
+    }
+    if (isBlockedHost(candidate.url)) {
+      lastError = `blocked_host:${new URL(candidate.url).hostname}`;
+      continue; // probar siguiente candidato
+    }
+    // Si no se va a persistir, devolvemos el primer candidato no bloqueado
+    if (!persist) {
+      ref = candidate;
+      break;
+    }
+    // Si se va a persistir, validar que la imagen realmente se puede
+    // descargar como imagen (no HTML de login/placeholder)
+    const fetched = await fetchAsDataUrl(candidate.url);
+    if (fetched) {
+      ref = candidate;
+      break;
+    }
+    lastError = `fetch_failed:${new URL(candidate.url).hostname}`;
+  }
   if (!ref) {
     return NextResponse.json({
       ok: false,
       reason: "no_reference_found",
-      message: `No se encontró imagen de referencia para "${row.brand} ${row.name}"`,
+      message: `No se encontró imagen de referencia válida para "${row.brand} ${row.name}"${lastError ? ` (${lastError})` : ""}`,
       provider: serpApiKey ? "serpapi" : "tavily+fallback"
     });
   }
@@ -72,7 +104,9 @@ export async function POST(req: NextRequest) {
         [fetched.dataUrl, ref.url, ref.source, row.id]
       );
     } else {
-      // al menos guarda la URL aunque no se haya podido descargar
+      // No se pudo descargar (sitio bloquea hotlinking). Guardamos solo
+      // la URL como referencia informativa, sin data. El usuario verá
+      // el link externo pero no la imagen embebida.
       await query(
         `UPDATE fragrance
          SET original_image_url = $1,
@@ -97,6 +131,7 @@ export async function POST(req: NextRequest) {
     },
     persisted: Boolean(persistedDataUrl),
     bytes,
-    used_serpapi: Boolean(serpApiKey)
+    used_serpapi: Boolean(serpApiKey),
+    blocked_attempts: lastError?.startsWith("blocked_host") ? 1 : 0
   });
 }

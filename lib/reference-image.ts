@@ -250,26 +250,138 @@ export async function findReferenceImage(
 }
 
 /**
+ * Hosts conocidos que devuelven HTML/login/placeholder en vez de la imagen
+ * real cuando se hotlinkean desde fuera. Descartamos URLs de estos hosts
+ * para no terminar con referencias rotas.
+ */
+const BLOCKED_HOST_PATTERNS: RegExp[] = [
+  /(^|\.)instagram\.com$/i,
+  /(^|\.)cdninstagram\.com$/i,
+  /(^|\.)fbcdn\.net$/i,
+  /(^|\.)facebook\.com$/i,
+  /(^|\.)pinterest\.com$/i,
+  /(^|\.)pinimg\.com$/i,
+  /(^|\.)tiktok\.com$/i,
+  /(^|\.)tiktokcdn\.com$/i,
+  /(^|\.)twimg\.com$/i,
+  /(^|\.)twitter\.com$/i,
+  /(^|\.)x\.com$/i,
+  /(^|\.)linkedin\.com$/i,
+  /(^|\.)reddit\.com$/i,
+  /(^|\.)redd\.it$/i,
+  /(^|\.)tumblr\.com$/i,
+  /(^|\.)snapchat\.com$/i,
+  /(^|\.)t\.co$/i,
+  /(^|\.)bit\.ly$/i
+];
+
+/**
+ * Detecta si una URL apunta a un host que probablemente bloquea hotlinking.
+ */
+export function isBlockedHost(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return BLOCKED_HOST_PATTERNS.some((re) => re.test(u.hostname));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Verifica que el buffer de bytes empieza con magic numbers válidos
+ * de un formato de imagen real (JPEG, PNG, WebP, GIF).
+ * Esto descarta respuestas que dicen ser imágenes pero en realidad
+ * son HTML/JSON/placeholders de sitios que bloquean hotlinking.
+ */
+function isRealImageBuffer(buf: Buffer): { ok: boolean; mime: string | null } {
+  if (buf.length < 12) return { ok: false, mime: null };
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) {
+    return { ok: true, mime: "image/jpeg" };
+  }
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  ) {
+    return { ok: true, mime: "image/png" };
+  }
+  // WebP: RIFF....WEBP (bytes 0-3 = "RIFF", 8-11 = "WEBP")
+  if (
+    buf[0] === 0x52 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x46 &&
+    buf[8] === 0x57 &&
+    buf[9] === 0x45 &&
+    buf[10] === 0x42 &&
+    buf[11] === 0x50
+  ) {
+    return { ok: true, mime: "image/webp" };
+  }
+  // GIF: GIF87a or GIF89a
+  if (
+    buf[0] === 0x47 &&
+    buf[1] === 0x49 &&
+    buf[2] === 0x46 &&
+    buf[3] === 0x38 &&
+    (buf[4] === 0x37 || buf[4] === 0x39) &&
+    buf[5] === 0x61
+  ) {
+    return { ok: true, mime: "image/gif" };
+  }
+  return { ok: false, mime: null };
+}
+
+/**
  * Descarga una imagen y la convierte a data URL base64.
  * Límite de seguridad: 10MB. Útil cuando se quiere persistir en DB.
+ * Filtra hosts bloqueados (Instagram, Pinterest, etc.) y valida los
+ * magic bytes de la imagen real para descartar respuestas HTML/JSON
+ * que algunos sitios devuelven en lugar de la imagen.
  */
 export async function fetchAsDataUrl(
   url: string,
   maxBytes = 10 * 1024 * 1024
 ): Promise<{ dataUrl: string; contentType: string; bytes: number } | null> {
+  if (isBlockedHost(url)) {
+    return null;
+  }
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Polianthes/1.0)" },
-      signal: AbortSignal.timeout(30000)
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9"
+      },
+      signal: AbortSignal.timeout(30000),
+      redirect: "follow"
     });
     if (!res.ok) return null;
-    const contentType = res.headers.get("content-type") ?? "image/jpeg";
-    if (!contentType.startsWith("image/")) return null;
+    // Verificar longitud antes de descargar todo
+    const contentLength = Number(res.headers.get("content-length") ?? 0);
+    if (contentLength > maxBytes) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    // Solo aceptamos content-types de imagen
+    if (!contentType.toLowerCase().startsWith("image/")) return null;
     const buffer = Buffer.from(await res.arrayBuffer());
     if (buffer.length === 0 || buffer.length > maxBytes) return null;
+    // Validar magic bytes: muchos sitios devuelven content-type: image/jpeg
+    // pero el cuerpo es HTML o un placeholder. Los magic numbers no mienten.
+    const check = isRealImageBuffer(buffer);
+    if (!check.ok) return null;
+    // Usar el mime type que detectamos por magic bytes (más confiable que el header)
+    const finalMime = check.mime ?? contentType;
     return {
-      dataUrl: `data:${contentType};base64,${buffer.toString("base64")}`,
-      contentType,
+      dataUrl: `data:${finalMime};base64,${buffer.toString("base64")}`,
+      contentType: finalMime,
       bytes: buffer.length
     };
   } catch {

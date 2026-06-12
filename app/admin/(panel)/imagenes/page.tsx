@@ -1069,7 +1069,26 @@ function PreviewModal({
                 </span>
               )}
             </div>
-            {row.original_image_url && (
+            {row.original_image_url && !row.has_original_reference && (
+              <div className="px-2 py-1 rounded-md bg-rose-400/15 border border-rose-400/30 text-rose-300 text-[10px] flex items-center gap-1">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
+                Link guardado pero no se pudo descargar (sitio bloquea hotlinking)
+                <a
+                  href={row.original_image_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="ml-auto underline hover:text-rose-200 truncate max-w-[140px]"
+                  title={row.original_image_url}
+                >
+                  abrir
+                </a>
+              </div>
+            )}
+            {row.original_image_url && row.has_original_reference && (
               <a
                 href={row.original_image_url}
                 target="_blank"
