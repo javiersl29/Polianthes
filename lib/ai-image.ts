@@ -64,9 +64,25 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
   const hasBrandBottle = Boolean(input.brandBottleDataUrl);
   const hasOriginal = Boolean(input.originalPerfumeDataUrl);
 
+  // Prefijo crítico: etiqueta explícita de cada imagen de referencia.
+  // El modelo recibe las dos imágenes como subject_reference y necesita
+  // saber cuál es la botella Polianthes y cuál es la fragancia original.
+  const refIndexLine = (() => {
+    if (hasBrandBottle && hasOriginal) {
+      return "You are seeing two reference images as input: IMAGE 1 (the Polianthes brand bottle with its golden cap) and IMAGE 2 (the original designer fragrance bottle from the inspiration). Treat IMAGE 1 as the hero subject in the foreground and IMAGE 2 as the background reference.";
+    }
+    if (hasBrandBottle) {
+      return "You are seeing one reference image as input: the Polianthes brand bottle. Use it as the hero subject.";
+    }
+    if (hasOriginal) {
+      return "You are seeing one reference image as input: the original designer fragrance bottle. Replicate its silhouette, proportions, cap, and label as the hero subject in the foreground.";
+    }
+    return "";
+  })();
+
   // Subject: la botella de marca Polianthes, nítida en primer plano
   const subjectLine = hasBrandBottle
-    ? "In the foreground, sharply in focus and centered: the transparent crystal glass bottle of the Polianthes brand, with a polished golden cap, presented as the hero subject. Preserve the bottle's silhouette, proportions, glass clarity, cap finish, and label design exactly as in the reference."
+    ? "In the foreground, sharply in focus and centered: the transparent crystal glass bottle of the Polianthes brand (IMAGE 1), with a polished golden cap, presented as the hero subject. Preserve the bottle's silhouette, proportions, glass clarity, cap finish, and label design exactly as in IMAGE 1."
     : "In the foreground, sharply in focus and centered: a clean transparent crystal glass perfume bottle with a polished golden cap, no visible label, logo, brand mark, or text. The bottle is the hero subject.";
 
   // Ref original: la botella fantasma de la fragancia original, borroso al fondo
@@ -75,6 +91,7 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     : "";
 
   return [
+    refIndexLine,
     "Elegant, photorealistic, high-end perfumery campaign photography.",
     subjectLine,
     refLine,
