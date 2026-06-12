@@ -55,6 +55,11 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
   if (input.promptOverride && input.promptOverride.trim().length > 0) {
     return input.promptOverride.trim();
   }
+  // genNonce: timestamp único por request para forzar que la IA no use
+  // cache. Sin esto, MiniMax/Gemini pueden devolver la misma imagen que
+  // el request anterior si el prompt y las imágenes son idénticos. Lo
+  // añadimos al final del prompt como "variation seed".
+  const genNonce = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
   const familyHint = input.family ? FAMILY_MOOD_HINTS[input.family] ?? input.family.toLowerCase() : "";
   const moodHint = input.mood ? MOOD_HINTS[input.mood] ?? input.mood.toLowerCase() : "";
   const allNotes = [...(input.topNotes ?? []), ...(input.heartNotes ?? []), ...(input.baseNotes ?? [])]
@@ -102,7 +107,9 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
     "Composition: hero subject in sharp focus, depth of field with strong background separation, no text overlay, no watermark, no UI elements, no logos other than the Polianthes label on the hero bottle.",
     familyHint ? `Fragrance family cues: ${familyHint}.` : "",
     moodHint ? `Atmosphere: ${moodHint}.` : "",
-    allNotes ? `Subtle scent cues (background mood only, not literal): ${allNotes}.` : ""
+    allNotes ? `Subtle scent cues (background mood only, not literal): ${allNotes}.` : "",
+    // Variation seed: fuerza a la IA a generar imagen nueva (no usar cache)
+    `Variation #${genNonce}.`
   ]
     .filter(Boolean)
     .join(" ");

@@ -467,7 +467,13 @@ export default function ImagesPage() {
             : p
         )
       );
-      toast.success(`${row.full_name} → ref manual subida (${(data.size_bytes / 1024).toFixed(0)} KB)`);
+      toast.success(
+        `${row.full_name} → ref manual subido (${(data.size_bytes / 1024).toFixed(0)} KB), regenerando preview…`
+      );
+      // Regenerar preview automáticamente para que use la nueva imagen
+      // (sin que el usuario tenga que hacer click en Regenerar — antes
+      // la IA cacheaba la imagen anterior aunque subiéramos una nueva)
+      await generateOne(row);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al subir");
     } finally {
