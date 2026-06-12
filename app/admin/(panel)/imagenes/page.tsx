@@ -382,20 +382,36 @@ export default function ImagesPage() {
 
   const acceptOne = async (row: Item) => {
     const preview = previews[row.id];
-    if (!preview || preview.status !== "ready" || !preview.dataUrl) return;
+    if (!preview || preview.status !== "ready" || !preview.dataUrl) {
+      toast.error("No hay preview listo para guardar");
+      return;
+    }
+    // Marcar como "guardando" para que el botón muestre estado
+    setPreviews((p) => ({ ...p, [row.id]: { ...p[row.id]!, status: "generating" } }));
     try {
+      // Enviar el data_url del preview para guardar DIRECTAMENTE sin
+      // re-generar (la IA no es determinista, podría sobrescribirse)
       const res = await fetch("/api/admin/fragrances/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug: row.slug, save: true })
+        body: JSON.stringify({
+          slug: row.slug,
+          save: true,
+          data_url: preview.dataUrl
+        })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || data.message || "Error");
       setItems((prev) => prev.map((p) => (p.id === row.id ? { ...p, image_url: data.image_url } : p)));
       setPreviews((p) => ({ ...p, [row.id]: { ...p[row.id]!, status: "idle", dataUrl: null } }));
-      toast.success(`${row.full_name} → imagen guardada`);
+      toast.success(`${row.full_name} → imagen guardada (${(data.size_bytes / 1024).toFixed(0)} KB)`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error");
+      // Volver a "ready" para que el usuario pueda reintentar
+      setPreviews((p) => ({
+        ...p,
+        [row.id]: { ...p[row.id]!, status: "ready" }
+      }));
+      toast.error(err instanceof Error ? err.message : "Error al guardar");
     }
   };
 
@@ -405,10 +421,100 @@ export default function ImagesPage() {
       toast.error("No hay previews listas para guardar");
       return;
     }
+    let succeeded = 0;
+    let failed = 0;
     for (const id of ready) {
       const row = items.find((i) => i.id === id);
-      if (row) await acceptOne(row);
-      await new Promise((r) => setTimeout(r, 250));
+      if (!row) continue;
+      const preview = previews[id];
+      if (!preview?.dataUrl) continue;
+      try {
+        const res = await fetch("/api/admin/fragrances/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: row.slug, save: true, data_url: preview.dataUrl })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || data.message || "Error");
+        setItems((prev) => prev.map((p) => (p.id === id ? { ...p, image_url: data.image_url } : p)));
+        setPreviews((p) => ({ ...p, [id]: { ...p[id]!, status: "idle", dataUrl: null } }));
+        succeeded += 1;
+      } catch {
+        failed += 1;
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    if (succeeded > 0 && failed === 0) {
+      toast.success(`${succeeded} imágenes guardadas`);
+    } else if (succeeded > 0) {
+      toast.warning(`Guardadas ${succeeded}, fallaron ${failed}`);
+    } else {
+      toast.error(`No se pudo guardar ninguna (${failed})`);
+    }
+  };
+
+  const generateAndSaveAll = async () => {
+    if (selected.size === 0) {
+      toast.error("Selecciona al menos una fragancia");
+      return;
+    }
+    if (!brandBottle?.has_image) {
+      toast.error("Sube la imagen de la botella de marca antes de generar");
+      return;
+    }
+    setBatchRunning(true);
+    const targets = items.filter((i) => selected.has(i.id));
+    let succeeded = 0;
+    let failed = 0;
+    for (const row of targets) {
+      if (!row.has_original_reference && searchStatus?.has_serpapi_key) {
+        await findReferenceFor(row);
+      }
+      // Genera
+      setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "generating" } }));
+      try {
+        const res = await fetch("/api/admin/fragrances/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: row.slug, save: false })
+        });
+        const data = await res.json();
+        if (!res.ok || data?.reason === "generation_failed" || data?.reason === "no_data") {
+          failed += 1;
+          setPreviews((p) => ({
+            ...p,
+            [row.id]: { id: row.id, slug: row.slug, status: "error", message: data?.message ?? "Error" }
+          }));
+          continue;
+        }
+        // Guardar inmediatamente el preview generado
+        const saveRes = await fetch("/api/admin/fragrances/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ slug: row.slug, save: true, data_url: data.data_url })
+        });
+        const saveData = await saveRes.json();
+        if (!saveRes.ok) throw new Error(saveData.error || saveData.message || "Error guardando");
+        setItems((prev) =>
+          prev.map((p) => (p.id === row.id ? { ...p, image_url: saveData.image_url } : p))
+        );
+        setPreviews((p) => ({
+          ...p,
+          [row.id]: { id: row.id, slug: row.slug, status: "idle", dataUrl: null }
+        }));
+        succeeded += 1;
+      } catch {
+        failed += 1;
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    setBatchRunning(false);
+    if (succeeded > 0 && failed === 0) {
+      toast.success(`✓ ${succeeded} imágenes generadas y guardadas`);
+    } else if (succeeded > 0) {
+      toast.warning(`OK ${succeeded}, fallaron ${failed}`);
+    } else {
+      toast.error(`No se pudo generar ninguna (${failed})`);
     }
   };
 
@@ -661,9 +767,17 @@ export default function ImagesPage() {
             <button
               onClick={runBatch}
               disabled={batchRunning || selectedCount === 0 || !brandBottle?.has_image}
-              className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
+              className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
               {batchRunning ? "Generando…" : `Generar ${selectedCount || ""} previews`}
+            </button>
+            <button
+              onClick={generateAndSaveAll}
+              disabled={batchRunning || selectedCount === 0 || !brandBottle?.has_image}
+              className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
+              title="Genera el preview Y lo guarda inmediatamente en la DB (sin pasar por el paso manual de Guardar)"
+            >
+              {batchRunning ? "Generando+guardando…" : `⚡ Generar+guardar (${selectedCount || 0})`}
             </button>
             {readyCount > 0 && (
               <button
@@ -749,7 +863,16 @@ export default function ImagesPage() {
                       </div>
                     </>
                   ) : preview?.status === "generating" ? (
-                    <span className="text-gold">Generando…</span>
+                    <div className="flex flex-col items-center gap-1 text-gold">
+                      <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
+                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25" />
+                        <path
+                          d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+                          fill="currentColor"
+                        />
+                      </svg>
+                      <span className="text-[10px] uppercase tracking-wider">Generando…</span>
+                    </div>
                   ) : preview?.status === "error" ? (
                     <span className="text-rose-300 px-3 text-center text-[11px]">{preview.message || "Error"}</span>
                   ) : row.image_url ? (
@@ -784,10 +907,18 @@ export default function ImagesPage() {
                       <button
                         onClick={() => generateOne(row)}
                         disabled={batchRunning}
-                        className="flex-1 liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold"
+                        className="flex-1 liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold disabled:opacity-50"
                       >
                         Regenerar
                       </button>
+                    </div>
+                  )}
+                  {preview?.status === "idle" && row.image_url && row.image_url.startsWith("/api/image/") && (
+                    <div className="px-2 py-1 rounded-md bg-emerald-400/15 border border-emerald-400/30 text-emerald-300 text-[10px] flex items-center gap-1">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="20 6 9 17 4 12"></polyline>
+                      </svg>
+                      Guardada en DB
                     </div>
                   )}
                 </div>

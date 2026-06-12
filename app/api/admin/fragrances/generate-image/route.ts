@@ -17,6 +17,12 @@ type Body = {
   save?: boolean;
   /** Forzar que se use la imagen de marca (ignorar override por fragancia) */
   force_brand_bottle?: boolean;
+  /**
+   * Si viene, el endpoint guarda este data URL directamente sin re-generar.
+   * Esto es lo que usa el botón "Guardar" del preview para evitar
+   * que la imagen se regenere (puede dar un resultado distinto).
+   */
+  data_url?: string;
 };
 
 type FragranceRow = {
@@ -87,6 +93,48 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "slug requerido" }, { status: 400 });
   }
   const save = body.save !== false;
+
+  // Atajo: si el cliente ya tiene un preview generado y solo quiere guardarlo,
+  // acepta el data_url directamente sin re-generar. Esto es crítico porque
+  // la generación con IA no es determinista: cada llamada produce un
+  // resultado distinto. Sin este atajo, "Guardar" sobrescribe la imagen
+  // que el usuario vio.
+  if (save && body.data_url) {
+    const dataUrl = body.data_url;
+    const m = dataUrl.match(/^data:(image\/[a-zA-Z+.-]+);base64,(.{100,})/);
+    if (!m) {
+      return NextResponse.json(
+        { ok: false, reason: "invalid_data_url", message: "data_url malformado" },
+        { status: 400 }
+      );
+    }
+    const mime = m[1];
+    const b64 = m[2];
+    // Validar tamaño (max 10MB después de decodificar)
+    const approxBytes = Math.floor((b64.length * 3) / 4);
+    if (approxBytes > 10 * 1024 * 1024) {
+      return NextResponse.json(
+        { ok: false, reason: "too_large", message: "Imagen demasiado grande (max 10MB)" },
+        { status: 400 }
+      );
+    }
+    const publicPath = `/api/image/${body.slug}`;
+    const upd = await query(
+      `UPDATE fragrance SET image_data = $1, image_url = $2 WHERE slug = $3 AND active = TRUE`,
+      [dataUrl, publicPath, body.slug]
+    );
+    if (upd.rowCount === 0) {
+      return NextResponse.json({ error: "Fragancia no encontrada" }, { status: 404 });
+    }
+    return NextResponse.json({
+      ok: true,
+      saved: true,
+      image_url: publicPath,
+      size_bytes: approxBytes,
+      mime_type: mime,
+      source: "client_preview"
+    });
+  }
 
   const r = await query<FragranceRow>(
     `SELECT id, slug, brand, name, family, mood, top_notes, heart_notes, base_notes,
