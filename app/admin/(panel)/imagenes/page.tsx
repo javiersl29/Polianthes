@@ -126,6 +126,14 @@ export default function ImagesPage() {
   });
   const [savingConfig, setSavingConfig] = useState(false);
   const brandBottleFileRef = useRef<HTMLInputElement | null>(null);
+  const [refUploadTarget, setRefUploadTarget] = useState<Item | null>(null);
+  const refUploadFileRef = useRef<HTMLInputElement | null>(null);
+
+  // Cuando el usuario selecciona archivo en el input oculto, procesarlo
+  useEffect(() => {
+    if (!refUploadTarget) return;
+    // Esperar al siguiente tick para asegurar que el ref esté asignado
+  }, [refUploadTarget]);
 
   const [sources, setSources] = useState<{
     serpapi: "db" | "env" | "none";
@@ -201,6 +209,20 @@ export default function ImagesPage() {
   const findReferenceFor = async (row: Item): Promise<boolean> => {
     setRefetching((p) => new Set(p).add(row.id));
     try {
+      // Limpiar la URL anterior antes de re-buscar para evitar confusión
+      // con referencias stale (especialmente si eran de sitios bloqueados)
+      setItems((prev) =>
+        prev.map((p) =>
+          p.id === row.id
+            ? {
+                ...p,
+                has_original_reference: false,
+                original_image_url: null,
+                original_image_source: null
+              }
+            : p
+        )
+      );
       const res = await fetch("/api/admin/fragrances/find-reference", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -216,7 +238,7 @@ export default function ImagesPage() {
             p.id === row.id
               ? {
                   ...p,
-                  has_original_reference: true,
+                  has_original_reference: Boolean(data.persisted),
                   original_image_url: data.reference?.url ?? p.original_image_url,
                   original_image_source: data.reference?.source ?? p.original_image_source
                 }
@@ -226,6 +248,7 @@ export default function ImagesPage() {
         return true;
       } else {
         toast.error(data?.message || data?.error || "No se encontró imagen de referencia");
+        // Restaurar el estado de la card (no tiene ref)
         return false;
       }
     } catch (err) {
@@ -378,6 +401,58 @@ export default function ImagesPage() {
     }
     setBatchRunning(false);
     toast.success("Generación completa.");
+  };
+
+  const uploadOriginalFor = async (row: Item, file: File) => {
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error("Máximo 10 MB");
+      return;
+    }
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
+      toast.error("Formato: JPG, PNG o WebP");
+      return;
+    }
+    setRefetching((p) => new Set(p).add(row.id));
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Error leyendo archivo"));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch(
+        `/api/admin/fragrances/original-image-upload/${row.slug}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data_url: dataUrl, source: "manual_upload" })
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error");
+      setItems((prev) =>
+        prev.map((p) =>
+          p.id === row.id
+            ? {
+                ...p,
+                has_original_reference: true,
+                original_image_source: "manual_upload"
+              }
+            : p
+        )
+      );
+      setOpenModalRow(null);
+      setTimeout(() => setOpenModalRow(row), 100); // refrescar modal
+      toast.success(`${row.full_name} → ref manual subida (${(data.size_bytes / 1024).toFixed(0)} KB)`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Error al subir");
+    } finally {
+      setRefetching((p) => {
+        const n = new Set(p);
+        n.delete(row.id);
+        return n;
+      });
+    }
   };
 
   const acceptOne = async (row: Item) => {
@@ -888,13 +963,26 @@ export default function ImagesPage() {
                         ? `Ref: ${row.original_image_source ?? "OK"}`
                         : "Sin ref original"}
                     </span>
-                    <button
-                      onClick={() => findReferenceFor(row)}
-                      disabled={isFetching}
-                      className="text-gold hover:text-gold/80 disabled:opacity-50"
-                    >
-                      {isFetching ? "Buscando…" : row.has_original_reference ? "Re-buscar" : "Buscar ref"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setRefUploadTarget(row);
+                          refUploadFileRef.current?.click();
+                        }}
+                        disabled={isFetching}
+                        title="Subir tu propia imagen de referencia"
+                        className="text-ink-mute hover:text-gold disabled:opacity-50"
+                      >
+                        ⬆ Subir
+                      </button>
+                      <button
+                        onClick={() => findReferenceFor(row)}
+                        disabled={isFetching}
+                        className="text-gold hover:text-gold/80 disabled:opacity-50"
+                      >
+                        {isFetching ? "Buscando…" : row.has_original_reference ? "Re-buscar" : "Buscar"}
+                      </button>
+                    </div>
                   </div>
                   {preview?.status === "ready" && (
                     <div className="flex gap-2">
@@ -932,8 +1020,30 @@ export default function ImagesPage() {
           row={openModalRow}
           preview={previews[openModalRow.id]}
           onClose={() => setOpenModalRow(null)}
+          onUploadClick={() => {
+            setRefUploadTarget(openModalRow);
+            setOpenModalRow(null);
+            setTimeout(() => refUploadFileRef.current?.click(), 100);
+          }}
+          onRefetchClick={() => {
+            const r = openModalRow;
+            setOpenModalRow(null);
+            setTimeout(() => findReferenceFor(r), 100);
+          }}
         />
       )}
+      <input
+        ref={refUploadFileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f && refUploadTarget) uploadOriginalFor(refUploadTarget, f);
+          e.target.value = "";
+          setRefUploadTarget(null);
+        }}
+      />
     </div>
   );
 }
@@ -941,11 +1051,15 @@ export default function ImagesPage() {
 function PreviewModal({
   row,
   preview,
-  onClose
+  onClose,
+  onUploadClick,
+  onRefetchClick
 }: {
   row: Item;
   preview: Preview | undefined;
   onClose: () => void;
+  onUploadClick: () => void;
+  onRefetchClick: () => void;
 }) {
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
@@ -1086,6 +1200,39 @@ function PreviewModal({
                 >
                   abrir
                 </a>
+              </div>
+            )}
+            {!row.has_original_reference && (
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={() => onClose()}
+                  className="liquid-glass rounded-full px-3 py-1.5 text-[10px] uppercase tracking-wider hover:text-gold"
+                >
+                  Cerrar
+                </button>
+                <button
+                  onClick={onUploadClick}
+                  className="flex-1 liquid-glass-strong rounded-full px-3 py-1.5 text-[10px] uppercase tracking-wider hover:text-gold"
+                >
+                  ⬆ Subir mi imagen
+                </button>
+              </div>
+            )}
+            {row.has_original_reference && (
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={onUploadClick}
+                  className="liquid-glass rounded-full px-3 py-1.5 text-[10px] uppercase tracking-wider hover:text-gold"
+                  title="Reemplazar la referencia actual con una imagen de tu computadora"
+                >
+                  Reemplazar
+                </button>
+                <button
+                  onClick={onRefetchClick}
+                  className="flex-1 liquid-glass rounded-full px-3 py-1.5 text-[10px] uppercase tracking-wider hover:text-gold"
+                >
+                  Re-buscar online
+                </button>
               </div>
             )}
             {row.original_image_url && row.has_original_reference && (
