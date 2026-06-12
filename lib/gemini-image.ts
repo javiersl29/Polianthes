@@ -39,6 +39,24 @@ const DEFAULT_MODEL = "gemini-3.1-flash-image";
 const DEFAULT_ASPECT = "1:1";
 const DEFAULT_SIZE = "1K";
 
+/**
+ * Valida la combinación aspect_ratio + image_size para gemini-3.1-flash-image.
+ * Si la combinación no es válida, sube image_size a 1K (la opción más compatible).
+ * Referencia: https://ai.google.dev/gemini-api/docs/image-generation
+ *   - image_size=512 solo acepta 1:4, 4:1, 1:8, 8:1
+ *   - 1K/2K/4K aceptan todos los aspect ratios
+ */
+function validateGeminiCombo(
+  aspectRatio: string,
+  imageSize: "512" | "1K" | "2K" | "4K"
+): { aspectRatio: string; imageSize: "512" | "1K" | "2K" | "4K" } {
+  const allowedAspectsFor512 = new Set(["1:4", "4:1", "1:8", "8:1"]);
+  if (imageSize === "512" && !allowedAspectsFor512.has(aspectRatio)) {
+    return { aspectRatio, imageSize: "1K" };
+  }
+  return { aspectRatio, imageSize };
+}
+
 export type ResolvedGeminiConfig = {
   endpoint: string;
   apiKey: string;
@@ -101,12 +119,22 @@ export async function generateGeminiImage(
   }
   parts.push({ text: input.prompt });
 
+  // Validar y auto-corregir la combinación image_size + aspect_ratio.
+  // En gemini-3.1-flash-image, image_size=512 solo acepta 1:4, 4:1, 1:8, 8:1.
+  // Para 1:1 (u otros) se requiere image_size >= 1K.
+  const aspectRatio = input.aspectRatio ?? cfg.aspectRatio;
+  const requestedSize = input.imageSize ?? cfg.imageSize;
+  const { aspectRatio: validAspect, imageSize: validSize } = validateGeminiCombo(
+    aspectRatio,
+    requestedSize
+  );
+
   const generationConfig: Record<string, unknown> = {
     response_modalities: ["TEXT", "IMAGE"],
     response_format: {
       image: {
-        aspect_ratio: input.aspectRatio ?? cfg.aspectRatio,
-        image_size: input.imageSize ?? cfg.imageSize
+        aspect_ratio: validAspect,
+        image_size: validSize
       }
     }
   };
@@ -268,12 +296,14 @@ export async function testGeminiConnection(): Promise<{
     };
   }
   const start = Date.now();
+  // Test simple: 1K + 1:1 es la combinación más compatible en gemini-3.1-flash-image.
+  // (image_size=512 solo acepta 1:4, 4:1, 1:8, 8:1; 1:1 requiere >=1K)
   const r = await generateGeminiImage(
     {
       referenceImages: [],
       prompt: "A single small red dot on a white background, minimal, simple",
       aspectRatio: "1:1",
-      imageSize: "512",
+      imageSize: "1K",
       thinkingLevel: "minimal"
     },
     cfg
