@@ -19,22 +19,34 @@ const SERPER_IMAGES_URL = "https://google.serper.dev/images";
 
 async function fromSerpApi(brand: string, name: string, apiKey: string): Promise<ReferenceImage | null> {
   if (!apiKey) return null;
+  // Queries optimizadas para encontrar fotos de producto (botella visible)
+  // de presentación grande (100ml+) en sitios de tienda reales.
+  // Las búsquedas son en inglés para acceder al catálogo internacional.
+  // Los filtros adicionales (imgsz, imgar, tbs) los aplica searchSerpApiImages.
   const queries = [
-    `${brand} ${name} perfume bottle`,
-    `${brand} ${name} fragrance bottle`,
-    `${brand} ${name} perfume`,
-    `${name} perfume bottle ${brand}`,
-    `${name} ${brand} parfum`
+    // 1. Nombre + tamaño grande (botella completa visible)
+    `${brand} ${name} 100ml eau de parfum bottle`,
+    // 2. Producto oficial de tienda
+    `${brand} ${name} perfume buy`,
+    // 3. Combinación con sitio de tienda conocido
+    `${brand} ${name} site:sephora.com OR site:ulta.com OR site:fragrancenet.com OR site:macys.com`,
+    // 4. Con tamaño de producto explícito
+    `${brand} ${name} 3.4oz fragrance bottle`,
+    // 5. Fallback más simple
+    `${brand} ${name} eau de parfum bottle`
   ];
   for (const q of queries) {
     const r = await searchSerpApiImages(q, apiKey, 10);
     if (r.ok && r.images.length > 0) {
-      // prefer images with reasonable aspect ratio (no logos, no huge bgs)
+      // preferimos imágenes con aspect ratio razonable (no logos, no banners)
+      // y con buena resolución
       const candidates = r.images
         .filter((img) => {
           if (img.width && img.height) {
             const ratio = img.width / img.height;
             if (ratio < 0.3 || ratio > 3) return false;
+            // queremos al menos 600px en el lado mayor para buena calidad
+            if (Math.max(img.width, img.height) < 600) return false;
           }
           return true;
         })
