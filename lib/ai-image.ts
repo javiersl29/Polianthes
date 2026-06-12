@@ -64,24 +64,28 @@ export function buildImagePrompt(input: ImageGenerationInput): string {
   const hasBrandBottle = Boolean(input.brandBottleDataUrl);
   const hasOriginal = Boolean(input.originalPerfumeDataUrl);
 
+  // Subject: la botella de marca Polianthes, nítida en primer plano
   const subjectLine = hasBrandBottle
-    ? "In the foreground, center frame, three-quarter angle, eye level: the brand's own perfume bottle with its label as the clear subject, faithfully preserving the bottle's silhouette, proportions, color, cap, and label design."
-    : "In the foreground, center frame, three-quarter angle, eye level: a clean, faceted glass perfume bottle silhouette without any visible label, logo, brand mark, or text. The bottle is the subject.";
+    ? "In the foreground, sharply in focus and centered: the transparent crystal glass bottle of the Polianthes brand, with a polished golden cap, presented as the hero subject. Preserve the bottle's silhouette, proportions, glass clarity, cap finish, and label design exactly as in the reference."
+    : "In the foreground, sharply in focus and centered: a clean transparent crystal glass perfume bottle with a polished golden cap, no visible label, logo, brand mark, or text. The bottle is the hero subject.";
 
+  // Ref original: la botella fantasma de la fragancia original, borroso al fondo
   const refLine = hasOriginal
-    ? "Behind the bottle, heavily out-of-focus and bokeh-blurred, a soft ghost-like presence of the original reference perfume — recognizable only as a soft colored glow shape, never sharp, never readable."
+    ? "In the background, slightly out of focus and softly bokeh-blurred: a recognizable but ghosted presence of the original reference fragrance bottle, behind and to one side of the Polianthes bottle, as a soft colored silhouette, never sharp, never fully readable, only suggesting the original fragrance."
     : "";
 
   return [
-    "Editorial luxury perfume photography, high-end campaign composition.",
+    "Elegant, photorealistic, high-end perfumery campaign photography.",
     subjectLine,
     refLine,
-    "Background: deep charcoal black (#0c0c0c) with a single soft golden volumetric light from the upper left (#d4af6a, warm, low intensity).",
-    "Cinematic 85mm lens, f/2.8, photorealistic, soft bokeh, slight grain.",
-    "Composition: subject in sharp focus, dramatic chiaroscuro, no text overlay, no watermark, no UI elements.",
-    familyHint ? `Mood of the fragrance: ${familyHint}.` : "",
+    "Setting: the bottles rest on a polished marble tabletop with subtle veining, in a sophisticated dark wood shelf interior (boutique perfumery atmosphere).",
+    "Lighting: warm golden key light from the upper left, soft amber fill, deep shadows to the right; cinematic chiaroscuro that highlights the crystal glass and the golden cap.",
+    "Lens: 85mm prime, f/2.0, photorealistic, soft bokeh on the background, slight film grain, gentle reflections on the marble.",
+    "Color palette: deep warm browns, polished gold accents, translucent glass with subtle internal reflections.",
+    "Composition: hero subject in sharp focus, depth of field with strong background separation, no text overlay, no watermark, no UI elements, no logos other than the Polianthes label on the hero bottle.",
+    familyHint ? `Fragrance family cues: ${familyHint}.` : "",
     moodHint ? `Atmosphere: ${moodHint}.` : "",
-    allNotes ? `Scent cues: ${allNotes}.` : ""
+    allNotes ? `Subtle scent cues (background mood only, not literal): ${allNotes}.` : ""
   ]
     .filter(Boolean)
     .join(" ");
