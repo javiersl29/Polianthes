@@ -351,7 +351,26 @@ export default function ImagesPage() {
     const method = configForm.provider === "gemini" ? "GET" : "POST";
     try {
       const r = await fetch(endpoint, { method });
-      const data = (await r.json()) as TestResult;
+      const text = await r.text();
+      let data: TestResult;
+      try {
+        data = JSON.parse(text) as TestResult;
+      } catch {
+        // Backend no devolvió JSON (error 500, 502, o HTML de mantenimiento de Railway)
+        const msg = text
+          ? `HTTP ${r.status}: ${text.slice(0, 200)}`
+          : `HTTP ${r.status}: respuesta vacía`;
+        setTestResult({
+          ok: false,
+          endpoint,
+          model: "?",
+          source: "?",
+          status_code: r.status,
+          error: msg
+        });
+        toast.error(msg);
+        return;
+      }
       setTestResult(data);
       if (data.ok) toast.success(`Conexión ${configForm.provider} exitosa`);
       else toast.error(data.error || "Falló la prueba");
@@ -367,7 +386,18 @@ export default function ImagesPage() {
     setSerpResult(null);
     try {
       const r = await fetch("/api/admin/image-config/test-serpapi", { method: "GET" });
-      const data = (await r.json()) as SerpApiTestResult;
+      const text = await r.text();
+      let data: SerpApiTestResult;
+      try {
+        data = JSON.parse(text) as SerpApiTestResult;
+      } catch {
+        const msg = text
+          ? `HTTP ${r.status}: ${text.slice(0, 200)}`
+          : `HTTP ${r.status}: respuesta vacía`;
+        setSerpResult({ ok: false, error: msg });
+        toast.error(msg);
+        return;
+      }
       setSerpResult(data);
       if (data.ok) toast.success(`SerpAPI OK · ${data.image_count} imágenes`);
       else toast.error(data.error || "SerpAPI falló");
