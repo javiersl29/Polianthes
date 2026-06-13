@@ -31,10 +31,15 @@ export async function POST(req: NextRequest) {
   await pool.query(sql);
   // Ejecutar schema_admin.sql statement por statement para que un error
   // en una tabla (p.ej. ya existe) no revierta todo el bloque.
-  const adminStatements = sqlAdmin
-    .split(/;\s*\n/)
+  // Quitamos comentarios SQL (líneas que empiezan con -- o bloques /* */),
+  // luego separamos por ; respetando que NO haya ; dentro de strings.
+  const sqlNoComments = sqlAdmin
+    .replace(/--[^\n]*/g, "")      // quitar comentarios de línea
+    .replace(/\/\*[\s\S]*?\*\//g, ""); // quitar comentarios de bloque
+  const adminStatements = sqlNoComments
+    .split(/\s*;\s*(?:\n|$)/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 0 && !s.startsWith("--"));
+    .filter((s) => s.length > 0);
   for (const stmt of adminStatements) {
     try {
       await pool.query(stmt);
