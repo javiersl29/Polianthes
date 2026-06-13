@@ -4,6 +4,8 @@ import { Toaster } from "sonner";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { CartProvider } from "@/components/CartProvider";
+import CartDrawer from "@/components/CartDrawer";
 
 const display = Cormorant_Garamond({
   subsets: ["latin"],
@@ -37,21 +39,24 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="es" className={`${display.variable} ${body.variable}`}>
       <body className="bg-bg text-ink min-h-screen">
-        <Navbar />
-        {children}
-        <Footer />
-        <Toaster
-          theme="dark"
-          position="bottom-center"
-          toastOptions={{
-            style: {
-              background: "color-mix(in oklch, var(--color-bg-elev) 90%, transparent)",
-              border: "1px solid color-mix(in oklch, var(--color-gold) 30%, transparent)",
-              color: "var(--color-ink)",
-              backdropFilter: "blur(14px)"
-            }
-          }}
-        />
+        <CartProvider>
+          <Navbar />
+          {children}
+          <Footer />
+          <CartDrawer />
+          <Toaster
+            theme="dark"
+            position="bottom-center"
+            toastOptions={{
+              style: {
+                background: "color-mix(in oklch, var(--color-bg-elev) 90%, transparent)",
+                border: "1px solid color-mix(in oklch, var(--color-gold) 30%, transparent)",
+                color: "var(--color-ink)",
+                backdropFilter: "blur(14px)"
+              }
+            }}
+          />
+        </CartProvider>
       </body>
     </html>
   );

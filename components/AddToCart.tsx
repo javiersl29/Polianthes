@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { formatMXN } from "@/lib/money";
+import { useCart } from "@/components/CartProvider";
 
 type Presentation = {
   size_ml: number;
@@ -15,6 +16,9 @@ type Props = {
   brand: string;
   name: string;
   image_url: string | null;
+  image_version?: number | null;
+  artistic_name?: string | null;
+  full_name?: string;
   presentations: Presentation[];
 };
 
@@ -31,7 +35,8 @@ function stockLabel(p: Presentation): string | null {
   return null;
 }
 
-export default function AddToCart({ slug, brand, name, image_url, presentations }: Props) {
+export default function AddToCart({ slug, brand, name, image_url, image_version, artistic_name, full_name, presentations }: Props) {
+  const { add } = useCart();
   const available = presentations
     .filter((p) => p.price_cents !== null && p.price_cents > 0)
     .filter(isInStock);
@@ -56,9 +61,19 @@ export default function AddToCart({ slug, brand, name, image_url, presentations 
 
   const handleAdd = () => {
     if (!selected || !selected.price_cents) return;
-    toast.success(`${name} (${size} ml) — carrito próximamente`, {
-      description: "Sprint 2 habilita el carrito completo."
+    add({
+      slug,
+      brand,
+      name,
+      full_name: full_name ?? `${brand} - ${name}`,
+      artistic_name: artistic_name ?? null,
+      size_ml: selected.size_ml,
+      qty,
+      unit_price_cents: selected.price_cents,
+      image_url,
+      image_version: image_version ?? null
     });
+    toast.success(`${artistic_name ?? name} (${selected.size_ml}ml) añadido al carrito`);
   };
 
   return (

@@ -4,6 +4,7 @@ import { getFragranceBySlug, getSimilarFragrances } from "@/lib/fragrances";
 import { genderBadge } from "@/lib/visual";
 import AddToCart from "@/components/AddToCart";
 import HexagonView from "@/components/HexagonView";
+import FragranceReviews from "@/components/FragranceReviews";
 
 export const dynamic = "force-dynamic";
 
@@ -122,6 +123,9 @@ export default async function FragrancePage({ params }: { params: { slug: string
                 brand={detail.brand}
                 name={detail.name}
                 image_url={detail.image_url}
+                image_version={detail.image_version ?? null}
+                artistic_name={detail.artistic_name}
+                full_name={detail.full_name}
                 presentations={detail.presentations}
               />
             </div>
@@ -224,6 +228,9 @@ export default async function FragrancePage({ params }: { params: { slug: string
             </div>
           </section>
         )}
+
+        {/* Reseñas */}
+        <FragranceReviews slug={params.slug} />
       </div>
     </main>
   );

@@ -10,9 +10,11 @@ const items = [
   { href: "/admin/nombres", label: "Nombres artísticos", icon: "✦" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "📦" },
   { href: "/admin/estadisticas", label: "Estadísticas", icon: "📈" },
+  { href: "/admin/resenas", label: "Reseñas", icon: "★" },
   { href: "/admin/usuarios", label: "Usuarios", icon: "👥" },
   { href: "/admin/envio", label: "Envíos", icon: "🚚" },
-  { href: "/admin/pagos", label: "Pagos", icon: "💳" }
+  { href: "/admin/pagos", label: "Pagos", icon: "💳" },
+  { href: "/admin/menu", label: "Menús", icon: "☰" }
 ];
 
 export default function AdminSidebar({ username }: { username?: string | null }) {
