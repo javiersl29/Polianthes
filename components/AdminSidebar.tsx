@@ -7,7 +7,12 @@ const items = [
   { href: "/admin/fragancias", label: "Fragancias", icon: "❍" },
   { href: "/admin/imagenes", label: "Imágenes con IA", icon: "🖼" },
   { href: "/admin/precios", label: "Precios e inventario", icon: "$" },
-  { href: "/admin/nombres", label: "Nombres artísticos", icon: "✦" }
+  { href: "/admin/nombres", label: "Nombres artísticos", icon: "✦" },
+  { href: "/admin/pedidos", label: "Pedidos", icon: "📦" },
+  { href: "/admin/estadisticas", label: "Estadísticas", icon: "📈" },
+  { href: "/admin/usuarios", label: "Usuarios", icon: "👥" },
+  { href: "/admin/envio", label: "Envíos", icon: "🚚" },
+  { href: "/admin/pagos", label: "Pagos", icon: "💳" }
 ];
 
 export default function AdminSidebar({ username }: { username?: string | null }) {

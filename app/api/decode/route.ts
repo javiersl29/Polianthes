@@ -170,6 +170,19 @@ export async function POST(req: NextRequest) {
   const reflection = buildReflection(effectiveVector, setId, gender, top, referenceName);
   const elapsed = Date.now() - startedAt;
 
+  // Log de recomendación (no bloquea la respuesta)
+  try {
+    const { logRecommendation } = await import("@/lib/admin-data");
+    void logRecommendation({
+      vectorJson: effectiveVector,
+      setId,
+      referenceSlug: body.reference_slug ?? null,
+      gender: gender ?? null,
+      countRequested: count,
+      recommendedSlugs: recommendations.map((r: Record<string, unknown>) => String(r.slug))
+    });
+  } catch { /* no bloquear */ }
+
   return NextResponse.json({
     recommendations,
     reflection,

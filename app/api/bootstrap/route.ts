@@ -26,8 +26,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "no autorizado" }, { status: 401 });
   }
   const sql = fs.readFileSync(path.join(process.cwd(), "db", "schema.sql"), "utf8");
+  const sqlAdmin = fs.readFileSync(path.join(process.cwd(), "db", "schema_admin.sql"), "utf8");
   const pool = getPool();
   await pool.query(sql);
+  await pool.query(sqlAdmin);
 
   // Migraciones idempotentes para columnas añadidas en versiones posteriores
   await ensureColumn(pool, "fragrance", "gender", "TEXT NOT NULL DEFAULT 'unisex'");
