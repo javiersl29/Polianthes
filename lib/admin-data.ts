@@ -185,35 +185,71 @@ export type ShippingZone = {
   estimated_days: string | null;
   active: boolean;
   display_order: number;
+  // Pickup (entrega física)
+  kind: "shipping" | "pickup";
+  pickup_address: string | null;
+  pickup_city: string | null;
+  pickup_state: string | null;
+  pickup_postal_code: string | null;
+  pickup_schedule: string | null;
+  pickup_lat: number | null;
+  pickup_lng: number | null;
+  phone: string | null;
+  email: string | null;
   created_at: string;
 };
 
 export async function listShippingZones(): Promise<ShippingZone[]> {
   const r = await query<ShippingZone>(
-    `SELECT * FROM shipping_zone ORDER BY display_order, name`
+    `SELECT * FROM shipping_zone ORDER BY kind, display_order, name`
   );
   return r.rows;
 }
 
-export async function upsertShippingZone(z: Partial<ShippingZone> & { name: string; postal_code_prefix: string; cost_cents: number }): Promise<number> {
+export async function upsertShippingZone(z: Partial<ShippingZone> & { name: string }): Promise<number> {
+  const kind = z.kind === "pickup" ? "pickup" : "shipping";
+  // Para pickup, costo y CP no aplican (envío es gratis y no hay zona)
+  const costCents = kind === "pickup" ? 0 : (z.cost_cents ?? 0);
+  const cpPrefix = kind === "pickup" ? "" : (z.postal_code_prefix ?? "");
   if (z.id) {
     await query(
       `UPDATE shipping_zone
-       SET name = $1, postal_code_prefix = $2, cost_cents = $3,
-           free_from_cents = $4, estimated_days = $5, active = $6, display_order = $7
-       WHERE id = $8`,
-      [z.name, z.postal_code_prefix, z.cost_cents,
-       z.free_from_cents ?? null, z.estimated_days ?? null,
-       z.active ?? true, z.display_order ?? 0, z.id]
+       SET name = $1, kind = $2, postal_code_prefix = $3, cost_cents = $4,
+           free_from_cents = $5, estimated_days = $6, active = $7, display_order = $8,
+           pickup_address = $9, pickup_city = $10, pickup_state = $11,
+           pickup_postal_code = $12, pickup_schedule = $13,
+           pickup_lat = $14, pickup_lng = $15,
+           phone = $16, email = $17
+       WHERE id = $18`,
+      [
+        z.name, kind, cpPrefix, costCents,
+        z.free_from_cents ?? null, z.estimated_days ?? null,
+        z.active ?? true, z.display_order ?? 0,
+        z.pickup_address ?? null, z.pickup_city ?? null, z.pickup_state ?? null,
+        z.pickup_postal_code ?? null, z.pickup_schedule ?? null,
+        z.pickup_lat ?? null, z.pickup_lng ?? null,
+        z.phone ?? null, z.email ?? null,
+        z.id
+      ]
     );
     return z.id;
   }
   const r = await query<{ id: number }>(
-    `INSERT INTO shipping_zone (name, postal_code_prefix, cost_cents, free_from_cents, estimated_days, active, display_order)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
-    [z.name, z.postal_code_prefix, z.cost_cents,
-     z.free_from_cents ?? null, z.estimated_days ?? null,
-     z.active ?? true, z.display_order ?? 0]
+    `INSERT INTO shipping_zone
+       (name, kind, postal_code_prefix, cost_cents, free_from_cents, estimated_days,
+        active, display_order, pickup_address, pickup_city, pickup_state,
+        pickup_postal_code, pickup_schedule, pickup_lat, pickup_lng, phone, email)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+     RETURNING id`,
+    [
+      z.name, kind, cpPrefix, costCents,
+      z.free_from_cents ?? null, z.estimated_days ?? null,
+      z.active ?? true, z.display_order ?? 0,
+      z.pickup_address ?? null, z.pickup_city ?? null, z.pickup_state ?? null,
+      z.pickup_postal_code ?? null, z.pickup_schedule ?? null,
+      z.pickup_lat ?? null, z.pickup_lng ?? null,
+      z.phone ?? null, z.email ?? null
+    ]
   );
   return r.rows[0].id;
 }

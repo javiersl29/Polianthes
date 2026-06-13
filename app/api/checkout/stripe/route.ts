@@ -15,6 +15,7 @@ type Body = {
   customer: { email: string; name: string; phone?: string };
   shipping: {
     zone_id: number;
+    kind?: "shipping" | "pickup";
     address_line: string;
     address_line2?: string;
     city: string;
@@ -83,13 +84,26 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const zone = (await pool.query<{ name: string; cost_cents: number; free_from_cents: number | null }>(
-    `SELECT name, cost_cents, free_from_cents FROM shipping_zone WHERE id = $1 AND active = TRUE`,
+  const zone = (await pool.query<{ name: string; cost_cents: number; free_from_cents: number | null; kind: string; pickup_address: string | null; pickup_city: string | null; pickup_state: string | null; pickup_postal_code: string | null }>(
+    `SELECT name, cost_cents, free_from_cents, kind,
+            pickup_address, pickup_city, pickup_state, pickup_postal_code
+     FROM shipping_zone WHERE id = $1 AND active = TRUE`,
     [Number(body.shipping.zone_id)]
   )).rows[0];
   if (!zone) return NextResponse.json({ error: "Zona de envío no válida" }, { status: 400 });
-  let shippingCents = zone.cost_cents;
-  if (zone.free_from_cents && subtotalCents >= zone.free_from_cents) shippingCents = 0;
+  const isPickup = body.shipping.kind === "pickup" || zone.kind === "pickup";
+  let shippingCents = 0;
+  if (zone.kind !== "pickup") {
+    shippingCents = zone.cost_cents;
+    if (zone.free_from_cents && subtotalCents >= zone.free_from_cents) shippingCents = 0;
+  }
+  const shipName = zone.name;
+  const shipLine = isPickup ? (zone.pickup_address ?? "Recogida en sitio") : body.shipping.address_line;
+  const shipLine2 = isPickup ? null : (body.shipping.address_line2 ?? null);
+  const shipCity = isPickup ? (zone.pickup_city ?? "") : body.shipping.city;
+  const shipState = isPickup ? (zone.pickup_state ?? "") : body.shipping.state;
+  const shipCP = isPickup ? (zone.pickup_postal_code ?? "") : body.shipping.postal_code;
+  if (!shipLine) return NextResponse.json({ error: "Dirección de envío requerida" }, { status: 400 });
 
   let discountCents = 0;
   let couponCode: string | null = null;
@@ -122,8 +136,8 @@ export async function POST(req: NextRequest) {
      RETURNING id`,
     [
       publicId, body.customer.email, body.customer.name, body.customer.phone ?? null,
-      zone.name, body.shipping.address_line, body.shipping.address_line2 ?? null,
-      body.shipping.city, body.shipping.state, body.shipping.postal_code,
+      shipName, shipLine, shipLine2,
+      shipCity, shipState, shipCP,
       body.shipping.country ?? "MX",
       subtotalCents, discountCents, shippingCents, totalCents, "MXN", couponCode
     ]

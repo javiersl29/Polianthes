@@ -15,18 +15,37 @@ type Zone = {
   estimated_days: string | null;
 };
 
+type Pickup = {
+  id: number;
+  name: string;
+  pickup_address: string | null;
+  pickup_city: string | null;
+  pickup_state: string | null;
+  pickup_postal_code: string | null;
+  pickup_schedule: string | null;
+  phone: string | null;
+  email: string | null;
+};
+
 type Provider = {
   provider: "mercadopago" | "stripe";
   mode: "test" | "live";
 };
 
+type DeliveryMode = "shipping" | "pickup";
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clear } = useCart();
   const [zones, setZones] = useState<Zone[]>([]);
+  const [pickups, setPickups] = useState<Pickup[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<"mercadopago" | "stripe" | null>(null);
+
+  // Delivery mode
+  const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("shipping");
+  const [selectedPickupId, setSelectedPickupId] = useState<number | null>(null);
 
   // Form
   const [email, setEmail] = useState("");
@@ -47,21 +66,30 @@ export default function CheckoutPage() {
       fetch("/api/public/payment-providers").then((r) => r.json())
     ]).then(([z, p]) => {
       setZones(z.zones ?? []);
+      setPickups(z.pickups ?? []);
       setProviders(p.providers ?? []);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
 
-  // Detectar zona por CP
-  const detectedZone = zones.find((z) => cp.startsWith(z.postal_code_prefix));
-  const selectedZoneId = detectedZone?.id;
-  const shippingCents = detectedZone
-    ? (detectedZone.free_from_cents && total.total_cents >= detectedZone.free_from_cents
-      ? 0
-      : detectedZone.cost_cents)
-    : 0;
+  // Detectar zona por CP (sólo en modo shipping)
+  const detectedZone = deliveryMode === "shipping"
+    ? zones.find((z) => cp.startsWith(z.postal_code_prefix))
+    : undefined;
+  const selectedZoneId = deliveryMode === "pickup"
+    ? selectedPickupId
+    : detectedZone?.id;
+  const shippingCents = deliveryMode === "pickup"
+    ? 0
+    : (detectedZone
+        ? (detectedZone.free_from_cents && total.total_cents >= detectedZone.free_from_cents
+          ? 0
+          : detectedZone.cost_cents)
+        : 0);
   const discountCents = appliedCoupon?.discount_cents ?? 0;
   const grandTotal = Math.max(0, total.total_cents - discountCents + shippingCents);
+
+  const selectedPickup = pickups.find((p) => p.id === selectedPickupId);
 
   async function applyCoupon() {
     if (!couponCode.trim()) return;
@@ -87,11 +115,15 @@ export default function CheckoutPage() {
     if (items.length === 0) return "Tu carrito está vacío";
     if (!email.match(/^[^@\s]+@[^@\s]+\.[^@\s]+$/)) return "Email inválido";
     if (name.trim().length < 3) return "Nombre requerido";
-    if (!cp || cp.length < 4) return "Código postal inválido";
-    if (!addressLine.trim()) return "Dirección requerida";
-    if (!city.trim()) return "Ciudad requerida";
-    if (!state.trim()) return "Estado requerido";
-    if (!detectedZone) return `No hay zona de envío para el CP ${cp}. Revisa /admin/envio.`;
+    if (deliveryMode === "shipping") {
+      if (!cp || cp.length < 4) return "Código postal inválido";
+      if (!addressLine.trim()) return "Dirección requerida";
+      if (!city.trim()) return "Ciudad requerida";
+      if (!state.trim()) return "Estado requerido";
+      if (!detectedZone) return `No hay zona de envío para el CP ${cp}. Revisa /admin/envio.`;
+    } else {
+      if (!selectedPickupId) return "Selecciona un sitio de entrega";
+    }
     if (providers.length === 0) return "No hay métodos de pago activos. Configura uno en /admin/pagos.";
     return null;
   }
@@ -112,6 +144,7 @@ export default function CheckoutPage() {
           customer: { email, name, phone: phone || undefined },
           shipping: {
             zone_id: selectedZoneId,
+            kind: deliveryMode,
             address_line: addressLine,
             address_line2: addressLine2 || undefined,
             city, state, postal_code: cp
@@ -122,7 +155,6 @@ export default function CheckoutPage() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Error al procesar el pago");
 
-      // Limpiar carrito antes de redirigir
       clear();
 
       if (provider === "mercadopago" && data.init_point) {
@@ -181,33 +213,103 @@ export default function CheckoutPage() {
               </div>
             </section>
 
-            {/* Envío */}
+            {/* Modo de entrega */}
             <section className="liquid-glass rounded-2xl p-5 sm:p-6">
-              <h2 className="font-display italic text-xl text-ink mb-4">2 · Dirección de envío</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input
-                  label="Código postal"
-                  value={cp}
-                  onChange={(v) => { setCp(v); setAppliedCoupon(null); setCouponStatus("idle"); }}
-                  placeholder="01000"
-                  required
-                />
-                <div className="self-end">
-                  {detectedZone ? (
-                    <p className="text-xs text-emerald-300 mt-2">
-                      ✓ Zona: <strong>{detectedZone.name}</strong>
-                      {detectedZone.estimated_days && ` · ${detectedZone.estimated_days}`}
-                      {shippingCents === 0 && <span className="ml-1 text-gold">(envío gratis)</span>}
-                    </p>
-                  ) : cp.length >= 4 ? (
-                    <p className="text-xs text-rose-300 mt-2">No hay zona para este CP</p>
-                  ) : null}
-                </div>
-                <Input label="Calle y número" value={addressLine} onChange={setAddressLine} placeholder="Av. Reforma 100" required className="sm:col-span-2" />
-                <Input label="Interior / Depto (opcional)" value={addressLine2} onChange={setAddressLine2} placeholder="Depto 304" />
-                <Input label="Ciudad" value={city} onChange={setCity} placeholder="CDMX" required />
-                <Input label="Estado" value={state} onChange={setState} placeholder="Ciudad de México" required />
+              <h2 className="font-display italic text-xl text-ink mb-4">2 · Modo de entrega</h2>
+
+              {/* Toggle shipping/pickup */}
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <button
+                  type="button"
+                  onClick={() => setDeliveryMode("shipping")}
+                  className={`rounded-xl px-3 py-3 text-sm border transition-colors ${
+                    deliveryMode === "shipping"
+                      ? "border-gold bg-gold/10 text-gold"
+                      : "border-line/40 text-ink/70 hover:text-ink"
+                  }`}
+                >
+                  🚚 Enviar a domicilio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDeliveryMode("pickup")}
+                  disabled={pickups.length === 0}
+                  className={`rounded-xl px-3 py-3 text-sm border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    deliveryMode === "pickup"
+                      ? "border-gold bg-gold/10 text-gold"
+                      : "border-line/40 text-ink/70 hover:text-ink"
+                  }`}
+                  title={pickups.length === 0 ? "No hay sitios configurados" : ""}
+                >
+                  🏬 Recoger en sitio {pickups.length === 0 && "(próximamente)"}
+                </button>
               </div>
+
+              {deliveryMode === "shipping" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <Input
+                    label="Código postal"
+                    value={cp}
+                    onChange={(v) => { setCp(v); setAppliedCoupon(null); setCouponStatus("idle"); }}
+                    placeholder="01000"
+                    required
+                  />
+                  <div className="self-end">
+                    {detectedZone ? (
+                      <p className="text-xs text-emerald-300 mt-2">
+                        ✓ Zona: <strong>{detectedZone.name}</strong>
+                        {detectedZone.estimated_days && ` · ${detectedZone.estimated_days}`}
+                        {shippingCents === 0 && <span className="ml-1 text-gold">(envío gratis)</span>}
+                      </p>
+                    ) : cp.length >= 4 ? (
+                      <p className="text-xs text-rose-300 mt-2">No hay zona para este CP</p>
+                    ) : null}
+                  </div>
+                  <Input label="Calle y número" value={addressLine} onChange={setAddressLine} placeholder="Av. Reforma 100" required className="sm:col-span-2" />
+                  <Input label="Interior / Depto (opcional)" value={addressLine2} onChange={setAddressLine2} placeholder="Depto 304" />
+                  <Input label="Ciudad" value={city} onChange={setCity} placeholder="CDMX" required />
+                  <Input label="Estado" value={state} onChange={setState} placeholder="Ciudad de México" required />
+                </div>
+              ) : (
+                <div>
+                  {pickups.length === 0 ? (
+                    <p className="text-sm text-ink-mute">No hay sitios de entrega configurados todavía.</p>
+                  ) : (
+                    <>
+                      <p className="text-xs text-ink-mute mb-3">Elige dónde recoger tu pedido. El envío es gratuito.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {pickups.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setSelectedPickupId(p.id)}
+                            className={`text-left rounded-xl px-4 py-3 text-sm border transition-colors ${
+                              selectedPickupId === p.id
+                                ? "border-gold bg-gold/10"
+                                : "border-line/40 hover:border-gold/40"
+                            }`}
+                          >
+                            <p className="font-medium text-ink">{p.name}</p>
+                            <p className="text-[11px] text-ink-mute mt-0.5">{p.pickup_address}</p>
+                            <p className="text-[11px] text-ink-mute">
+                              {p.pickup_city}{p.pickup_city && p.pickup_state ? ", " : ""}{p.pickup_state}
+                            </p>
+                            {p.pickup_schedule && (
+                              <p className="text-[10px] text-gold/70 mt-1">🕘 {p.pickup_schedule}</p>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                      {selectedPickup && (
+                        <div className="mt-3 p-3 rounded-lg liquid-glass text-xs text-ink-mute">
+                          {selectedPickup.phone && <span className="mr-3">📞 {selectedPickup.phone}</span>}
+                          {selectedPickup.email && <span>✉ {selectedPickup.email}</span>}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* Cupón */}
@@ -262,7 +364,10 @@ export default function CheckoutPage() {
                 {discountCents > 0 && (
                   <Row label={`Descuento`} value={`−${money(discountCents)}`} accent="emerald" />
                 )}
-                <Row label="Envío" value={shippingCents === 0 ? "Gratis" : money(shippingCents)} />
+                <Row
+                  label={deliveryMode === "pickup" ? "Recogida en sitio" : "Envío"}
+                  value={deliveryMode === "pickup" ? "Gratis" : (shippingCents === 0 ? "Gratis" : money(shippingCents))}
+                />
                 <div className="pt-2 mt-2 border-t border-line flex justify-between font-medium">
                   <span className="text-ink">Total</span>
                   <span className="text-gold text-lg">{money(grandTotal)}</span>

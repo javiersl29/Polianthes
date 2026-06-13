@@ -5,27 +5,23 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/public/shipping-zones
- * Lista las zonas de envío activas para que el checkout público
- * pueda calcular el costo de envío según el código postal del cliente.
+ * Devuelve zonas de envío (CP) y sitios de entrega física (pickup)
+ * separados. El checkout los ofrece como opciones distintas.
  */
 export async function GET() {
-  const r = await query<{
-    id: number;
-    name: string;
-    postal_code_prefix: string;
-    cost_cents: number;
-    free_from_cents: number | null;
-    estimated_days: string | null;
-    display_order: number;
-  }>(
-    `SELECT id, name, postal_code_prefix, cost_cents, free_from_cents, estimated_days, display_order
-     FROM shipping_zone WHERE active = TRUE ORDER BY display_order, name`
+  const r = await query(
+    `SELECT id, name, kind, postal_code_prefix, cost_cents, free_from_cents,
+            estimated_days, display_order,
+            pickup_address, pickup_city, pickup_state, pickup_postal_code,
+            pickup_schedule, pickup_lat, pickup_lng, phone, email
+     FROM shipping_zone
+     WHERE active = TRUE
+     ORDER BY kind, display_order, name`
   );
-  return NextResponse.json({ zones: r.rows });
+  const rows = r.rows as Array<{ kind: "shipping" | "pickup" }>;
+  return NextResponse.json({
+    zones: rows.filter((x) => x.kind === "shipping"),
+    pickups: rows.filter((x) => x.kind === "pickup"),
+    all: rows
+  });
 }
-
-/**
- * GET /api/public/shipping-quote?postal_code=01000
- * Devuelve la zona que aplica al CP dado y el costo calculado para un
- * subtotal opcional.
- */

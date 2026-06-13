@@ -91,6 +91,20 @@ ALTER TABLE "order" ADD COLUMN IF NOT EXISTS tracking_url TEXT;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS carrier TEXT;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS status_history JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+-- Extender shipping_zone para soportar pickup (entrega física) además
+-- de zonas por CP. El campo `kind` distingue ambos tipos. Las columnas
+-- pickup_* sólo aplican cuando kind = 'pickup'.
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'shipping' CHECK (kind IN ('shipping','pickup'));
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_address TEXT;
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_city TEXT;
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_state TEXT;
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_postal_code TEXT;
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_schedule TEXT;
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_lat NUMERIC(9,6);
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_lng NUMERIC(9,6);
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS email TEXT;
+
 -- Sembrar config por defecto de payment_provider_config (idempotente)
 INSERT INTO payment_provider_config (provider, mode, currency)
 SELECT 'mercadopago', 'test', 'MXN'
