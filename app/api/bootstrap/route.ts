@@ -29,7 +29,19 @@ export async function POST(req: NextRequest) {
   const sqlAdmin = fs.readFileSync(path.join(process.cwd(), "db", "schema_admin.sql"), "utf8");
   const pool = getPool();
   await pool.query(sql);
-  await pool.query(sqlAdmin);
+  // Ejecutar schema_admin.sql statement por statement para que un error
+  // en una tabla (p.ej. ya existe) no revierta todo el bloque.
+  const adminStatements = sqlAdmin
+    .split(/;\s*\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0 && !s.startsWith("--"));
+  for (const stmt of adminStatements) {
+    try {
+      await pool.query(stmt);
+    } catch (e) {
+      console.error("bootstrap stmt failed (continuing):", (e as Error).message?.slice(0, 120));
+    }
+  }
 
   // Migraciones idempotentes para columnas añadidas en versiones posteriores
   await ensureColumn(pool, "fragrance", "gender", "TEXT NOT NULL DEFAULT 'unisex'");
