@@ -43,8 +43,14 @@ export async function POST(req: NextRequest) {
   if (!body.customer?.email || !body.customer?.name) {
     return NextResponse.json({ error: "Faltan datos del cliente" }, { status: 400 });
   }
-  if (!body.shipping?.address_line || !body.shipping?.postal_code) {
-    return NextResponse.json({ error: "Faltan datos de envío" }, { status: 400 });
+  // Validar envío: si kind=pickup, sólo se necesita zone_id; si shipping,
+  // se requiere address_line y postal_code.
+  const isPickupRequest = body.shipping?.kind === "pickup";
+  if (!body.shipping?.zone_id) {
+    return NextResponse.json({ error: "Falta la zona de envío o sitio de entrega" }, { status: 400 });
+  }
+  if (!isPickupRequest && (!body.shipping?.address_line || !body.shipping?.postal_code)) {
+    return NextResponse.json({ error: "Faltan datos de envío (dirección y código postal)" }, { status: 400 });
   }
 
   const cfg = await getPaymentProvider("mercadopago");
