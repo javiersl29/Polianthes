@@ -152,14 +152,16 @@ ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS pickup_lng NUMERIC(9,6);
 ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE shipping_zone ADD COLUMN IF NOT EXISTS email TEXT;
 
--- Sembrar config por defecto de payment_provider_config (idempotente)
+-- Sembrar config por defecto de payment_provider_config. SOLO cuando
+-- la tabla está vacía (primera instalación). No re-crear si el admin
+-- eliminó un proveedor.
 INSERT INTO payment_provider_config (provider, mode, currency)
 SELECT 'mercadopago', 'test', 'MXN'
-WHERE NOT EXISTS (SELECT 1 FROM payment_provider_config WHERE provider = 'mercadopago');
+WHERE NOT EXISTS (SELECT 1 FROM payment_provider_config LIMIT 1);
 
 INSERT INTO payment_provider_config (provider, mode, currency)
 SELECT 'stripe', 'test', 'MXN'
-WHERE NOT EXISTS (SELECT 1 FROM payment_provider_config WHERE provider = 'stripe');
+WHERE NOT EXISTS (SELECT 1 FROM payment_provider_config WHERE provider = 'stripe' LIMIT 1);
 
 -- ============================================================
 -- Reseñas públicas por fragancia
@@ -215,27 +217,29 @@ CREATE TABLE IF NOT EXISTS nav_link (
 );
 CREATE INDEX IF NOT EXISTS idx_nav_link_location ON nav_link(location, active, sort_order);
 
--- Seed idempotente del menú por defecto
+-- Seed inicial del menú por defecto. SOLO se ejecuta cuando la tabla
+-- nav_link está completamente vacía (primera instalación). Si el admin
+-- borró links manualmente, NO se re-crean en el próximo deploy.
 INSERT INTO nav_link (location, label, href, sort_order)
 SELECT 'navbar', 'Inicio', '/', 0
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'navbar' AND href = '/');
+WHERE NOT EXISTS (SELECT 1 FROM nav_link LIMIT 1);
 
 INSERT INTO nav_link (location, label, href, sort_order)
 SELECT 'navbar', 'Decodificador', '/#decodificador', 10
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'navbar' AND href = '/#decodificador');
+WHERE NOT EXISTS (SELECT 1 FROM nav_link LIMIT 1);
 
 INSERT INTO nav_link (location, label, href, sort_order)
 SELECT 'navbar', 'Capacidades', '/#capacidades', 20
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'navbar' AND href = '/#capacidades');
+WHERE NOT EXISTS (SELECT 1 FROM nav_link LIMIT 1);
 
 INSERT INTO nav_link (location, label, href, sort_order)
 SELECT 'navbar', 'Catálogo', '/#catalogo', 30
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'navbar' AND href = '/#catalogo');
+WHERE NOT EXISTS (SELECT 1 FROM nav_link LIMIT 1);
 
 INSERT INTO nav_link (location, label, href, sort_order)
 SELECT 'footer', 'Panel admin', '/admin', 0
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'footer' AND href = '/admin');
+WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'footer' LIMIT 1);
 
 INSERT INTO nav_link (location, label, href, sort_order, new_tab)
 SELECT 'footer', 'Código fuente', 'https://github.com/javiersl29/Polianthes', 10, TRUE
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'footer' AND href = 'https://github.com/javiersl29/Polianthes');
+WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'footer' LIMIT 1);
