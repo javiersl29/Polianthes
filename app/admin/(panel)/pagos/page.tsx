@@ -196,17 +196,22 @@ function PaymentCard({
     setMode(provider.mode);
     setInstallmentsMin(provider.installments_min);
     setInstallmentsMax(provider.installments_max);
+    // IMPORTANTE: los campos de credenciales se inicializan VACÍOS.
+    // El valor guardado se muestra como pista debajo del input. Esto
+    // evita el bug donde el usuario pega un valor nuevo encima del
+    // valor enmascarado y el backend lo rechaza.
     const v: Record<string, string> = {};
-    for (const f of fields) v[f.key] = ((provider as unknown) as Record<string, string>)[f.key] ?? "";
+    for (const f of fields) v[f.key] = "";
     setValues(v);
   }, [provider, fields]);
 
   function submit() {
     const patch: Record<string, unknown> = { active, mode, installments_min: installmentsMin, installments_max: installmentsMax };
     for (const f of fields) {
-      const v = values[f.key] ?? "";
-      // Si el valor trae "…", es la versión enmascarada que vino del server; no reenviar
-      if (v.length > 0 && !v.includes("…") && !v.startsWith("••••")) {
+      const v = (values[f.key] ?? "").trim();
+      // Sólo enviar si el usuario escribió algo. Como los campos ahora
+      // empiezan vacíos, cualquier valor es un cambio real del usuario.
+      if (v.length > 0) {
         patch[f.key] = v;
       }
     }
@@ -231,18 +236,29 @@ function PaymentCard({
       </div>
 
       <div className="space-y-3">
-        {fields.map((f) => (
-          <div key={f.key}>
-            <label className="text-[11px] uppercase tracking-wider text-gold/80">{f.label}</label>
-            <input
-              type={f.type}
-              value={values[f.key] ?? ""}
-              onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
-              placeholder={f.placeholder}
-              className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold font-mono"
-            />
-          </div>
-        ))}
+        {fields.map((f) => {
+          const currentValue = ((provider as unknown) as Record<string, string>)[f.key] ?? "";
+          return (
+            <div key={f.key}>
+              <label className="text-[11px] uppercase tracking-wider text-gold/80">{f.label}</label>
+              <input
+                type={f.type}
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues({ ...values, [f.key]: e.target.value })}
+                placeholder={f.placeholder}
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold font-mono"
+              />
+              {currentValue && (
+                <p className="mt-1 text-[10px] text-ink-mute">
+                  Actual: <code className="font-mono">{currentValue}</code>
+                  <span className="ml-1 text-gold/40">(dejar vacío para mantener)</span>
+                </p>
+              )}
+            </div>
+          );
+        })}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-3 border-t border-line">
           <div>

@@ -42,9 +42,9 @@ export async function PATCH(req: NextRequest) {
 
   const patch: Record<string, unknown> = {};
 
-  // Campos de texto: si el cliente envía "" o el mismo valor enmascarado,
-  // NO actualizar (significa que no se cambió). Sólo escribir si hay un
-  // valor real nuevo.
+  // Campos de texto. Ahora el frontend envía los campos VACÍOS si el
+  // usuario no los modifica, así que sólo escribimos si hay un valor
+  // real (longitud > 0). La UI ya no envía versiones enmascaradas.
   const stringFields = [
     "mp_access_token", "mp_public_key", "mp_webhook_secret",
     "stripe_secret_key", "stripe_publishable_key", "stripe_webhook_secret",
@@ -52,8 +52,16 @@ export async function PATCH(req: NextRequest) {
   ];
   for (const f of stringFields) {
     const v = body[f];
-    if (typeof v === "string" && v.length > 0 && !v.includes("…") && !v.startsWith("••••")) {
-      patch[f] = v;
+    if (typeof v === "string" && v.trim().length > 0) {
+      // Sanity check: Access Token de MP debe empezar con APP_USR- o TEST-
+      // Public Key con APP_USR- también. Si trae "…" o "••••", lo
+      // rechazamos por si acaso (versión enmascarada).
+      if (v.includes("…") || v.startsWith("••••")) {
+        // Ignorar: el frontend ya no debería enviar esto, pero por si acaso
+        continue;
+      }
+      patch[f] = v.trim();
+      console.log(`[payments] PATCH ${provider}.${f}: actualizando (primeros 20 chars: ${v.trim().slice(0, 20)}…)`);
     }
   }
 
@@ -63,6 +71,7 @@ export async function PATCH(req: NextRequest) {
   if (typeof body.installments_min === "number") patch.installments_min = body.installments_min;
   if (typeof body.installments_max === "number") patch.installments_max = body.installments_max;
 
+  console.log(`[payments] PATCH ${provider}: guardando ${Object.keys(patch).length} campos`);
   await upsertPaymentProvider(provider, patch);
   return NextResponse.json({ ok: true });
 }
