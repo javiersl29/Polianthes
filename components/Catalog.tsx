@@ -179,10 +179,10 @@ export default function Catalog() {
                     key={g}
                     onClick={() => setGender(g)}
                     aria-pressed={active}
-                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold capitalize transition-all duration-200 min-h-[36px] border ${
+                    className={`rounded-full px-4 py-1.5 text-xs font-semibold capitalize transition-all duration-200 min-h-[36px] border-2 ${
                       active
-                        ? "bg-gold text-black border-gold shadow-[0_0_0_2px_rgba(199,162,79,0.25),0_2px_12px_-2px_rgba(199,162,79,0.5)] scale-[1.03]"
-                        : "bg-black/40 text-ink border-white/10 hover:border-gold/60 hover:text-gold"
+                        ? "bg-gold text-bg border-gold gender-pill-active"
+                        : "bg-bg-elev text-ink border-transparent hover:border-gold hover:text-gold"
                     }`}
                   >
                     {g === "all" ? "Todos" : g}

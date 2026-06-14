@@ -87,6 +87,11 @@ body {
 .gold-text { color: var(--color-gold); }
 .gold-line { background: linear-gradient(90deg, transparent, var(--color-gold), transparent); }
 
+.gender-pill-active {
+  box-shadow: 0 0 0 2px rgba(199,162,79,0.25), 0 2px 12px -2px rgba(199,162,79,0.5);
+  transform: scale(1.03);
+}
+
 ::selection { background: var(--color-gold); color: var(--color-bg); }
 
 button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visible {
