@@ -13,7 +13,7 @@ type EmailConfig = {
   active: boolean;
 };
 
-async function getEmailConfig(): Promise<EmailConfig | null> {
+export async function getEmailConfig(): Promise<EmailConfig | null> {
   try {
     const r = await query<EmailConfig>(`SELECT * FROM email_config WHERE id = 1`);
     return r.rows[0] ?? null;

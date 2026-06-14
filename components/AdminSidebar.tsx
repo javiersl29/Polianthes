@@ -14,6 +14,7 @@ const items = [
   { href: "/admin/usuarios", label: "Usuarios", icon: "👥" },
   { href: "/admin/envio", label: "Envíos", icon: "🚚" },
   { href: "/admin/pagos", label: "Pagos", icon: "💳" },
+  { href: "/admin/email", label: "Email", icon: "📧" },
   { href: "/admin/menu", label: "Menús", icon: "☰" }
 ];
 
