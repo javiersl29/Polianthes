@@ -152,12 +152,24 @@ export async function POST(req: NextRequest) {
     );
 
     if (mapped === "approved") {
-      await pool.query(
-        `UPDATE coupon SET usage_count = usage_count + 1
-         WHERE code = (SELECT coupon_code FROM "order" WHERE id = $1)
-           AND coupon_code IS NOT NULL`,
-        [orderRow.id]
-      );
+      try {
+        await pool.query(
+          `UPDATE coupon SET usage_count = usage_count + 1
+           WHERE code = (SELECT coupon_code FROM "order" WHERE id = $1)
+             AND coupon_code IS NOT NULL`,
+          [orderRow.id]
+        );
+      } catch (e) {
+        console.error("[bricks/process] coupon update (non-critical):", e instanceof Error ? e.message : e);
+      }
+    }
+
+    // Enviar email de confirmación al cliente (no bloquear si falla)
+    try {
+      const { sendOrderConfirmationEmail } = await import("@/lib/email");
+      await sendOrderConfirmationEmail(orderRow.id);
+    } catch (e) {
+      console.error("[bricks/process] email (non-critical):", e instanceof Error ? e.message : e);
     }
 
     return NextResponse.json({

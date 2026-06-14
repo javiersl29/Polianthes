@@ -91,6 +91,41 @@ ALTER TABLE "order" ADD COLUMN IF NOT EXISTS tracking_url TEXT;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS carrier TEXT;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS status_history JSONB NOT NULL DEFAULT '[]'::jsonb;
 
+-- Asegurar columnas que pueden faltar si la tabla "order" fue creada
+-- en una versión anterior del schema (CREATE TABLE IF NOT EXISTS no
+-- actualiza tablas existentes).
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS coupon_code TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS promotion_id INTEGER REFERENCES promotion(id) ON DELETE SET NULL;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS mp_preference_id TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS mp_status TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS paid_at TIMESTAMPTZ;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS customer_phone TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS shipping_address_line2 TEXT;
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0;
+
+-- Tabla para configuración de email (SMTP o Resend)
+CREATE TABLE IF NOT EXISTS email_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  provider TEXT NOT NULL DEFAULT 'resend' CHECK (provider IN ('resend','smtp','none')),
+  from_email TEXT NOT NULL DEFAULT 'noreply@polianthes.mx',
+  from_name TEXT NOT NULL DEFAULT 'Polianthes',
+  resend_api_key TEXT,
+  smtp_host TEXT,
+  smtp_port INTEGER NOT NULL DEFAULT 587,
+  smtp_user TEXT,
+  smtp_password TEXT,
+  smtp_secure BOOLEAN NOT NULL DEFAULT TRUE,
+  active BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT single_row_email CHECK (id = 1)
+);
+
+INSERT INTO email_config (id, provider)
+SELECT 1, 'none'
+WHERE NOT EXISTS (SELECT 1 FROM email_config WHERE id = 1);
+
 -- Extender shipping_zone para soportar pickup (entrega física) además
 -- de zonas por CP. El campo `kind` distingue ambos tipos. Las columnas
 -- pickup_* sólo aplican cuando kind = 'pickup'.
