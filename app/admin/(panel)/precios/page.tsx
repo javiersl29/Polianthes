@@ -1,7 +1,5 @@
-import PricingManager from "./PricingManager";
+import { redirect } from "next/navigation";
 
-export const dynamic = "force-dynamic";
-
-export default function PreciosPage() {
-  return <PricingManager />;
+export default function PreciosRedirect() {
+  redirect("/admin/fragancias");
 }

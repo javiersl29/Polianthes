@@ -5,9 +5,6 @@ import { usePathname } from "next/navigation";
 const items = [
   { href: "/admin", label: "Resumen", icon: "·" },
   { href: "/admin/fragancias", label: "Fragancias", icon: "❍" },
-  { href: "/admin/imagenes", label: "Imágenes con IA", icon: "🖼" },
-  { href: "/admin/precios", label: "Precios e inventario", icon: "$" },
-  { href: "/admin/nombres", label: "Nombres artísticos", icon: "✦" },
   { href: "/admin/pedidos", label: "Pedidos", icon: "📦" },
   { href: "/admin/estadisticas", label: "Estadísticas", icon: "📈" },
   { href: "/admin/resenas", label: "Reseñas", icon: "★" },
