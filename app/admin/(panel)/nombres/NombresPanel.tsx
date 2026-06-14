@@ -38,7 +38,7 @@ export default function NombresPanel() {
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || "Error");
-      toast.success("GeneraciÃ³n iniciada. Esta pÃ¡gina se actualiza sola cada 5s.");
+      toast.success("Generación iniciada. Esta página se actualiza sola cada 5s.");
       load();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
@@ -53,9 +53,9 @@ export default function NombresPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display italic text-2xl sm:text-3xl text-ink">Nombres artÃ­sticos</h1>
+        <h1 className="font-display italic text-2xl sm:text-3xl text-ink">Nombres artísticos</h1>
         <p className="mt-1 text-sm text-ink-mute">
-          Genera con IA un nombre poÃ©tico en espaÃ±ol para cada fragancia Polianthes (estilo Ã‰toile, Velours, Brumeâ€¦).
+          Genera con IA un nombre poético en español para cada fragancia Polianthes (estilo Étoile, Velours, Brume…).
         </p>
       </div>
 
@@ -72,13 +72,13 @@ export default function NombresPanel() {
             />
           </div>
           <div className="flex flex-wrap gap-2 text-xs text-ink-mute">
-            <span>Â· {status.with_name} con nombre artÃ­stico</span>
-            <span>Â· {missing} pendientes</span>
-            {status.running && <span className="text-gold">Â· generandoâ€¦</span>}
+            <span>· {status.with_name} con nombre artístico</span>
+            <span>· {missing} pendientes</span>
+            {status.running && <span className="text-gold">· generando…</span>}
           </div>
         </div>
       ) : (
-        <p className="text-sm text-ink-mute">Cargandoâ€¦</p>
+        <p className="text-sm text-ink-mute">Cargando…</p>
       )}
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -91,7 +91,7 @@ export default function NombresPanel() {
         </button>
         <button
           onClick={() => {
-            if (confirm("Â¿Regenerar TODOS los nombres (sobrescribe los existentes)?")) regenerate(false);
+            if (confirm("¿Regenerar TODOS los nombres (sobrescribe los existentes)?")) regenerate(false);
           }}
           disabled={loading || (status?.running ?? false)}
           className="liquid-glass rounded-full px-5 py-3 text-sm hover:text-gold transition-colors disabled:opacity-50"
@@ -101,9 +101,9 @@ export default function NombresPanel() {
       </div>
 
       <div className="liquid-glass rounded-2xl p-4 text-xs text-ink-mute space-y-1">
-        <p>Â· Tarda ~30-60 segundos para 146 fragancias (200ms entre llamadas).</p>
-        <p>Â· Si una fragancia no recibe nombre vÃ¡lido, queda pendiente y puedes reintentar.</p>
-        <p>Â· El modelo de IA se configura en <a href="/admin/ai" className="text-gold hover:underline">ConfiguraciÃ³n IA</a>.</p>
+        <p>· Tarda ~30-60 segundos para 146 fragancias (200ms entre llamadas).</p>
+        <p>· Si una fragancia no recibe nombre válido, queda pendiente y puedes reintentar.</p>
+        <p>· El modelo de IA se configura en <a href="/admin/ai" className="text-gold hover:underline">Configuración IA</a>.</p>
       </div>
     </div>
   );

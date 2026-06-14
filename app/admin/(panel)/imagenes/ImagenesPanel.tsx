@@ -4,13 +4,13 @@ import { toast } from "sonner";
 import { genderBadge } from "@/lib/visual";
 
 /**
- * AÃ±ade un query param de versiÃ³n a una URL `/api/image/...` para
+ * Añade un query param de versión a una URL `/api/image/...` para
  * forzar al navegador a recargar la imagen (invalida cualquier cache
- * de navegador/CDN). Sin esto, despuÃ©s de guardar una nueva imagen
- * generada por IA, el <img> del admin seguÃ­a mostrando la versiÃ³n
+ * de navegador/CDN). Sin esto, después de guardar una nueva imagen
+ * generada por IA, el <img> del admin seguía mostrando la versión
  * anterior porque el browser cachea por URL.
  *
- * Acepta una versiÃ³n arbitraria (puede ser `image_version` del
+ * Acepta una versión arbitraria (puede ser `image_version` del
  * backend = bytes de image_data, o un `epoch` local que bumpeamos
  * tras cada save). Cualquier cambio en el valor fuerza un nuevo fetch.
  */
@@ -155,17 +155,17 @@ export default function ImagenesPanel() {
   const [refUploadTarget, setRefUploadTarget] = useState<Item | null>(null);
   const refUploadFileRef = useRef<HTMLInputElement | null>(null);
   // Contador que se incrementa en cada click de "Re-buscar" para forzar
-  // variaciÃ³n de queries/pÃ¡ginas en el backend
+  // variación de queries/páginas en el backend
   const [refetchCounter, setRefetchCounter] = useState(0);
-  // Ã‰poca que se incrementa cada vez que cambia la imagen de referencia
-  // (bÃºsqueda o upload manual). Se usa como query param en el <img> del
+  // Época que se incrementa cada vez que cambia la imagen de referencia
+  // (búsqueda o upload manual). Se usa como query param en el <img> del
   // modal para forzar la recarga y evitar cache del navegador.
   const [refetchEpoch, setRefetchEpoch] = useState(0);
 
   // Cuando el usuario selecciona archivo en el input oculto, procesarlo
   useEffect(() => {
     if (!refUploadTarget) return;
-    // Esperar al siguiente tick para asegurar que el ref estÃ© asignado
+    // Esperar al siguiente tick para asegurar que el ref esté asignado
   }, [refUploadTarget]);
 
   const [sources, setSources] = useState<{
@@ -228,7 +228,7 @@ export default function ImagenesPanel() {
       if (next.has(id)) next.delete(id);
       else {
         if (next.size >= MAX_SELECTION) {
-          toast.error(`MÃ¡ximo ${MAX_SELECTION} fragancias a la vez`);
+          toast.error(`Máximo ${MAX_SELECTION} fragancias a la vez`);
           return prev;
         }
         next.add(id);
@@ -242,7 +242,7 @@ export default function ImagenesPanel() {
   const findReferenceFor = async (row: Item): Promise<boolean> => {
     setRefetching((p) => new Set(p).add(row.id));
     try {
-      // Limpiar la URL anterior antes de re-buscar para evitar confusiÃ³n
+      // Limpiar la URL anterior antes de re-buscar para evitar confusión
       // con referencias stale (especialmente si eran de sitios bloqueados)
       setItems((prev) =>
         prev.map((p) =>
@@ -287,7 +287,7 @@ export default function ImagenesPanel() {
         );
         return true;
       } else {
-        toast.error(data?.message || data?.error || "No se encontrÃ³ imagen de referencia");
+        toast.error(data?.message || data?.error || "No se encontró imagen de referencia");
         // Restaurar el estado de la card (no tiene ref)
         return false;
       }
@@ -310,7 +310,7 @@ export default function ImagenesPanel() {
     }
     if (!searchStatus?.has_serpapi_key) {
       const proceed = window.confirm(
-        "No tienes SerpAPI configurada. La bÃºsqueda usarÃ¡ Tavily/Serper/Pexels como fallback (calidad inferior). Â¿Continuar?"
+        "No tienes SerpAPI configurada. La búsqueda usará Tavily/Serper/Pexels como fallback (calidad inferior). ¿Continuar?"
       );
       if (!proceed) return;
     }
@@ -362,7 +362,7 @@ export default function ImagenesPanel() {
           n.delete(row.id);
           return n;
         });
-        // PequeÃ±a pausa para no saturar SerpAPI
+        // Pequeña pausa para no saturar SerpAPI
         await new Promise((r) => setTimeout(r, 300));
       }
     }
@@ -391,10 +391,10 @@ export default function ImagenesPanel() {
           data.message,
           data.endpoint ? `endpoint: ${data.endpoint}` : "",
           data.model ? `modelo: ${data.model}` : "",
-          data.used_brand_bottle !== undefined ? `botella de marca: ${data.used_brand_bottle ? "sÃ­" : "no"}` : "",
-          data.has_original_reference !== undefined ? `ref original: ${data.has_original_reference ? "sÃ­" : "no"}` : ""
+          data.used_brand_bottle !== undefined ? `botella de marca: ${data.used_brand_bottle ? "sí" : "no"}` : "",
+          data.has_original_reference !== undefined ? `ref original: ${data.has_original_reference ? "sí" : "no"}` : ""
         ].filter(Boolean);
-        const msg = lines.join(" Â· ");
+        const msg = lines.join(" · ");
         setPreviews((p) => ({ ...p, [row.id]: { id: row.id, slug: row.slug, status: "error", message: msg } }));
         return { id: row.id, slug: row.slug, status: "error", message: msg };
       }
@@ -440,18 +440,18 @@ export default function ImagenesPanel() {
       if (!row.has_original_reference && searchStatus?.has_serpapi_key) {
         await findReferenceFor(row);
       } else if (!row.has_original_reference) {
-        toast.warning(`${row.full_name}: sin referencia original, se generarÃ¡ solo con la botella de marca`);
+        toast.warning(`${row.full_name}: sin referencia original, se generará solo con la botella de marca`);
       }
       await generateOne(row);
       await new Promise((r) => setTimeout(r, 400));
     }
     setBatchRunning(false);
-    toast.success("GeneraciÃ³n completa.");
+    toast.success("Generación completa.");
   };
 
   const uploadOriginalFor = async (row: Item, file: File) => {
     if (file.size > 10 * 1024 * 1024) {
-      toast.error("MÃ¡ximo 10 MB");
+      toast.error("Máximo 10 MB");
       return;
     }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -494,11 +494,11 @@ export default function ImagenesPanel() {
         )
       );
       toast.success(
-        `${row.full_name} â†’ ref manual subido (${(data.size_bytes / 1024).toFixed(0)} KB), regenerando previewâ€¦`
+        `${row.full_name} → ref manual subido (${(data.size_bytes / 1024).toFixed(0)} KB), regenerando preview…`
       );
-      // Regenerar preview automÃ¡ticamente para que use la nueva imagen
-      // (sin que el usuario tenga que hacer click en Regenerar â€” antes
-      // la IA cacheaba la imagen anterior aunque subiÃ©ramos una nueva)
+      // Regenerar preview automáticamente para que use la nueva imagen
+      // (sin que el usuario tenga que hacer click en Regenerar — antes
+      // la IA cacheaba la imagen anterior aunque subiéramos una nueva)
       await generateOne(row);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error al subir");
@@ -518,11 +518,11 @@ export default function ImagenesPanel() {
       toast.error("No hay preview listo para guardar");
       return;
     }
-    // Marcar como "guardando" para que el botÃ³n muestre estado
+    // Marcar como "guardando" para que el botón muestre estado
     setPreviews((p) => ({ ...p, [row.id]: { ...p[row.id]!, status: "generating" } }));
     try {
       // Enviar el data_url del preview para guardar DIRECTAMENTE sin
-      // re-generar (la IA no es determinista, podrÃ­a sobrescribirse)
+      // re-generar (la IA no es determinista, podría sobrescribirse)
       const res = await fetch("/api/admin/fragrances/generate-image", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -540,7 +540,7 @@ export default function ImagenesPanel() {
       // row.image_url a recargar (cache-bust). Sin esto, el browser
       // muestra la imagen vieja cacheada.
       setRefetchEpoch((e) => e + 1);
-      toast.success(`${row.full_name} â†’ imagen guardada (${(data.size_bytes / 1024).toFixed(0)} KB)`);
+      toast.success(`${row.full_name} → imagen guardada (${(data.size_bytes / 1024).toFixed(0)} KB)`);
     } catch (err) {
       // Volver a "ready" para que el usuario pueda reintentar
       setPreviews((p) => ({
@@ -581,14 +581,14 @@ export default function ImagenesPanel() {
       await new Promise((r) => setTimeout(r, 200));
     }
     if (succeeded > 0 && failed === 0) {
-      toast.success(`${succeeded} imÃ¡genes guardadas`);
+      toast.success(`${succeeded} imágenes guardadas`);
     } else if (succeeded > 0) {
       toast.warning(`Guardadas ${succeeded}, fallaron ${failed}`);
     } else {
       toast.error(`No se pudo guardar ninguna (${failed})`);
     }
     // Bump refetchEpoch una sola vez al final para invalidar cache de
-    // todas las imÃ¡genes reciÃ©n guardadas
+    // todas las imágenes recién guardadas
     if (succeeded > 0) setRefetchEpoch((e) => e + 1);
   };
 
@@ -649,7 +649,7 @@ export default function ImagenesPanel() {
     }
     setBatchRunning(false);
     if (succeeded > 0 && failed === 0) {
-      toast.success(`âœ“ ${succeeded} imÃ¡genes generadas y guardadas`);
+      toast.success(`✔ ${succeeded} imágenes generadas y guardadas`);
     } else if (succeeded > 0) {
       toast.warning(`OK ${succeeded}, fallaron ${failed}`);
     } else {
@@ -674,10 +674,10 @@ export default function ImagenesPanel() {
       try {
         data = JSON.parse(text) as TestResult;
       } catch {
-        // Backend no devolviÃ³ JSON (error 500, 502, o HTML de mantenimiento de Railway)
+        // Backend no devolvió JSON (error 500, 502, o HTML de mantenimiento de Railway)
         const msg = text
           ? `HTTP ${r.status}: ${text.slice(0, 200)}`
-          : `HTTP ${r.status}: respuesta vacÃ­a`;
+          : `HTTP ${r.status}: respuesta vacía`;
         setTestResult({
           ok: false,
           endpoint,
@@ -690,8 +690,8 @@ export default function ImagenesPanel() {
         return;
       }
       setTestResult(data);
-      if (data.ok) toast.success(`ConexiÃ³n ${configForm.provider} exitosa`);
-      else toast.error(data.error || "FallÃ³ la prueba");
+      if (data.ok) toast.success(`Conexión ${configForm.provider} exitosa`);
+      else toast.error(data.error || "Falló la prueba");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
     } finally {
@@ -711,14 +711,14 @@ export default function ImagenesPanel() {
       } catch {
         const msg = text
           ? `HTTP ${r.status}: ${text.slice(0, 200)}`
-          : `HTTP ${r.status}: respuesta vacÃ­a`;
+          : `HTTP ${r.status}: respuesta vacía`;
         setSerpResult({ ok: false, error: msg });
         toast.error(msg);
         return;
       }
       setSerpResult(data);
-      if (data.ok) toast.success(`SerpAPI OK Â· ${data.image_count} imÃ¡genes`);
-      else toast.error(data.error || "SerpAPI fallÃ³");
+      if (data.ok) toast.success(`SerpAPI OK · ${data.image_count} imágenes`);
+      else toast.error(data.error || "SerpAPI falló");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
     } finally {
@@ -728,7 +728,7 @@ export default function ImagenesPanel() {
 
   const uploadBrandBottle = async (file: File) => {
     if (file.size > 8 * 1024 * 1024) {
-      toast.error("MÃ¡ximo 8 MB");
+      toast.error("Máximo 8 MB");
       return;
     }
     if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
@@ -805,7 +805,7 @@ export default function ImagenesPanel() {
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || "Error");
-      toast.success("ConfiguraciÃ³n guardada");
+      toast.success("Configuración guardada");
       setConfigForm((f) => ({
         ...f,
         api_key: "",
@@ -840,7 +840,7 @@ export default function ImagenesPanel() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display italic text-2xl sm:text-3xl text-ink">ImÃ¡genes con IA</h1>
+        <h1 className="font-display italic text-2xl sm:text-3xl text-ink">Imágenes con IA</h1>
         <p className="mt-1 text-sm text-ink-mute">
           1) Sube la imagen de la botella de tu marca. 2) Busca la referencia del perfume original. 3) Genera y guarda.
         </p>
@@ -892,7 +892,7 @@ export default function ImagenesPanel() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Buscar por nombre, marca, cÃ³digoâ€¦"
+              placeholder="Buscar por nombre, marca, código…"
               className="field-input"
             />
           </label>
@@ -903,7 +903,7 @@ export default function ImagenesPanel() {
               className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
               {batchRefRunning && batchRefProgress
-                ? `Buscando refs ${batchRefProgress.done}/${batchRefProgress.total}â€¦`
+                ? `Buscando refs ${batchRefProgress.done}/${batchRefProgress.total}…`
                 : `Buscar refs (${selectedCount || 0})`}
             </button>
             <button
@@ -911,7 +911,7 @@ export default function ImagenesPanel() {
               disabled={batchRunning || selectedCount === 0 || !brandBottle?.has_image}
               className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
-              {batchRunning ? "Generandoâ€¦" : `Generar ${selectedCount || ""} previews`}
+              {batchRunning ? "Generando…" : `Generar ${selectedCount || ""} previews`}
             </button>
             <button
               onClick={generateAndSaveAll}
@@ -919,7 +919,7 @@ export default function ImagenesPanel() {
               className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
               title="Genera el preview Y lo guarda inmediatamente en la DB (sin pasar por el paso manual de Guardar)"
             >
-              {batchRunning ? "Generando+guardandoâ€¦" : `âš¡ Generar+guardar (${selectedCount || 0})`}
+              {batchRunning ? "Generando+guardando…" : `⚡ Generar+guardar (${selectedCount || 0})`}
             </button>
             {readyCount > 0 && (
               <button
@@ -939,17 +939,17 @@ export default function ImagenesPanel() {
           </div>
         </div>
         <p className="text-[11px] text-ink-mute">
-          {selectedCount}/{MAX_SELECTION} seleccionadas Â· {readyCount} previews listas
+          {selectedCount}/{MAX_SELECTION} seleccionadas · {readyCount} previews listas
         </p>
         {!brandBottle?.has_image && (
           <p className="text-[11px] text-rose-300">
-            Sube la imagen de la botella de marca para habilitar la generaciÃ³n.
+            Sube la imagen de la botella de marca para habilitar la generación.
           </p>
         )}
       </div>
 
       {loading ? (
-        <p className="text-sm text-ink-mute">Cargandoâ€¦</p>
+        <p className="text-sm text-ink-mute">Cargando…</p>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
           {filtered.map((row) => {
@@ -979,7 +979,7 @@ export default function ImagenesPanel() {
                         const g = genderBadge(row.gender);
                         return (
                           <span
-                            title={`GÃ©nero: ${g.label}`}
+                            title={`Género: ${g.label}`}
                             className={`shrink-0 inline-flex items-center gap-0.5 px-1.5 py-px rounded-full text-[9px] font-semibold uppercase tracking-wide border ${g.classes}`}
                           >
                             <span className="text-[10px] leading-none">{g.icon}</span>
@@ -1014,8 +1014,8 @@ export default function ImagenesPanel() {
                           </span>
                         )}
                       </div>
-                      <div className="absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded-full bg-black/70 text-[9px] text-gold uppercase tracking-wider">
-                        â¤¢ ver
+                      <div className="absolute bottom-1.5 right-1.5 px-2 py-0.5 rounded-full bg-black/80 backdrop-blur-sm text-[9px] text-gold uppercase tracking-wider font-medium">
+                        Ver
                       </div>
                     </>
                   ) : preview?.status === "generating" ? (
@@ -1027,7 +1027,7 @@ export default function ImagenesPanel() {
                           fill="currentColor"
                         />
                       </svg>
-                      <span className="text-[10px] uppercase tracking-wider">Generandoâ€¦</span>
+                      <span className="text-[10px] uppercase tracking-wider">Generando…</span>
                     </div>
                   ) : preview?.status === "error" ? (
                     <span className="text-rose-300 px-3 text-center text-[11px]">{preview.message || "Error"}</span>
@@ -1039,12 +1039,12 @@ export default function ImagenesPanel() {
                 </div>
                 <div className="p-2 flex flex-col gap-2">
                   <div className="flex items-center justify-between text-[10px] text-ink-mute px-1">
-                    <span>
+                    <span className="truncate">
                       {row.has_original_reference
                         ? `Ref: ${row.original_image_source ?? "OK"}`
                         : "Sin ref original"}
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 shrink-0">
                       <button
                         onClick={() => {
                           setRefUploadTarget(row);
@@ -1052,16 +1052,25 @@ export default function ImagenesPanel() {
                         }}
                         disabled={isFetching}
                         title="Subir tu propia imagen de referencia"
-                        className="text-ink-mute hover:text-gold disabled:opacity-50"
+                        className="text-ink-mute hover:text-gold disabled:opacity-50 inline-flex items-center gap-1"
                       >
-                        â¬† Subir
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                          <polyline points="17 8 12 3 7 8" />
+                          <line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        Subir
                       </button>
                       <button
                         onClick={() => findReferenceFor(row)}
                         disabled={isFetching}
-                        className="text-gold hover:text-gold/80 disabled:opacity-50"
+                        className="text-gold hover:text-gold/80 disabled:opacity-50 inline-flex items-center gap-1"
                       >
-                        {isFetching ? "Buscandoâ€¦" : row.has_original_reference ? "Re-buscar" : "Buscar"}
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                          <circle cx="11" cy="11" r="7" />
+                          <path d="m20 20-3.5-3.5" />
+                        </svg>
+                        {isFetching ? "Buscando…" : row.has_original_reference ? "Re-buscar" : "Buscar"}
                       </button>
                     </div>
                   </div>
@@ -1149,11 +1158,11 @@ function PreviewModal({
   const [originalUrl, setOriginalUrl] = useState<string | null>(null);
   const [originalLoading, setOriginalLoading] = useState(false);
   const [originalError, setOriginalError] = useState<string | null>(null);
-  // Cada vez que cambia refetchEpoch, la URL cambia (query param Ãºnico)
+  // Cada vez que cambia refetchEpoch, la URL cambia (query param único)
   // y fuerza al <img> a recargar desde el servidor (sin cache).
   const originalImgUrl = `/api/admin/fragrances/original-image/${row.slug}?v=${refetchEpoch}`;
 
-  // Si el preview no estÃ¡ listo, igualmente abrimos el modal para mostrar la
+  // Si el preview no está listo, igualmente abrimos el modal para mostrar la
   // referencia original si existe.
   useEffect(() => {
     if (!row.has_original_reference) return;
@@ -1219,7 +1228,7 @@ function PreviewModal({
                 const g = genderBadge(row.gender);
                 return (
                   <span
-                    title={`GÃ©nero: ${g.label}`}
+                    title={`Género: ${g.label}`}
                     className={`shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border ${g.classes}`}
                   >
                     <span className="text-[11px] leading-none">{g.icon}</span>
@@ -1234,16 +1243,19 @@ function PreviewModal({
             <p className="text-xs text-ink-mute truncate">
               {row.full_name}
               {row.original_image_source
-                ? ` Â· ref: ${row.original_image_source}`
+                ? ` · ref: ${row.original_image_source}`
                 : ""}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold shrink-0"
+            className="liquid-glass rounded-full px-3 py-1.5 text-xs hover:text-gold shrink-0 inline-flex items-center gap-1.5"
             aria-label="Cerrar modal"
           >
-            âœ• Cerrar
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+            Cerrar
           </button>
         </div>
 
@@ -1255,16 +1267,21 @@ function PreviewModal({
               {originalUrl && (
                 <button
                   onClick={downloadOriginal}
-                  className="text-gold hover:text-gold/80 normal-case tracking-normal"
+                  className="text-gold hover:text-gold/80 normal-case tracking-normal inline-flex items-center gap-1.5"
                 >
-                  â¬‡ Descargar
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Descargar
                 </button>
               )}
             </div>
             <div className="aspect-square bg-black/30 rounded-xl overflow-hidden grid place-items-center text-xs text-ink-mute">
               {row.has_original_reference ? (
                 originalLoading ? (
-                  <span className="text-gold">Cargandoâ€¦</span>
+                  <span className="text-gold">Cargando…</span>
                 ) : originalError ? (
                   <span className="text-rose-300 px-3 text-center text-[11px]">
                     Error: {originalError}
@@ -1313,9 +1330,14 @@ function PreviewModal({
                 </button>
                 <button
                   onClick={onUploadClick}
-                  className="flex-1 liquid-glass-strong rounded-full px-3 py-1.5 text-[10px] uppercase tracking-wider hover:text-gold"
+                  className="flex-1 liquid-glass-strong rounded-full px-3 py-1.5 text-[10px] uppercase tracking-wider hover:text-gold inline-flex items-center justify-center gap-1.5"
                 >
-                  â¬† Subir mi imagen
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="17 8 12 3 7 8" />
+                    <line x1="12" y1="3" x2="12" y2="15" />
+                  </svg>
+                  Subir mi imagen
                 </button>
               </div>
             )}
@@ -1341,10 +1363,14 @@ function PreviewModal({
                 href={row.original_image_url}
                 target="_blank"
                 rel="noreferrer"
-                className="block text-[10px] text-ink-mute hover:text-gold truncate"
+                className="flex items-center gap-1.5 text-[10px] text-ink-mute hover:text-gold truncate"
                 title={row.original_image_url}
               >
-                ðŸ”— {row.original_image_url}
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className="shrink-0">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+                <span className="truncate">{row.original_image_url}</span>
               </a>
             )}
           </div>
@@ -1352,13 +1378,18 @@ function PreviewModal({
           {/* === DERECHA: Preview IA actual === */}
           <div className="space-y-2">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-wider">
-              <span className="text-gold/80 font-semibold">Preview IA (Ãºltimo)</span>
+              <span className="text-gold/80 font-semibold">Preview IA (último)</span>
               {preview?.dataUrl && (
                 <button
                   onClick={downloadPreview}
-                  className="text-gold hover:text-gold/80 normal-case tracking-normal"
+                  className="text-gold hover:text-gold/80 normal-case tracking-normal inline-flex items-center gap-1.5"
                 >
-                  â¬‡ Descargar
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Descargar
                 </button>
               )}
             </div>
@@ -1370,7 +1401,7 @@ function PreviewModal({
                   className="w-full h-full object-cover"
                 />
               ) : preview?.status === "generating" ? (
-                <span className="text-gold">Generandoâ€¦</span>
+                <span className="text-gold">Generando…</span>
               ) : preview?.status === "error" ? (
                 <span className="text-rose-300 px-3 text-center text-[11px]">
                   {preview.message || "Error"}
@@ -1386,10 +1417,20 @@ function PreviewModal({
               )}
             </div>
             {preview?.usedBrandBottle && (
-              <p className="text-[10px] text-ink-mute">âœ“ Usa botella de marca</p>
+              <p className="text-[10px] text-ink-mute flex items-center gap-1.5">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Usa botella de marca
+              </p>
             )}
             {preview?.hasOriginalReference && (
-              <p className="text-[10px] text-ink-mute">âœ“ Usa ref original</p>
+              <p className="text-[10px] text-ink-mute flex items-center gap-1.5">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-emerald-400 shrink-0" aria-hidden="true">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                Usa ref original
+              </p>
             )}
           </div>
         </div>
@@ -1428,7 +1469,7 @@ function StatusBadges({
 }) {
   return (
     <div className="liquid-glass rounded-2xl p-3 sm:p-4">
-      <p className="field-label mb-2">Estado de configuraciÃ³n</p>
+      <p className="field-label mb-2">Estado de configuración</p>
       <div className="flex flex-wrap items-center gap-2 text-[11px]">
         <span
           className={`px-2 py-1 rounded-full ${
@@ -1443,7 +1484,7 @@ function StatusBadges({
               : "badge-off"
           }`}
         >
-          {provider === "gemini" ? "ðŸ¤– Gemini" : "ðŸ”· MiniMax"}:{" "}
+          {provider === "gemini" ? "🤖 Gemini" : "🔷 MiniMax"}:{" "}
           {provider === "gemini"
             ? hasGeminiKey
               ? `activa${geminiSrc === "db" ? " (db)" : geminiSrc === "env" ? " (env)" : ""}`
@@ -1452,12 +1493,12 @@ function StatusBadges({
             ? hasMiniMaxKey
               ? `activa${minimaxSrc === "db" ? " (db)" : minimaxSrc === "env" ? " (env)" : ""}`
               : "falta"
-            : "â€”"}
+            : "—"}
         </span>
         <span className={`px-2 py-1 rounded-full ${hasSerpKey ? "badge-ok" : "badge-warn"}`}>
-          {hasSerpKey ? "âœ“ SerpAPI" : "âš  Sin SerpAPI"}
+          {hasSerpKey ? "✔ SerpAPI" : "⚠ Sin SerpAPI"}
           {serpSrc === "db" ? " (db)" : serpSrc === "env" ? " (env)" : ""}
-          {!hasSerpKey && " â€” cae a Tavily/Serper/Pexels"}
+          {!hasSerpKey && " — cae a Tavily/Serper/Pexels"}
         </span>
         {searchStatus?.has_tavily && (
           <span className="px-2 py-1 rounded-full badge-info">Tavily</span>
@@ -1501,9 +1542,9 @@ function BrandBottlePanel({
         <div className="flex-1 min-w-0 space-y-1">
           <p className="text-sm font-medium text-ink">Botella de la marca</p>
           <p className="text-[11px] text-ink-mute">
-            Sube una foto de la botella con la etiqueta de tu marca. Se usarÃ¡ como sujeto principal en cada generaciÃ³n.
+            Sube una foto de la botella con la etiqueta de tu marca. Se usará como sujeto principal en cada generación.
             {brandBottle?.has_image && brandBottle.size_bytes > 0 && (
-              <> Â· TamaÃ±o: {(brandBottle.size_bytes / 1024).toFixed(0)} KB{brandBottle.filename ? ` Â· ${brandBottle.filename}` : ""}</>
+              <> · Tamaño: {(brandBottle.size_bytes / 1024).toFixed(0)} KB{brandBottle.filename ? ` · ${brandBottle.filename}` : ""}</>
             )}
           </p>
           <div className="flex gap-2 pt-1">
@@ -1552,11 +1593,11 @@ function DiagPanel({
   const hasKey = diag.has_db_config || diag.has_env_key;
   return (
     <div className="liquid-glass rounded-2xl p-3 sm:p-4 space-y-2">
-      <p className="field-label">DiagnÃ³stico</p>
+      <p className="field-label">Diagnóstico</p>
       {resolved && (
         <div className="space-y-1">
           <div className="kv-row">
-            <span className="kv-key">Endpoint generaciÃ³n:</span>
+            <span className="kv-key">Endpoint generación:</span>
             <span className="kv-value">{resolved.endpoint}</span>
           </div>
           <div className="kv-row">
@@ -1571,33 +1612,33 @@ function DiagPanel({
       )}
       {testResult && (
         <div className="kv-row">
-          <span className="kv-key">Ãšltimo test gen:</span>
+          <span className="kv-key">Último test gen:</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] ${
               testResult.ok ? "badge-ok" : "badge-err"
             }`}
           >
             {testResult.ok
-              ? `OK Â· ${testResult.image_count} img Â· ${testResult.elapsed_ms}ms`
-              : `fallÃ³ Â· ${testResult.error ?? ""}`}
+              ? `OK · ${testResult.image_count} img · ${testResult.elapsed_ms}ms`
+              : `falló · ${testResult.error ?? ""}`}
           </span>
         </div>
       )}
       {serpResult && (
         <div className="kv-row">
-          <span className="kv-key">Ãšltimo test SerpAPI:</span>
+          <span className="kv-key">Último test SerpAPI:</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] ${
               serpResult.ok ? "badge-ok" : "badge-err"
             }`}
           >
             {serpResult.ok
-              ? `OK Â· ${serpResult.image_count} img Â· ${serpResult.elapsed_ms}ms${
-                  serpResult.source ? ` Â· fuente: ${serpResult.source}` : ""
+              ? `OK · ${serpResult.image_count} img · ${serpResult.elapsed_ms}ms${
+                  serpResult.source ? ` · fuente: ${serpResult.source}` : ""
                 }`
-              : `fallÃ³ Â· ${serpResult.error ?? ""}${
+              : `falló · ${serpResult.error ?? ""}${
                   serpResult.db_key_length !== undefined
-                    ? ` Â· DB key len: ${serpResult.db_key_length}, ENV key len: ${serpResult.env_key_length}`
+                    ? ` · DB key len: ${serpResult.db_key_length}, ENV key len: ${serpResult.env_key_length}`
                     : ""
                 }`}
           </span>
@@ -1664,7 +1705,7 @@ function ConfigPanel({
         onClick={() => setShow(!show)}
         className="flex items-center gap-2 w-full text-left"
       >
-        <span className="text-sm font-medium text-ink">âš™ ConfiguraciÃ³n del proveedor de imÃ¡genes y bÃºsqueda</span>
+        <span className="text-sm font-medium text-ink">⚙ Configuración del proveedor de imágenes y búsqueda</span>
         <span className="ml-auto text-[10px] text-ink-mute/80">{show ? "ocultar" : "mostrar"}</span>
       </button>
       {show && (
@@ -1673,7 +1714,7 @@ function ConfigPanel({
           <div className="space-y-1 border border-line/30 rounded-lg p-3 bg-black/40">
             <p className="field-label">Keys activas</p>
             <div className="kv-row">
-              <span className="kv-key">ðŸ”· MiniMax (gen):</span>
+              <span className="kv-key">🔷 MiniMax (gen):</span>
               <span className="kv-value">
                 {config?.api_key ?? (sources?.minimax === "env" ? "(env:MINIMAX_API_KEY)" : "(no guardada)")}
               </span>
@@ -1682,11 +1723,11 @@ function ConfigPanel({
                   sources?.minimax !== "none" ? "badge-ok" : "badge-err"
                 }`}
               >
-                {sources?.minimax === "db" ? "DB âœ“" : sources?.minimax === "env" ? "ENV âœ“" : "falta"}
+                {sources?.minimax === "db" ? "DB ✔" : sources?.minimax === "env" ? "ENV ✔" : "falta"}
               </span>
             </div>
             <div className="kv-row">
-              <span className="kv-key">ðŸ¤– Gemini (gen):</span>
+              <span className="kv-key">🤖 Gemini (gen):</span>
               <span className="kv-value">
                 {config?.gemini_api_key ?? (sources?.gemini === "env" ? "(env:GEMINI_API_KEY)" : "(no guardada)")}
               </span>
@@ -1695,11 +1736,11 @@ function ConfigPanel({
                   sources?.gemini !== "none" ? "badge-ok" : "badge-err"
                 }`}
               >
-                {sources?.gemini === "db" ? "DB âœ“" : sources?.gemini === "env" ? "ENV âœ“" : "falta"}
+                {sources?.gemini === "db" ? "DB ✔" : sources?.gemini === "env" ? "ENV ✔" : "falta"}
               </span>
             </div>
             <div className="kv-row">
-              <span className="kv-key">ðŸ” SerpAPI (bÃºsqueda):</span>
+              <span className="kv-key">ðŸ” SerpAPI (búsqueda):</span>
               <span className="kv-value">
                 {config?.serpapi_api_key ?? (sources?.serpapi === "env" ? "(env:SERPAPI_API_KEY)" : "(no guardada)")}
               </span>
@@ -1708,18 +1749,18 @@ function ConfigPanel({
                   sources?.serpapi !== "none" ? "badge-ok" : "badge-warn"
                 }`}
               >
-                {sources?.serpapi === "db" ? "DB âœ“" : sources?.serpapi === "env" ? "ENV âœ“" : "falta"}
+                {sources?.serpapi === "db" ? "DB ✔" : sources?.serpapi === "env" ? "ENV ✔" : "falta"}
               </span>
             </div>
             <p className="text-[10px] text-ink-mute/80 pt-1">
-              Cada key es independiente. DB toma precedencia si estÃ¡ guardada. ENV se usa como fallback.
+              Cada key es independiente. DB toma precedencia si está guardada. ENV se usa como fallback.
               Configura el provider arriba para usar Gemini o MiniMax.
             </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="field-label">Proveedor de generaciÃ³n</span>
+              <span className="field-label">Proveedor de generación</span>
               <select
                 value={form.provider}
                 onChange={(e) => {
@@ -1751,17 +1792,17 @@ function ConfigPanel({
                 }}
                 className="field-select"
               >
-                <option value="gemini">Google Gemini (Nano Banana 2) â€” multi-ref âœ“</option>
-                <option value="minimax">MiniMax (image-01) â€” 1 ref</option>
-                <option value="openai">OpenAI (prÃ³ximamente)</option>
-                <option value="replicate">Replicate (prÃ³ximamente)</option>
+                <option value="gemini">Google Gemini (Nano Banana 2) — multi-ref ✔</option>
+                <option value="minimax">MiniMax (image-01) — 1 ref</option>
+                <option value="openai">OpenAI (próximamente)</option>
+                <option value="replicate">Replicate (próximamente)</option>
               </select>
               <p className="text-[10px] text-ink-mute/80 pt-1">
                 {form.provider === "gemini"
-                  ? "Gemini acepta hasta 14 imÃ¡genes de referencia. La botella de tu marca y el perfume original se usan ambos."
+                  ? "Gemini acepta hasta 14 imágenes de referencia. La botella de tu marca y el perfume original se usan ambos."
                   : form.provider === "minimax"
                   ? "MiniMax image-01 acepta solo 1 imagen de referencia. Se usa solo la botella de marca."
-                  : "PrÃ³ximamente"}
+                  : "Próximamente"}
               </p>
             </label>
             <label className="block">
@@ -1778,7 +1819,7 @@ function ConfigPanel({
             {/* === MiniMax key (solo si provider = minimax) === */}
             {form.provider === "minimax" && (
               <div className="sm:col-span-2 space-y-1">
-                <span className="field-label">ðŸ”· API Key de MiniMax (generaciÃ³n)</span>
+                <span className="field-label">🔷 API Key de MiniMax (generación)</span>
                 <div className="flex gap-2">
                   <input
                     type="password"
@@ -1796,11 +1837,11 @@ function ConfigPanel({
                         : "liquid-glass text-ink-mute hover:text-rose-300"
                     }`}
                   >
-                    {form.clear_api_key ? "BorrarÃ¡ al guardar" : "Borrar"}
+                    {form.clear_api_key ? "Borrará al guardar" : "Borrar"}
                   </button>
                 </div>
                 <p className="text-[10px] text-ink-mute/80">
-                  Si la dejas vacÃ­a, se usa <code>MINIMAX_API_KEY</code> de Railway.
+                  Si la dejas vacía, se usa <code>MINIMAX_API_KEY</code> de Railway.
                 </p>
               </div>
             )}
@@ -1808,7 +1849,7 @@ function ConfigPanel({
             {/* === Gemini key (solo si provider = gemini) === */}
             {form.provider === "gemini" && (
               <div className="sm:col-span-2 space-y-1">
-                <span className="field-label">ðŸ¤– API Key de Google Gemini (Google AI Studio)</span>
+                <span className="field-label">🤖 API Key de Google Gemini (Google AI Studio)</span>
                 <div className="flex gap-2">
                   <input
                     type="password"
@@ -1826,11 +1867,11 @@ function ConfigPanel({
                         : "liquid-glass text-ink-mute hover:text-rose-300"
                     }`}
                   >
-                    {form.clear_gemini_api_key ? "BorrarÃ¡ al guardar" : "Borrar"}
+                    {form.clear_gemini_api_key ? "Borrará al guardar" : "Borrar"}
                   </button>
                 </div>
                 <p className="text-[10px] text-ink-mute/80">
-                  Distinta de SerpAPI. ObtÃ©n la tuya en{" "}
+                  Distinta de SerpAPI. Obtén la tuya en{" "}
                   <a
                     href="https://aistudio.google.com/apikey"
                     target="_blank"
@@ -1839,7 +1880,7 @@ function ConfigPanel({
                   >
                     aistudio.google.com/apikey
                   </a>
-                  . Si la dejas vacÃ­a, se usa <code>GEMINI_API_KEY</code> de Railway.
+                  . Si la dejas vacía, se usa <code>GEMINI_API_KEY</code> de Railway.
                 </p>
               </div>
             )}
@@ -1847,14 +1888,14 @@ function ConfigPanel({
             {/* === SerpAPI key === */}
             <div className="sm:col-span-2 space-y-1">
               <span className="field-label">
-                API Key de SerpAPI (Google Images) â€” opcional pero recomendado
+                API Key de SerpAPI (Google Images) — opcional pero recomendado
               </span>
               <div className="flex gap-2">
                 <input
                   type="password"
                   value={form.serpapi_api_key}
                   onChange={(e) => setForm((f) => ({ ...f, serpapi_api_key: e.target.value, clear_serpapi_api_key: false }))}
-                  placeholder={config?.serpapi_api_key ?? "serpapi keyâ€¦"}
+                  placeholder={config?.serpapi_api_key ?? "serpapi key…"}
                   className="field-input font-mono"
                   style={{ fontSize: 12 }}
                 />
@@ -1866,7 +1907,7 @@ function ConfigPanel({
                       : "liquid-glass text-ink-mute hover:text-rose-300"
                   }`}
                 >
-                  {form.clear_serpapi_api_key ? "BorrarÃ¡ al guardar" : "Borrar"}
+                  {form.clear_serpapi_api_key ? "Borrará al guardar" : "Borrar"}
                 </button>
               </div>
               <a
@@ -1875,7 +1916,7 @@ function ConfigPanel({
                 rel="noreferrer"
                 className="text-[10px] text-gold hover:underline mt-1 inline-block"
               >
-                Obtener api_key en serpapi.com â†’
+                Obtener api_key en serpapi.com →
               </a>
             </div>
 
@@ -1908,12 +1949,12 @@ function ConfigPanel({
                 onChange={(e) => setForm((f) => ({ ...f, response_format: e.target.value as "url" | "base64" }))}
                 className="field-select"
               >
-                <option value="url">url (recomendado â€” se descarga y guarda)</option>
-                <option value="base64">base64 (sin descarga, mÃ¡s persistente)</option>
+                <option value="url">url (recomendado — se descarga y guarda)</option>
+                <option value="base64">base64 (sin descarga, más persistente)</option>
               </select>
             </label>
             <label className="block">
-              <span className="field-label">N imÃ¡genes por request</span>
+              <span className="field-label">N imágenes por request</span>
               <input
                 type="number"
                 min={1}
@@ -1939,7 +1980,7 @@ function ConfigPanel({
                 onChange={(e) => setForm((f) => ({ ...f, active: e.target.checked }))}
                 className="h-4 w-4 accent-[color:var(--color-gold)]"
               />
-              <span className="text-ink/90">Activo (desmarca para pausar generaciÃ³n sin perder config)</span>
+              <span className="text-ink/90">Activo (desmarca para pausar generación sin perder config)</span>
             </label>
           </div>
 
@@ -1949,7 +1990,7 @@ function ConfigPanel({
               disabled={saving}
               className="liquid-glass-strong rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
-              {saving ? "Guardandoâ€¦" : "Guardar configuraciÃ³n"}
+              {saving ? "Guardando…" : "Guardar configuración"}
             </button>
             <button
               onClick={onTest}
@@ -1957,19 +1998,19 @@ function ConfigPanel({
               className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
               {testing
-                ? "Probandoâ€¦"
+                ? "Probando…"
                 : form.provider === "gemini"
                 ? "Probar Gemini"
                 : form.provider === "minimax"
                 ? "Probar MiniMax"
-                : "Probar generaciÃ³n"}
+                : "Probar generación"}
             </button>
             <button
               onClick={onTestSerpApi}
               disabled={serpTesting}
               className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
-              {serpTesting ? "Probandoâ€¦" : "Probar SerpAPI"}
+              {serpTesting ? "Probando…" : "Probar SerpAPI"}
             </button>
             {testResult && (
               <span
@@ -1978,8 +2019,8 @@ function ConfigPanel({
                 }`}
               >
                 {testResult.ok
-                  ? `gen OK Â· ${testResult.image_count ?? 0} img Â· ${testResult.elapsed_ms ?? 0}ms`
-                  : `gen fallÃ³ Â· ${testResult.error ?? ""}`}
+                  ? `gen OK · ${testResult.image_count ?? 0} img · ${testResult.elapsed_ms ?? 0}ms`
+                  : `gen falló · ${testResult.error ?? ""}`}
               </span>
             )}
             {serpResult && (
@@ -1989,12 +2030,12 @@ function ConfigPanel({
                 }`}
               >
                 {serpResult.ok
-                  ? `serp OK Â· ${serpResult.image_count ?? 0} img Â· ${serpResult.elapsed_ms ?? 0}ms${
-                      serpResult.source ? ` Â· ${serpResult.source}` : ""
+                  ? `serp OK · ${serpResult.image_count ?? 0} img · ${serpResult.elapsed_ms ?? 0}ms${
+                      serpResult.source ? ` · ${serpResult.source}` : ""
                     }`
-                  : `serp fallÃ³ Â· ${serpResult.error ?? ""}${
+                  : `serp falló · ${serpResult.error ?? ""}${
                       serpResult.db_key_length !== undefined
-                        ? ` Â· DB:${serpResult.db_key_length}c ENV:${serpResult.env_key_length}c`
+                        ? ` · DB:${serpResult.db_key_length}c ENV:${serpResult.env_key_length}c`
                         : ""
                     }`}
               </span>
