@@ -1,10 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/components/CartProvider";
 import { money } from "@/lib/cart";
 import { toast } from "sonner";
+import PaymentBrick from "@/components/PaymentBrick";
 
 type Zone = {
   id: number;
@@ -34,6 +35,15 @@ type Provider = {
 
 type DeliveryMode = "shipping" | "pickup";
 
+type BrickInit = {
+  public_key: string;
+  preference_id: string | null;
+  amount: number;
+  order_id: number;
+  public_id: string;
+  mode: string;
+};
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items, total, clear } = useCart();
@@ -41,7 +51,6 @@ export default function CheckoutPage() {
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState<"mercadopago" | "stripe" | null>(null);
 
   // Delivery mode
   const [deliveryMode, setDeliveryMode] = useState<DeliveryMode>("shipping");
@@ -60,6 +69,11 @@ export default function CheckoutPage() {
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount_cents: number } | null>(null);
   const [couponStatus, setCouponStatus] = useState<"idle" | "checking" | "ok" | "error">("idle");
 
+  // Brick state
+  const [brickInit, setBrickInit] = useState<BrickInit | null>(null);
+  const [initLoading, setInitLoading] = useState(false);
+  const [paymentStep, setPaymentStep] = useState<"form" | "brick">("form");
+
   useEffect(() => {
     Promise.all([
       fetch("/api/public/shipping-zones").then((r) => r.json()),
@@ -72,13 +86,10 @@ export default function CheckoutPage() {
     }).catch(() => setLoading(false));
   }, []);
 
-  // Detectar zona por CP (sólo en modo shipping)
   const detectedZone = deliveryMode === "shipping"
     ? zones.find((z) => cp.startsWith(z.postal_code_prefix))
     : undefined;
-  const selectedZoneId = deliveryMode === "pickup"
-    ? selectedPickupId
-    : detectedZone?.id;
+  const selectedZoneId = deliveryMode === "pickup" ? selectedPickupId : detectedZone?.id;
   const shippingCents = deliveryMode === "pickup"
     ? 0
     : (detectedZone
@@ -106,9 +117,7 @@ export default function CheckoutPage() {
         setCouponStatus("error");
         toast.error(data.message ?? "Cupón inválido");
       }
-    } catch {
-      setCouponStatus("error");
-    }
+    } catch { setCouponStatus("error"); }
   }
 
   function validate(): string | null {
@@ -128,15 +137,12 @@ export default function CheckoutPage() {
     return null;
   }
 
-  async function submit(provider: "mercadopago" | "stripe") {
+  async function initBrick() {
     const err = validate();
-    if (err) {
-      toast.error(err);
-      return;
-    }
-    setSubmitting(provider);
+    if (err) { toast.error(err); return; }
+    setInitLoading(true);
     try {
-      const r = await fetch(`/api/checkout/${provider}`, {
+      const r = await fetch("/api/checkout/bricks/init", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -153,22 +159,26 @@ export default function CheckoutPage() {
         })
       });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error ?? "Error al procesar el pago");
-
-      clear();
-
-      if (provider === "mercadopago" && data.init_point) {
-        window.location.href = data.init_point;
-      } else if (provider === "stripe" && data.url) {
-        window.location.href = data.url;
-      } else {
-        throw new Error("Respuesta inválida del proveedor");
-      }
+      if (!r.ok) throw new Error(data.error ?? "Error al inicializar el pago");
+      setBrickInit(data);
+      setPaymentStep("brick");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
-      setSubmitting(null);
+    } finally {
+      setInitLoading(false);
     }
   }
+
+  const handlePaid = useCallback((result: { status: string; payment_id: number; public_id: string }) => {
+    clear();
+    if (result.status === "approved") {
+      router.push(`/checkout/ok?order=${result.public_id}&payment_id=${result.payment_id}`);
+    } else if (result.status === "pending") {
+      router.push(`/checkout/pending?order=${result.public_id}&payment_id=${result.payment_id}`);
+    } else {
+      router.push(`/checkout/failed?order=${result.public_id}`);
+    }
+  }, [clear, router]);
 
   if (loading) {
     return (
@@ -184,10 +194,7 @@ export default function CheckoutPage() {
         <div className="max-w-md mx-auto text-center">
           <h1 className="font-display italic text-4xl text-ink">Carrito vacío</h1>
           <p className="mt-3 text-ink-mute">Añade fragancias antes de proceder al checkout.</p>
-          <Link
-            href="/#catalogo"
-            className="inline-block mt-6 rounded-full bg-gold text-bg px-6 py-3 text-sm font-medium"
-          >
+          <Link href="/#catalogo" className="inline-block mt-6 rounded-full bg-gold text-bg px-6 py-3 text-sm font-medium">
             Ver catálogo
           </Link>
         </div>
@@ -203,210 +210,145 @@ export default function CheckoutPage() {
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-3 space-y-6">
-            {/* Cliente */}
-            <section className="liquid-glass rounded-2xl p-5 sm:p-6">
-              <h2 className="font-display italic text-xl text-ink mb-4">1 · Datos del cliente</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Input label="Nombre completo" value={name} onChange={setName} placeholder="María García" required />
-                <Input label="Email" value={email} onChange={setEmail} type="email" placeholder="maria@correo.com" required />
-                <Input label="Teléfono (opcional)" value={phone} onChange={setPhone} placeholder="55 1234 5678" />
-              </div>
-            </section>
-
-            {/* Modo de entrega */}
-            <section className="liquid-glass rounded-2xl p-5 sm:p-6">
-              <h2 className="font-display italic text-xl text-ink mb-4">2 · Modo de entrega</h2>
-
-              {/* Toggle shipping/pickup */}
-              <div className="grid grid-cols-2 gap-2 mb-4">
-                <button
-                  type="button"
-                  onClick={() => setDeliveryMode("shipping")}
-                  className={`rounded-xl px-3 py-3 text-sm border transition-colors ${
-                    deliveryMode === "shipping"
-                      ? "border-gold bg-gold/10 text-gold"
-                      : "border-line/40 text-ink/70 hover:text-ink"
-                  }`}
-                >
-                  🚚 Enviar a domicilio
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDeliveryMode("pickup")}
-                  disabled={pickups.length === 0}
-                  className={`rounded-xl px-3 py-3 text-sm border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-                    deliveryMode === "pickup"
-                      ? "border-gold bg-gold/10 text-gold"
-                      : "border-line/40 text-ink/70 hover:text-ink"
-                  }`}
-                  title={pickups.length === 0 ? "No hay sitios configurados" : ""}
-                >
-                  🏬 Recoger en sitio {pickups.length === 0 && "(próximamente)"}
-                </button>
-              </div>
-
-              {deliveryMode === "shipping" ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <Input
-                    label="Código postal"
-                    value={cp}
-                    onChange={(v) => { setCp(v); setAppliedCoupon(null); setCouponStatus("idle"); }}
-                    placeholder="01000"
-                    required
-                  />
-                  <div className="self-end">
-                    {detectedZone ? (
-                      <p className="text-xs text-emerald-300 mt-2">
-                        ✓ Zona: <strong>{detectedZone.name}</strong>
-                        {detectedZone.estimated_days && ` · ${detectedZone.estimated_days}`}
-                        {shippingCents === 0 && <span className="ml-1 text-gold">(envío gratis)</span>}
-                      </p>
-                    ) : cp.length >= 4 ? (
-                      <p className="text-xs text-rose-300 mt-2">No hay zona para este CP</p>
-                    ) : null}
+            {paymentStep === "form" ? (
+              <>
+                <section className="liquid-glass rounded-2xl p-5 sm:p-6">
+                  <h2 className="font-display italic text-xl text-ink mb-4">1 · Datos del cliente</h2>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Input label="Nombre completo" value={name} onChange={setName} placeholder="María García" required />
+                    <Input label="Email" value={email} onChange={setEmail} type="email" placeholder="maria@correo.com" required />
+                    <Input label="Teléfono (opcional)" value={phone} onChange={setPhone} placeholder="55 1234 5678" />
                   </div>
-                  <Input label="Calle y número" value={addressLine} onChange={setAddressLine} placeholder="Av. Reforma 100" required className="sm:col-span-2" />
-                  <Input label="Interior / Depto (opcional)" value={addressLine2} onChange={setAddressLine2} placeholder="Depto 304" />
-                  <Input label="Ciudad" value={city} onChange={setCity} placeholder="CDMX" required />
-                  <Input label="Estado" value={state} onChange={setState} placeholder="Ciudad de México" required />
-                </div>
-              ) : (
-                <div>
-                  {pickups.length === 0 ? (
-                    <p className="text-sm text-ink-mute">No hay sitios de entrega configurados todavía.</p>
-                  ) : (
-                    <>
-                      <p className="text-xs text-ink-mute mb-3">Elige dónde recoger tu pedido. El envío es gratuito.</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        {pickups.map((p) => (
-                          <button
-                            key={p.id}
-                            type="button"
-                            onClick={() => setSelectedPickupId(p.id)}
-                            className={`text-left rounded-xl px-4 py-3 text-sm border transition-colors ${
-                              selectedPickupId === p.id
-                                ? "border-gold bg-gold/10"
-                                : "border-line/40 hover:border-gold/40"
-                            }`}
-                          >
-                            <p className="font-medium text-ink">{p.name}</p>
-                            <p className="text-[11px] text-ink-mute mt-0.5">{p.pickup_address}</p>
-                            <p className="text-[11px] text-ink-mute">
-                              {p.pickup_city}{p.pickup_city && p.pickup_state ? ", " : ""}{p.pickup_state}
-                            </p>
-                            {p.pickup_schedule && (
-                              <p className="text-[10px] text-gold/70 mt-1">🕘 {p.pickup_schedule}</p>
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                      {selectedPickup && (
-                        <div className="mt-3 p-3 rounded-lg liquid-glass text-xs text-ink-mute">
-                          {selectedPickup.phone && <span className="mr-3">📞 {selectedPickup.phone}</span>}
-                          {selectedPickup.email && <span>✉ {selectedPickup.email}</span>}
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </section>
+                </section>
 
-            {/* Cupón */}
-            <section className="liquid-glass rounded-2xl p-5 sm:p-6">
-              <h2 className="font-display italic text-xl text-ink mb-3">3 · Cupón de descuento (opcional)</h2>
-              <div className="flex gap-2">
-                <input
-                  value={couponCode}
-                  onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponStatus("idle"); }}
-                  placeholder="Ej. VERANO10"
-                  className="flex-1 bg-black/40 border border-line rounded-full px-4 py-2.5 text-sm text-white outline-none focus:border-gold font-mono"
-                />
-                <button
-                  onClick={applyCoupon}
-                  disabled={couponStatus === "checking" || !couponCode.trim()}
-                  className="rounded-full liquid-glass border border-line px-4 py-2.5 text-sm hover:border-gold/40 disabled:opacity-50"
-                >
-                  {couponStatus === "checking" ? "…" : "Aplicar"}
-                </button>
-              </div>
-              {couponStatus === "ok" && appliedCoupon && (
-                <p className="mt-2 text-xs text-emerald-300">
-                  ✓ Cupón <strong>{appliedCoupon.code}</strong> aplicado: −{money(appliedCoupon.discount_cents)}
-                </p>
-              )}
-              {couponStatus === "error" && (
-                <p className="mt-2 text-xs text-rose-300">Cupón inválido o no aplica</p>
-              )}
-            </section>
+                <section className="liquid-glass rounded-2xl p-5 sm:p-6">
+                  <h2 className="font-display italic text-xl text-ink mb-4">2 · Modo de entrega</h2>
+                  <div className="grid grid-cols-2 gap-2 mb-4">
+                    <button type="button" onClick={() => setDeliveryMode("shipping")}
+                      className={`rounded-xl px-3 py-3 text-sm border transition-colors ${deliveryMode === "shipping" ? "border-gold bg-gold/10 text-gold" : "border-line/40 text-ink/70 hover:text-ink"}`}>
+                      🚚 Enviar a domicilio
+                    </button>
+                    <button type="button" onClick={() => setDeliveryMode("pickup")} disabled={pickups.length === 0}
+                      className={`rounded-xl px-3 py-3 text-sm border transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${deliveryMode === "pickup" ? "border-gold bg-gold/10 text-gold" : "border-line/40 text-ink/70 hover:text-ink"}`}
+                      title={pickups.length === 0 ? "No hay sitios configurados" : ""}>
+                      🏬 Recoger en sitio {pickups.length === 0 && "(próximamente)"}
+                    </button>
+                  </div>
+                  {deliveryMode === "shipping" ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Input label="Código postal" value={cp} onChange={(v) => { setCp(v); setAppliedCoupon(null); setCouponStatus("idle"); }} placeholder="01000" required />
+                      <div className="self-end">
+                        {detectedZone ? (
+                          <p className="text-xs text-emerald-300 mt-2">✓ Zona: <strong>{detectedZone.name}</strong>
+                            {detectedZone.estimated_days && ` · ${detectedZone.estimated_days}`}
+                            {shippingCents === 0 && <span className="ml-1 text-gold">(envío gratis)</span>}
+                          </p>
+                        ) : cp.length >= 4 ? (
+                          <p className="text-xs text-rose-300 mt-2">No hay zona para este CP</p>
+                        ) : null}
+                      </div>
+                      <Input label="Calle y número" value={addressLine} onChange={setAddressLine} placeholder="Av. Reforma 100" required className="sm:col-span-2" />
+                      <Input label="Interior / Depto (opcional)" value={addressLine2} onChange={setAddressLine2} placeholder="Depto 304" />
+                      <Input label="Ciudad" value={city} onChange={setCity} placeholder="CDMX" required />
+                      <Input label="Estado" value={state} onChange={setState} placeholder="Ciudad de México" required />
+                    </div>
+                  ) : (
+                    <div>
+                      {pickups.length === 0 ? (
+                        <p className="text-sm text-ink-mute">No hay sitios de entrega configurados todavía.</p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-ink-mute mb-3">Elige dónde recoger tu pedido. El envío es gratuito.</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {pickups.map((p) => (
+                              <button key={p.id} type="button" onClick={() => setSelectedPickupId(p.id)}
+                                className={`text-left rounded-xl px-4 py-3 text-sm border transition-colors ${selectedPickupId === p.id ? "border-gold bg-gold/10" : "border-line/40 hover:border-gold/40"}`}>
+                                <p className="font-medium text-ink">{p.name}</p>
+                                <p className="text-[11px] text-ink-mute mt-0.5">{p.pickup_address}</p>
+                                <p className="text-[11px] text-ink-mute">{p.pickup_city}{p.pickup_city && p.pickup_state ? ", " : ""}{p.pickup_state}</p>
+                                {p.pickup_schedule && <p className="text-[10px] text-gold/70 mt-1">🕘 {p.pickup_schedule}</p>}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </section>
+
+                <section className="liquid-glass rounded-2xl p-5 sm:p-6">
+                  <h2 className="font-display italic text-xl text-ink mb-3">3 · Cupón de descuento (opcional)</h2>
+                  <div className="flex gap-2">
+                    <input value={couponCode} onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponStatus("idle"); }} placeholder="Ej. VERANO10"
+                      className="flex-1 bg-black/40 border border-line rounded-full px-4 py-2.5 text-sm text-white outline-none focus:border-gold font-mono" />
+                    <button onClick={applyCoupon} disabled={couponStatus === "checking" || !couponCode.trim()}
+                      className="rounded-full liquid-glass border border-line px-4 py-2.5 text-sm hover:border-gold/40 disabled:opacity-50">
+                      {couponStatus === "checking" ? "…" : "Aplicar"}
+                    </button>
+                  </div>
+                  {couponStatus === "ok" && appliedCoupon && (
+                    <p className="mt-2 text-xs text-emerald-300">✓ Cupón <strong>{appliedCoupon.code}</strong> aplicado: −{money(appliedCoupon.discount_cents)}</p>
+                  )}
+                  {couponStatus === "error" && <p className="mt-2 text-xs text-rose-300">Cupón inválido o no aplica</p>}
+                </section>
+              </>
+            ) : (
+              brickInit && (
+                <section className="space-y-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <h2 className="font-display italic text-xl text-ink">Pago seguro</h2>
+                    <button onClick={() => { setPaymentStep("form"); setBrickInit(null); }}
+                      className="text-xs text-ink-mute hover:text-gold">← Volver</button>
+                  </div>
+                  <PaymentBrick
+                    publicKey={brickInit.public_key}
+                    preferenceId={brickInit.preference_id}
+                    amount={brickInit.amount}
+                    orderId={brickInit.order_id}
+                    publicId={brickInit.public_id}
+                    onPaid={handlePaid}
+                  />
+                  <p className="text-[11px] text-ink-mute text-center">
+                    Pago procesado por Mercado Pago · Modo {brickInit.mode}
+                  </p>
+                </section>
+              )
+            )}
           </div>
 
-          {/* Resumen + pago */}
           <aside className="lg:col-span-2 space-y-4">
             <div className="liquid-glass rounded-2xl p-5 sticky top-24">
               <h2 className="font-display italic text-xl text-ink mb-3">Tu pedido</h2>
               <ul className="divide-y divide-line max-h-64 overflow-y-auto -mx-2 px-2">
                 {items.map((it) => (
                   <li key={`${it.slug}-${it.size_ml}`} className="py-2 flex items-center gap-2 text-xs">
-                    <span className="w-7 h-7 rounded bg-black/30 grid place-items-center shrink-0 text-[10px] text-gold/70">
-                      {it.qty}×
-                    </span>
-                    <span className="flex-1 truncate text-ink">
-                      {it.artistic_name ?? it.name} <span className="text-ink-mute">{it.size_ml}ml</span>
-                    </span>
+                    <span className="w-7 h-7 rounded bg-black/30 grid place-items-center shrink-0 text-[10px] text-gold/70">{it.qty}×</span>
+                    <span className="flex-1 truncate text-ink">{it.artistic_name ?? it.name} <span className="text-ink-mute">{it.size_ml}ml</span></span>
                     <span className="text-gold shrink-0">{money(it.unit_price_cents * it.qty)}</span>
                   </li>
                 ))}
               </ul>
-
               <div className="mt-4 pt-3 border-t border-line space-y-1 text-sm">
                 <Row label={`Subtotal (${total.units}u)`} value={money(total.total_cents)} />
-                {discountCents > 0 && (
-                  <Row label={`Descuento`} value={`−${money(discountCents)}`} accent="emerald" />
-                )}
-                <Row
-                  label={deliveryMode === "pickup" ? "Recogida en sitio" : "Envío"}
-                  value={deliveryMode === "pickup" ? "Gratis" : (shippingCents === 0 ? "Gratis" : money(shippingCents))}
-                />
+                {discountCents > 0 && <Row label="Descuento" value={`−${money(discountCents)}`} accent="emerald" />}
+                <Row label={deliveryMode === "pickup" ? "Recogida en sitio" : "Envío"} value={deliveryMode === "pickup" ? "Gratis" : (shippingCents === 0 ? "Gratis" : money(shippingCents))} />
                 <div className="pt-2 mt-2 border-t border-line flex justify-between font-medium">
                   <span className="text-ink">Total</span>
                   <span className="text-gold text-lg">{money(grandTotal)}</span>
                 </div>
               </div>
 
-              {/* Selección de pago */}
-              <div className="mt-5 pt-4 border-t border-line">
-                <p className="text-[11px] uppercase tracking-wider text-ink-mute mb-2">Método de pago</p>
-                {providers.length === 0 ? (
-                  <p className="text-xs text-rose-300">
-                    No hay proveedores activos. Configúralos en <Link href="/admin/pagos" className="underline">/admin/pagos</Link>.
-                  </p>
-                ) : (
-                  <div className="space-y-2">
-                    {providers.map((p) => (
-                      <button
-                        key={p.provider}
-                        onClick={() => submit(p.provider)}
-                        disabled={submitting !== null}
-                        className="w-full rounded-xl bg-gold text-bg px-4 py-3 text-sm font-medium hover:bg-gold/90 disabled:opacity-50 flex items-center justify-center gap-2"
-                      >
-                        {submitting === p.provider ? (
-                          <span>Procesando…</span>
-                        ) : (
-                          <>
-                            <span>{p.provider === "mercadopago" ? "🟡" : "💳"}</span>
-                            Pagar con {p.provider === "mercadopago" ? "MercadoPago" : "Stripe"}
-                            <span className="text-[10px] opacity-70">({p.mode})</span>
-                          </>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-                <p className="mt-3 text-[10px] text-ink-mute text-center">
-                  Serás redirigido al sitio seguro del proveedor para completar el pago.
-                </p>
-              </div>
+              {paymentStep === "form" && (
+                <button onClick={initBrick} disabled={initLoading}
+                  className="mt-5 w-full rounded-full bg-gold text-bg px-4 py-3 text-sm font-medium hover:bg-gold/90 disabled:opacity-50">
+                  {initLoading ? "Preparando pago…" : "Continuar al pago →"}
+                </button>
+              )}
+              <p className="mt-3 text-[10px] text-ink-mute text-center">
+                {providers.some((p) => p.provider === "mercadopago")
+                  ? "🟡 Mercado Pago · Pago directo sin redirección"
+                  : "Sin métodos de pago activos"}
+              </p>
             </div>
           </aside>
         </div>
@@ -415,28 +357,15 @@ export default function CheckoutPage() {
   );
 }
 
-function Input({
-  label, value, onChange, type = "text", placeholder, required, className = ""
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type?: string;
-  placeholder?: string;
-  required?: boolean;
-  className?: string;
+function Input({ label, value, onChange, type = "text", placeholder, required, className = "" }: {
+  label: string; value: string; onChange: (v: string) => void; type?: string;
+  placeholder?: string; required?: boolean; className?: string;
 }) {
   return (
     <label className={`block ${className}`}>
       <span className="text-[11px] uppercase tracking-wider text-gold/80">{label}{required && " *"}</span>
-      <input
-        type={type}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={placeholder}
-        required={required}
-        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-gold"
-      />
+      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} required={required}
+        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2.5 text-sm text-white outline-none focus:border-gold" />
     </label>
   );
 }
