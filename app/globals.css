@@ -98,18 +98,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 /* === Admin fields: inputs y pares clave/valor con buen contraste === */
 
 /* Forzar fondo oscuro en TODOS los inputs/textareas/selects para que
-   el texto blanco SIEMPRE sea legible. Algunos componentes usan
-   bg-black/40 (semi-transparente) que deja ver el fondo blanco por
-   defecto del navegador, haciendo el texto invisible. */
-input[type="text"],
-input[type="email"],
-input[type="password"],
-input[type="number"],
-input[type="tel"],
-input[type="url"],
-input[type="search"],
-input[type="date"],
-input[type="time"],
+   el texto blanco SIEMPRE sea legible. Algunos componentes no tienen
+   type="text" explícito, por eso usamos el selector genérico. */
+input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
 textarea,
 select {
   background-color: #0a0a0a;
