@@ -172,18 +172,23 @@ export default function Catalog() {
             </div>
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               <span className="text-[11px] uppercase tracking-wider text-ink-mute mr-1">Género</span>
-              {GENDERS.map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setGender(g)}
-                  className={`liquid-glass rounded-full px-3 py-1.5 text-xs capitalize transition-colors min-h-[36px] ${
-                    gender === g ? "bg-gold text-bg" : "text-ink/80 hover:text-gold"
-                  }`}
-                  aria-pressed={gender === g}
-                >
-                  {g === "all" ? "Todos" : g}
-                </button>
-              ))}
+              {GENDERS.map((g) => {
+                const active = gender === g;
+                return (
+                  <button
+                    key={g}
+                    onClick={() => setGender(g)}
+                    aria-pressed={active}
+                    className={`rounded-full px-3.5 py-1.5 text-xs font-semibold capitalize transition-all duration-200 min-h-[36px] border ${
+                      active
+                        ? "bg-gold text-black border-gold shadow-[0_0_0_2px_rgba(199,162,79,0.25),0_2px_12px_-2px_rgba(199,162,79,0.5)] scale-[1.03]"
+                        : "bg-black/40 text-ink border-white/10 hover:border-gold/60 hover:text-gold"
+                    }`}
+                  >
+                    {g === "all" ? "Todos" : g}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
