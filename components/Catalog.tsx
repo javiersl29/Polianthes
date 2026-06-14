@@ -38,7 +38,6 @@ export default function Catalog() {
   const [gender, setGender] = useState<"all" | Gender>("all");
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const filterKey = `${query}|${note}|${family}|${gender}`;
   const filterKeyRef = useRef(filterKey);
 
@@ -148,21 +147,13 @@ export default function Catalog() {
             </div>
           </div>
 
-          <button
-            onClick={() => setFiltersOpen(!filtersOpen)}
-            className="sm:hidden liquid-glass rounded-full px-4 py-2 text-sm text-ink/80 flex items-center gap-2 w-full justify-center min-h-[44px]"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6" /></svg>
-            {filtersOpen ? "Ocultar filtros" : "Mostrar filtros"}
-          </button>
-
-          <div className={`${filtersOpen ? "block" : "hidden"} sm:block`}>
-            <div className="liquid-glass rounded-2xl sm:rounded-full px-2 py-1.5 flex items-center gap-1 overflow-x-auto scrollbar-none -mx-1 px-2">
+          <div>
+            <div className="liquid-glass rounded-2xl px-2 py-2 flex flex-wrap items-center gap-1.5">
               {FAMILIES.map((f) => (
                 <button
                   key={f || "todas"}
                   onClick={() => setFamily(f)}
-                  className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs transition-colors shrink-0 ${
+                  className={`rounded-full px-3 py-1.5 text-xs transition-colors min-h-[36px] ${
                     family === f ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
                   }`}
                 >
