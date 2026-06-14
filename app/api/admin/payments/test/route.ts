@@ -17,20 +17,33 @@ async function testMercadoPago(accessToken: string, mode: "test" | "live"): Prom
   }
   // Validar el token con el endpoint /users/me de MP
   try {
-    const baseUrl = mode === "test"
-      ? "https://api.mercadopago.com"
-      : "https://api.mercadopago.com";
+    const baseUrl = "https://api.mercadopago.com";
     const r = await fetch(`${baseUrl}/users/me`, {
       headers: { Authorization: `Bearer ${accessToken}` },
       signal: AbortSignal.timeout(8000)
     });
     if (r.ok) {
       const data = await r.json();
+      const email = String(data.email ?? "");
+      const tags = Array.isArray(data.tags) ? data.tags : String(data.tags ?? "").split(",");
+      const isTestUser = email.includes("@testuser.com") || tags.some((t: string) => String(t).trim() === "test_user");
+
+      // Detectar Access Token de test user y avisar de forma clara.
+      // Los tokens de test user NO funcionan para Payment Brick (pago directo
+      // vía /v1/payments), sólo para Checkout Pro (preferencias).
+      if (isTestUser) {
+        return {
+          ok: false,
+          provider: "mercadopago",
+          message: `⚠ Token de TEST USER detectado (cuenta ${email}). Las cuentas @testuser.com NO pueden procesar pagos con Payment Brick. Necesitas credenciales de tu CUENTA REAL (email personal). Lee: https://www.mercadopago.com.mx/developers/es/docs/your-integrations/credentials`,
+          details: { user_id: data.id, country: data.site_id, email, test_user: true }
+        };
+      }
       return {
         ok: true,
         provider: "mercadopago",
-        message: `Conexión exitosa: cuenta ${data.email ?? data.id} (${mode})`,
-        details: { user_id: data.id, country: data.site_id }
+        message: `Conexión exitosa: ${email || data.id} (${mode})`,
+        details: { user_id: data.id, country: data.site_id, email }
       };
     }
     return {
