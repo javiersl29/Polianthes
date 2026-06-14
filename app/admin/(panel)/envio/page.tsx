@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { formatMXN, parseMXN } from "@/lib/money";
+import { formatMXN } from "@/lib/money";
 
 type Kind = "shipping" | "pickup";
 
@@ -29,8 +29,8 @@ type Editing = {
   name: string;
   kind: Kind;
   postal_code_prefix: string;
-  cost: string;        // MXN con decimales como string
-  free_from: string;   // MXN con decimales como string
+  cost: string;
+  free_from: string;
   estimated_days: string;
   active: boolean;
   display_order: number;
@@ -126,8 +126,8 @@ export default function AdminShippingPage() {
           name: editing.name,
           kind: editing.kind,
           postal_code_prefix: editing.postal_code_prefix,
-          cost: editing.cost,             // string en MXN
-          free_from: editing.free_from,   // string en MXN
+          cost: editing.cost,
+          free_from: editing.free_from,
           estimated_days: editing.estimated_days,
           active: editing.active,
           display_order: editing.display_order,
@@ -177,7 +177,7 @@ export default function AdminShippingPage() {
       </p>
 
       {/* Tabs */}
-      <div className="mt-6 flex items-center gap-2">
+      <div className="mt-6 flex items-center gap-2 flex-wrap">
         <button
           onClick={() => setTab("shipping")}
           className={`rounded-full px-4 py-2 text-xs font-medium transition-colors ${
@@ -290,213 +290,221 @@ export default function AdminShippingPage() {
         >
           <form
             onSubmit={(e) => { e.preventDefault(); save(); }}
-            className="liquid-glass rounded-3xl p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto"
+            className="liquid-glass rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            <h3 className="font-display italic text-2xl text-ink mb-1">
-              {editing.id ? "Editar" : "Nuevo"} {editing.kind === "shipping" ? "zona de envío" : "sitio de entrega"}
-            </h3>
-            <p className="text-xs text-ink-mute mb-4">
-              {editing.kind === "shipping"
-                ? "Configura el costo de envío por prefijo de código postal."
-                : "Dirección donde el cliente puede recoger su pedido sin costo de envío."}
-            </p>
+            {/* Header fijo */}
+            <div className="shrink-0 p-6 pb-3">
+              <h3 className="font-display italic text-2xl text-ink mb-1">
+                {editing.id ? "Editar" : "Nuevo"} {editing.kind === "shipping" ? "zona de envío" : "sitio de entrega"}
+              </h3>
+              <p className="text-xs text-ink-mute">
+                {editing.kind === "shipping"
+                  ? "Configura el costo de envío por prefijo de código postal."
+                  : "Dirección donde el cliente puede recoger su pedido sin costo de envío."}
+              </p>
 
-            {/* Toggle tipo */}
-            <div className="mb-4 grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setEditing({ ...editing, kind: "shipping" })}
-                className={`rounded-xl px-3 py-2.5 text-sm border transition-colors ${
-                  editing.kind === "shipping"
-                    ? "border-gold bg-gold/10 text-gold"
-                    : "border-line/40 text-ink/60 hover:text-ink"
-                }`}
-              >
-                🚚 Envío a domicilio
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditing({ ...editing, kind: "pickup" })}
-                className={`rounded-xl px-3 py-2.5 text-sm border transition-colors ${
-                  editing.kind === "pickup"
-                    ? "border-gold bg-gold/10 text-gold"
-                    : "border-line/40 text-ink/60 hover:text-ink"
-                }`}
-              >
-                🏬 Entrega física
-              </button>
+              {/* Toggle tipo */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing({ ...editing, kind: "shipping" })}
+                  className={`rounded-xl px-3 py-2.5 text-sm border transition-colors ${
+                    editing.kind === "shipping"
+                      ? "border-gold bg-gold/10 text-gold"
+                      : "border-line/40 text-ink/60 hover:text-ink"
+                  }`}
+                >
+                  🚚 Envío a domicilio
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing({ ...editing, kind: "pickup" })}
+                  className={`rounded-xl px-3 py-2.5 text-sm border transition-colors ${
+                    editing.kind === "pickup"
+                      ? "border-gold bg-gold/10 text-gold"
+                      : "border-line/40 text-ink/60 hover:text-ink"
+                  }`}
+                >
+                  🏬 Entrega física
+                </button>
+              </div>
             </div>
 
-            <div className="space-y-3">
-              {/* Nombre (ambos) */}
-              <label className="block">
-                <span className="text-[11px] uppercase tracking-wider text-gold/80">Nombre *</span>
-                <input
-                  value={editing.name}
-                  onChange={(e) => setEditing({ ...editing, name: e.target.value })}
-                  className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                  placeholder={editing.kind === "shipping" ? "CDMX Centro" : "Polianthes Polanco"}
-                  required
-                />
-              </label>
+            {/* Body con scroll independiente */}
+            <div className="flex-1 overflow-y-auto px-6 py-2 min-h-0">
+              <div className="space-y-3">
+                {/* Nombre (ambos) */}
+                <label className="block">
+                  <span className="text-[11px] uppercase tracking-wider text-gold/80">Nombre *</span>
+                  <input
+                    value={editing.name}
+                    onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                    className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                    placeholder={editing.kind === "shipping" ? "CDMX Centro" : "Polianthes Polanco"}
+                    required
+                  />
+                </label>
 
-              {/* Campos exclusivos de shipping */}
-              {editing.kind === "shipping" && (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
+                {/* Campos exclusivos de shipping */}
+                {editing.kind === "shipping" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Prefijo CP *</span>
+                        <input
+                          value={editing.postal_code_prefix}
+                          onChange={(e) => setEditing({ ...editing, postal_code_prefix: e.target.value })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold font-mono"
+                          placeholder="01,02,03…"
+                          required
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Costo (MXN)</span>
+                        <div className="relative mt-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute text-sm">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editing.cost}
+                            onChange={(e) => setEditing({ ...editing, cost: e.target.value })}
+                            className="w-full bg-black/40 border border-line rounded-lg pl-7 pr-3 py-2 text-sm text-white outline-none focus:border-gold"
+                            placeholder="99.50"
+                          />
+                        </div>
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Gratis desde (MXN)</span>
+                        <div className="relative mt-1">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute text-sm">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editing.free_from}
+                            onChange={(e) => setEditing({ ...editing, free_from: e.target.value })}
+                            className="w-full bg-black/40 border border-line rounded-lg pl-7 pr-3 py-2 text-sm text-white outline-none focus:border-gold"
+                            placeholder="1500.00"
+                          />
+                        </div>
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Orden</span>
+                        <input
+                          type="number"
+                          value={editing.display_order}
+                          onChange={(e) => setEditing({ ...editing, display_order: Number(e.target.value) })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                        />
+                      </label>
+                    </div>
                     <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Prefijo CP *</span>
+                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Tiempo estimado</span>
                       <input
-                        value={editing.postal_code_prefix}
-                        onChange={(e) => setEditing({ ...editing, postal_code_prefix: e.target.value })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold font-mono"
-                        placeholder="01,02,03…"
+                        value={editing.estimated_days}
+                        onChange={(e) => setEditing({ ...editing, estimated_days: e.target.value })}
+                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                        placeholder="2-4 días hábiles"
+                      />
+                    </label>
+                  </>
+                )}
+
+                {/* Campos exclusivos de pickup */}
+                {editing.kind === "pickup" && (
+                  <>
+                    <label className="block">
+                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Dirección *</span>
+                      <input
+                        value={editing.pickup_address}
+                        onChange={(e) => setEditing({ ...editing, pickup_address: e.target.value })}
+                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                        placeholder="Av. Presidente Masaryk 123"
                         required
                       />
                     </label>
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Costo (MXN)</span>
-                      <div className="relative mt-1">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute text-sm">$</span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Ciudad</span>
+                        <input
+                          value={editing.pickup_city}
+                          onChange={(e) => setEditing({ ...editing, pickup_city: e.target.value })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                          placeholder="CDMX"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Estado</span>
+                        <input
+                          value={editing.pickup_state}
+                          onChange={(e) => setEditing({ ...editing, pickup_state: e.target.value })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                          placeholder="Ciudad de México"
+                        />
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">CP</span>
+                        <input
+                          value={editing.pickup_postal_code}
+                          onChange={(e) => setEditing({ ...editing, pickup_postal_code: e.target.value })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold font-mono"
+                          placeholder="11550"
+                        />
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Orden</span>
                         <input
                           type="number"
-                          step="0.01"
-                          min="0"
-                          value={editing.cost}
-                          onChange={(e) => setEditing({ ...editing, cost: e.target.value })}
-                          className="w-full bg-black/40 border border-line rounded-lg pl-7 pr-3 py-2 text-sm text-white outline-none focus:border-gold"
-                          placeholder="99.50"
+                          value={editing.display_order}
+                          onChange={(e) => setEditing({ ...editing, display_order: Number(e.target.value) })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
                         />
-                      </div>
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
+                      </label>
+                    </div>
                     <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Gratis desde (MXN)</span>
-                      <div className="relative mt-1">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-mute text-sm">$</span>
+                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Horario</span>
+                      <input
+                        value={editing.pickup_schedule}
+                        onChange={(e) => setEditing({ ...editing, pickup_schedule: e.target.value })}
+                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                        placeholder="Lun-Vie 11:00-19:00, Sáb 11:00-15:00"
+                      />
+                    </label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Teléfono</span>
                         <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          value={editing.free_from}
-                          onChange={(e) => setEditing({ ...editing, free_from: e.target.value })}
-                          className="w-full bg-black/40 border border-line rounded-lg pl-7 pr-3 py-2 text-sm text-white outline-none focus:border-gold"
-                          placeholder="1,500.00"
+                          value={editing.phone}
+                          onChange={(e) => setEditing({ ...editing, phone: e.target.value })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                          placeholder="55 1234 5678"
                         />
-                      </div>
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Orden</span>
-                      <input
-                        type="number"
-                        value={editing.display_order}
-                        onChange={(e) => setEditing({ ...editing, display_order: Number(e.target.value) })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                      />
-                    </label>
-                  </div>
-                  <label className="block">
-                    <span className="text-[11px] uppercase tracking-wider text-gold/80">Tiempo estimado</span>
-                    <input
-                      value={editing.estimated_days}
-                      onChange={(e) => setEditing({ ...editing, estimated_days: e.target.value })}
-                      className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                      placeholder="2-4 días hábiles"
-                    />
-                  </label>
-                </>
-              )}
+                      </label>
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Email</span>
+                        <input
+                          type="email"
+                          value={editing.email}
+                          onChange={(e) => setEditing({ ...editing, email: e.target.value })}
+                          className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
+                          placeholder="polanco@polianthes.mx"
+                        />
+                      </label>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
 
-              {/* Campos exclusivos de pickup */}
-              {editing.kind === "pickup" && (
-                <>
-                  <label className="block">
-                    <span className="text-[11px] uppercase tracking-wider text-gold/80">Dirección *</span>
-                    <input
-                      value={editing.pickup_address}
-                      onChange={(e) => setEditing({ ...editing, pickup_address: e.target.value })}
-                      className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                      placeholder="Av. Presidente Masaryk 123"
-                      required
-                    />
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Ciudad</span>
-                      <input
-                        value={editing.pickup_city}
-                        onChange={(e) => setEditing({ ...editing, pickup_city: e.target.value })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                        placeholder="CDMX"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Estado</span>
-                      <input
-                        value={editing.pickup_state}
-                        onChange={(e) => setEditing({ ...editing, pickup_state: e.target.value })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                        placeholder="Ciudad de México"
-                      />
-                    </label>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">CP</span>
-                      <input
-                        value={editing.pickup_postal_code}
-                        onChange={(e) => setEditing({ ...editing, pickup_postal_code: e.target.value })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold font-mono"
-                        placeholder="11550"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Orden</span>
-                      <input
-                        type="number"
-                        value={editing.display_order}
-                        onChange={(e) => setEditing({ ...editing, display_order: Number(e.target.value) })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                      />
-                    </label>
-                  </div>
-                  <label className="block">
-                    <span className="text-[11px] uppercase tracking-wider text-gold/80">Horario</span>
-                    <input
-                      value={editing.pickup_schedule}
-                      onChange={(e) => setEditing({ ...editing, pickup_schedule: e.target.value })}
-                      className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                      placeholder="Lun-Vie 11:00-19:00, Sáb 11:00-15:00"
-                    />
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Teléfono</span>
-                      <input
-                        value={editing.phone}
-                        onChange={(e) => setEditing({ ...editing, phone: e.target.value })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                        placeholder="55 1234 5678"
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-[11px] uppercase tracking-wider text-gold/80">Email</span>
-                      <input
-                        type="email"
-                        value={editing.email}
-                        onChange={(e) => setEditing({ ...editing, email: e.target.value })}
-                        className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
-                        placeholder="polanco@polianthes.mx"
-                      />
-                    </label>
-                  </div>
-                </>
-              )}
-
-              {/* Comunes */}
-              <label className="flex items-center gap-2 text-sm text-ink pt-2">
+            {/* Footer fijo: SIEMPRE visible con los botones */}
+            <div className="shrink-0 p-6 pt-3 border-t border-line">
+              <label className="flex items-center gap-2 text-sm text-ink mb-3 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={editing.active}
@@ -505,23 +513,22 @@ export default function AdminShippingPage() {
                 />
                 Activo (visible en el checkout)
               </label>
-            </div>
-
-            <div className="mt-5 flex gap-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className="flex-1 rounded-full bg-gold text-bg px-4 py-2 text-sm font-medium hover:bg-gold/90 disabled:opacity-50"
-              >
-                {saving ? "Guardando…" : "Guardar"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditing(null)}
-                className="rounded-full px-4 py-2 text-sm text-ink-mute hover:text-ink"
-              >
-                Cancelar
-              </button>
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 rounded-full bg-gold text-bg px-4 py-2.5 text-sm font-medium hover:bg-gold/90 disabled:opacity-50"
+                >
+                  {saving ? "Guardando…" : "Guardar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditing(null)}
+                  className="rounded-full px-4 py-2.5 text-sm text-ink-mute hover:text-ink"
+                >
+                  Cancelar
+                </button>
+              </div>
             </div>
           </form>
         </div>
