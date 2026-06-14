@@ -214,7 +214,7 @@ export default function Catalog() {
             >
               <Link
                 href={`/fragancias/${it.slug}`}
-                className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block"
+                className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
               >
                 <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
                   {it.image_url ? (
@@ -229,8 +229,8 @@ export default function Catalog() {
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>
                   )}
                 </div>
-                <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
-                  <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate">{it.display_code ?? `PLT-${String(it.id).padStart(3, "0")}`}</p>
+                <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1 min-w-0">
+                  <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate min-w-0">{it.display_code ?? `PLT-${String(it.id).padStart(3, "0")}`}</p>
                   {(() => {
                     const g = genderBadge(it.gender);
                     return (
@@ -244,19 +244,19 @@ export default function Catalog() {
                     );
                   })()}
                 </div>
-                <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 truncate">
+                <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 line-clamp-2">
                   {it.artistic_name ?? `Polianthes ${String(it.id).padStart(3, "0")}`}
                 </p>
                 {(it.inspired_by_name || it.inspired_by_brand) && (
-                  <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-[11px] text-ink-mute italic truncate">
+                  <p className="mt-1 sm:mt-1.5 text-[10px] sm:text-[11px] text-ink-mute italic leading-snug line-clamp-2">
                     Inspirado en {it.inspired_by_name ?? it.name}
                     {it.inspired_by_brand && ` · ${it.inspired_by_brand}`}
                   </p>
                 )}
                 {it.family && <p className="mt-0.5 text-[10px] sm:text-[11px] text-gold/70">{it.family}</p>}
                 {it.min_price_cents !== null && it.min_price_cents > 0 && (
-                  <p className="mt-1 sm:mt-1.5 text-[11px] sm:text-xs text-ink/80">
-                    Desde <span className="text-gold font-medium">${(it.min_price_cents / 100).toLocaleString("es-MX", { maximumFractionDigits: 0 })}</span>
+                  <p className="mt-1.5 sm:mt-2 text-[11px] sm:text-xs text-ink/80 flex items-baseline gap-1">
+                    Desde <span className="text-gold font-semibold text-sm sm:text-base">${(it.min_price_cents / 100).toLocaleString("es-MX", { maximumFractionDigits: 0 })}</span>
                   </p>
                 )}
               </Link>

@@ -79,11 +79,11 @@ export default async function FragrancePage({ params }: { params: { slug: string
               {detail.artistic_name ?? `Polianthes ${String(detail.id).padStart(3, "0")}`}
             </h1>
             {(detail.inspired_by_name || detail.inspired_by_brand) && (
-              <p className="mt-2 text-sm text-ink-mute italic">
-                Inspirado en {detail.inspired_by_name ?? detail.name}
+              <p className="mt-3 text-sm sm:text-base text-ink-mute italic leading-snug">
+                Inspirado en <span className="text-ink not-italic font-medium">{detail.inspired_by_name ?? detail.name}</span>
                 {detail.inspired_by_brand && (
                   <>
-                    {" "}de <span className="text-gold">{detail.inspired_by_brand}</span>
+                    {" "}de <span className="text-gold not-italic font-semibold">{detail.inspired_by_brand}</span>
                   </>
                 )}
               </p>
@@ -98,7 +98,7 @@ export default async function FragrancePage({ params }: { params: { slug: string
               <p className="mt-5 sm:mt-6 text-sm sm:text-base text-ink/90 leading-relaxed">{detail.description}</p>
             )}
 
-            <div className="mt-6 sm:mt-8 grid grid-cols-3 gap-2 sm:gap-3">
+            <div className="mt-6 sm:mt-8 grid grid-cols-1 sm:grid-cols-3 gap-2 sm:gap-3">
               {(["top_notes", "heart_notes", "base_notes"] as const).map((layer) => (
                 <div key={layer} className="liquid-glass rounded-xl sm:rounded-2xl p-3 sm:p-4">
                   <p className="text-[10px] sm:text-[11px] uppercase tracking-wider text-ink-mute">
@@ -146,12 +146,12 @@ export default async function FragrancePage({ params }: { params: { slug: string
             <div className="liquid-glass rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col items-center">
               <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-ink-mute mb-1">Familias</p>
               <h3 className="font-display italic text-xl sm:text-2xl text-ink mb-3 sm:mb-4">Composición</h3>
-              <HexagonView values={familyValues} setId="familias" size={300} caption="Floral · Oriental · Amaderado · Chipre · Cítrico · Gourmand" />
+              <HexagonView values={familyValues} setId="familias" size={260} caption="Floral · Oriental · Amaderado · Chipre · Cítrico · Gourmand" />
             </div>
             <div className="liquid-glass rounded-2xl sm:rounded-3xl p-5 sm:p-6 flex flex-col items-center">
               <p className="text-[10px] sm:text-xs uppercase tracking-[0.2em] text-ink-mute mb-1">Mood</p>
               <h3 className="font-display italic text-xl sm:text-2xl text-ink mb-3 sm:mb-4">Ocasión</h3>
-              <HexagonView values={moodValues} setId="mood" size={300} caption="Frescura · Misterio · Romántico · Energía · Sofisticado · Nostálgico" />
+              <HexagonView values={moodValues} setId="mood" size={260} caption="Frescura · Misterio · Romántico · Energía · Sofisticado · Nostálgico" />
             </div>
           </div>
         </section>
@@ -181,7 +181,7 @@ export default async function FragrancePage({ params }: { params: { slug: string
                   <Link
                     key={s.id}
                     href={`/fragancias/${s.slug}`}
-                    className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block"
+                    className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
                   >
                     <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
                       {s.image_url ? (
@@ -194,8 +194,8 @@ export default async function FragrancePage({ params }: { params: { slug: string
                         <span className="font-display italic text-gold text-3xl sm:text-4xl">{s.brand[0]}</span>
                       )}
                     </div>
-                    <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
-                      <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate">
+                    <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1 min-w-0">
+                      <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate min-w-0">
                         {s.display_code ?? `PLT-${String(s.id).padStart(3, "0")}`}
                       </p>
                       <span
@@ -205,10 +205,10 @@ export default async function FragrancePage({ params }: { params: { slug: string
                         <span className="text-[10px] leading-none">{g.icon}</span>
                       </span>
                     </div>
-                    <p className="font-display italic text-sm sm:text-base text-ink leading-tight mt-0.5 truncate">
+                    <p className="font-display italic text-sm sm:text-base text-ink leading-tight mt-0.5 line-clamp-2">
                       {s.artistic_name ?? `Polianthes ${String(s.id).padStart(3, "0")}`}
                     </p>
-                    <p className="mt-0.5 text-[10px] sm:text-[11px] text-ink-mute italic truncate">
+                    <p className="mt-0.5 text-[10px] sm:text-[11px] text-ink-mute italic leading-snug line-clamp-2">
                       Inspirado en {s.name}
                     </p>
                     {s.family && <p className="mt-0.5 text-[10px] sm:text-[11px] text-gold/70">{s.family}</p>}

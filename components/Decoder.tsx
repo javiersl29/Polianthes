@@ -389,7 +389,7 @@ export default function Decoder() {
                               <button
                                 key={f.slug}
                                 onClick={() => selectReference(f)}
-                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors"
+                                className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-white/5 transition-colors min-w-0"
                               >
                                 <div className="h-10 w-10 rounded-lg bg-bg-elev overflow-hidden grid place-items-center shrink-0">
                                   {f.image_url ? (
@@ -398,12 +398,12 @@ export default function Decoder() {
                                     <span className="font-display italic text-gold text-sm">{f.brand[0]}</span>
                                   )}
                                 </div>
-                                <div className="min-w-0">
-                                  <p className="text-[10px] text-ink-mute uppercase tracking-wider">{f.brand}</p>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-[10px] text-ink-mute uppercase tracking-wider truncate">{f.brand}</p>
                                   <p className="text-sm text-ink truncate">{f.name}</p>
                                 </div>
                                 {f.family && (
-                                  <span className="text-[10px] text-gold shrink-0 ml-auto">{f.family}</span>
+                                  <span className="text-[10px] text-gold shrink-0 hidden sm:inline ml-1">{f.family}</span>
                                 )}
                               </button>
                             ))
@@ -429,7 +429,7 @@ export default function Decoder() {
               transition={{ duration: 0.4 }}
               className="mt-10 sm:mt-14 grid grid-cols-1 lg:grid-cols-[1fr_1.1fr] gap-8 sm:gap-12 items-center"
             >
-              <div className="relative mx-auto w-full max-w-[360px]">
+              <div className="relative mx-auto w-full max-w-[420px] sm:max-w-[360px]">
                 <svg viewBox={`0 0 ${HEX_SIZE} ${HEX_SIZE}`} className="block w-full h-auto relative z-10">
                   <defs>
                     <linearGradient id="hexFill" x1="0" y1="0" x2="1" y2="1">
@@ -502,10 +502,10 @@ export default function Decoder() {
                         key={`lbl-${axis.id}`}
                         x={p.x} y={p.y}
                         fill={isActive ? "oklch(0.97 0.01 90)" : "rgba(255,255,255,0.4)"}
-                        fontSize="12" fontWeight="600"
+                        fontSize="14" fontWeight="600"
                         fontFamily="var(--font-body), system-ui, sans-serif"
                         textAnchor="middle" dominantBaseline="middle"
-                        style={{ letterSpacing: "0.12em", textTransform: "uppercase" }}
+                        style={{ letterSpacing: "0.08em", textTransform: "uppercase" }}
                       >
                         {axis.label}
                       </text>
@@ -522,28 +522,28 @@ export default function Decoder() {
                       key={axis.id}
                       className={`liquid-glass rounded-2xl px-3 sm:px-4 py-2.5 sm:py-3 transition-opacity ${isActive ? "" : "opacity-50"}`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px]">
+                      <div className="flex items-center justify-between gap-2 sm:gap-3">
+                        <label className="flex items-center gap-2 cursor-pointer select-none min-h-[44px] min-w-0 flex-1">
                           <input
                             type="checkbox"
                             checked={isActive}
                             onChange={() => toggleAxis(axis.id)}
-                            className="h-4 w-4 accent-[color:var(--color-gold)]"
+                            className="h-4 w-4 accent-[color:var(--color-gold)] shrink-0"
                             aria-label={`Activar ${axis.label}`}
                           />
-                          <span className="text-sm font-medium">{axis.label}</span>
+                          <span className="text-sm font-medium truncate">{axis.label}</span>
                         </label>
-                        <span className={`font-display italic text-lg ${isActive ? "text-gold" : "text-ink-mute"}`}>
+                        <span className={`font-display italic text-lg shrink-0 tabular-nums min-w-[2.5rem] text-right ${isActive ? "text-gold" : "text-ink-mute"}`}>
                           {isActive ? vector[axis.id] ?? 50 : "—"}
                         </span>
                       </div>
-                      <p className="text-[11px] text-ink-mute mt-0.5 hidden sm:block">{axis.hint}</p>
+                      <p className="text-[11px] text-ink-mute mt-0.5 leading-snug">{axis.hint}</p>
                       <input
                         type="range" min={0} max={100}
                         disabled={!isActive}
                         value={vector[axis.id] ?? 50}
                         onChange={(e) => updateAxis(axis.id, Number(e.target.value))}
-                        className="mt-1 sm:mt-2 w-full disabled:opacity-40"
+                        className="mt-1.5 sm:mt-2 w-full h-2 disabled:opacity-40"
                         aria-label={axis.label}
                       />
                     </div>
@@ -637,7 +637,7 @@ export default function Decoder() {
                   initial={{ opacity: 0, y: 24, filter: "blur(8px)" }}
                   animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
                   transition={{ delay: idx * 0.06, duration: 0.5, ease: "easeOut" }}
-                  className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group"
+                  className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
                 >
                   <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute text-xs">
                     {r.image_url ? (
@@ -646,17 +646,17 @@ export default function Decoder() {
                       <span className="font-display italic text-gold text-3xl">{r.brand[0]}</span>
                     )}
                   </div>
-                  <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1">
-                    <p className="text-[10px] sm:text-xs text-gold/80 uppercase tracking-wider truncate">{r.display_code ?? `PLT-${String(r.id).padStart(3, "0")}`}</p>
+                  <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1 min-w-0">
+                    <p className="text-[10px] sm:text-xs text-gold/80 uppercase tracking-wider truncate min-w-0">{r.display_code ?? `PLT-${String(r.id).padStart(3, "0")}`}</p>
                     <span className="liquid-glass rounded-full px-1.5 sm:px-2 py-0.5 text-[9px] sm:text-[10px] text-ink/80 capitalize shrink-0">
                       {r.gender}
                     </span>
                   </div>
-                  <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 truncate">
+                  <p className="font-display italic text-base sm:text-xl text-ink leading-tight mt-0.5 line-clamp-2">
                     {r.artistic_name ?? `Polianthes ${String(r.id).padStart(3, "0")}`}
                   </p>
                   {(r.inspired_by_name || r.inspired_by_brand) && (
-                    <p className="mt-0.5 text-[10px] sm:text-[11px] text-ink-mute italic truncate">
+                    <p className="mt-0.5 sm:mt-1 text-[10px] sm:text-[11px] text-ink-mute italic leading-snug line-clamp-2">
                       Inspirada en {r.inspired_by_name ?? r.name}
                       {r.inspired_by_brand && ` · ${r.inspired_by_brand}`}
                     </p>
