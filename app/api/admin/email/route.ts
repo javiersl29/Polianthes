@@ -6,7 +6,11 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   if (!isAuthenticated()) return NextResponse.json({ error: "no autorizado" }, { status: 401 });
-  const r = await query(
+  const r = await query<{
+    id: number; provider: string; from_email: string; from_name: string;
+    resend_api_key: string | null; smtp_host: string | null; smtp_port: number;
+    smtp_user: string | null; smtp_secure: boolean; active: boolean;
+  }>(
     `SELECT id, provider, from_email, from_name, resend_api_key, smtp_host, smtp_port,
             smtp_user, smtp_secure, active, updated_at FROM email_config WHERE id = 1`
   );
