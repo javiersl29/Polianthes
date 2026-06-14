@@ -164,12 +164,15 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Enviar email de confirmación al cliente (no bloquear si falla)
+    // Enviar notificaciones (no bloquear si falla)
     try {
-      const { sendOrderConfirmationEmail } = await import("@/lib/email");
-      await sendOrderConfirmationEmail(orderRow.id);
+      const { sendOrderConfirmationEmail, sendAdminNewOrderNotification } = await import("@/lib/notifications");
+      await Promise.all([
+        sendOrderConfirmationEmail(orderRow.id),
+        sendAdminNewOrderNotification(orderRow.id)
+      ]);
     } catch (e) {
-      console.error("[bricks/process] email (non-critical):", e instanceof Error ? e.message : e);
+      console.error("[bricks/process] notifications (non-critical):", e instanceof Error ? e.message : e);
     }
 
     return NextResponse.json({

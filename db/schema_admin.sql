@@ -105,7 +105,7 @@ ALTER TABLE "order" ADD COLUMN IF NOT EXISTS customer_phone TEXT;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS shipping_address_line2 TEXT;
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS discount_cents INTEGER NOT NULL DEFAULT 0;
 
--- Tabla para configuración de email (SMTP o Resend)
+-- Tabla para configuración de notificaciones (SMTP o Resend)
 CREATE TABLE IF NOT EXISTS email_config (
   id INTEGER PRIMARY KEY DEFAULT 1,
   provider TEXT NOT NULL DEFAULT 'resend' CHECK (provider IN ('resend','smtp','none')),
@@ -118,9 +118,21 @@ CREATE TABLE IF NOT EXISTS email_config (
   smtp_password TEXT,
   smtp_secure BOOLEAN NOT NULL DEFAULT TRUE,
   active BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Notificaciones al administrador
+  admin_email TEXT,
+  notify_admin_new_order BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Notificaciones al cliente
+  notify_customer_confirmation BOOLEAN NOT NULL DEFAULT TRUE,
+  notify_customer_shipped BOOLEAN NOT NULL DEFAULT TRUE,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT single_row_email CHECK (id = 1)
 );
+
+-- Columnas nuevas (idempotentes para instalaciones existentes)
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS admin_email TEXT;
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS notify_admin_new_order BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS notify_customer_confirmation BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE email_config ADD COLUMN IF NOT EXISTS notify_customer_shipped BOOLEAN NOT NULL DEFAULT TRUE;
 
 INSERT INTO email_config (id, provider)
 SELECT 1, 'none'
