@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { searchFragrances, Gender } from "@/lib/fragrances";
+import { searchFragrances, countSearchFragrances, Gender } from "@/lib/fragrances";
 import { logSearch } from "@/lib/admin-data";
 
 export const dynamic = "force-dynamic";
@@ -10,16 +10,23 @@ export async function GET(req: NextRequest) {
   const gParam = req.nextUrl.searchParams.get("gender");
   const gender: Gender | null =
     gParam === "hombre" || gParam === "mujer" || gParam === "unisex" ? gParam : null;
-  const items = await searchFragrances(q, note, gender);
-  // Log de búsqueda (no bloquea la respuesta; fire-and-forget)
+  const limit = Math.min(100, Number(req.nextUrl.searchParams.get("limit") ?? "60"));
+  const offset = Number(req.nextUrl.searchParams.get("offset") ?? "0");
+
+  const [items, total] = await Promise.all([
+    searchFragrances(q, note, gender, limit, offset),
+    countSearchFragrances(q, note, gender)
+  ]);
+
   void logSearch({
     query: q,
     note: note || null,
     family: null,
     gender: gender,
     clickedSlug: null,
-    resultsCount: items.length,
+    resultsCount: total,
     sessionId: null
   });
-  return NextResponse.json({ items });
+
+  return NextResponse.json({ items, total, hasMore: offset + items.length < total });
 }

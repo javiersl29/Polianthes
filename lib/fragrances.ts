@@ -63,8 +63,12 @@ export async function listFragrances(): Promise<FragranceListItem[]> {
 export async function searchFragrances(
   text: string,
   note?: string | null,
-  gender?: Gender | null
+  gender?: Gender | null,
+  limit: number = 60,
+  offset: number = 0
 ): Promise<FragranceListItem[]> {
+  const safeLimit = Math.min(Math.max(1, limit), 500);
+  const safeOffset = Math.max(0, offset);
   const params: unknown[] = [];
   let where = `active = TRUE`;
   if (text && text.trim().length > 0) {
@@ -85,6 +89,8 @@ export async function searchFragrances(
     params.push(gender);
     where += ` AND (gender = $${params.length} OR gender = 'unisex')`;
   }
+  params.push(safeLimit);
+  params.push(safeOffset);
   const result = await query<FragranceListItem>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.mood, f.gender,
             CASE
@@ -100,10 +106,47 @@ export async function searchFragrances(
               SELECT MIN(p.price_cents) FROM presentation p
               WHERE p.fragrance_id = f.id AND p.active = TRUE AND p.price_cents IS NOT NULL AND p.price_cents > 0
             ) AS min_price_cents
-     FROM fragrance f WHERE ${where} ORDER BY f.brand, f.name LIMIT 60`,
+     FROM fragrance f WHERE ${where} ORDER BY f.brand, f.name
+     LIMIT $${params.length - 1} OFFSET $${params.length}`,
     params
   );
   return result.rows;
+}
+
+/**
+ * Cuenta el total de fragancias activas que coinciden con los filtros
+ * (sin paginación), para que el frontend sepa si hay más que cargar.
+ */
+export async function countSearchFragrances(
+  text: string,
+  note?: string | null,
+  gender?: Gender | null
+): Promise<number> {
+  const params: unknown[] = [];
+  let where = `active = TRUE`;
+  if (text && text.trim().length > 0) {
+    params.push(`%${text.toLowerCase()}%`);
+    where += ` AND (LOWER(full_name) LIKE $${params.length} OR LOWER(brand) LIKE $${params.length})`;
+  }
+  if (note && note.trim().length > 0) {
+    params.push(`%${note.toLowerCase()}%`);
+    where += ` AND (
+      LOWER(COALESCE(family, '')) LIKE $${params.length} OR
+      EXISTS (SELECT 1 FROM unnest(top_notes) n WHERE LOWER(n) LIKE $${params.length}) OR
+      EXISTS (SELECT 1 FROM unnest(heart_notes) n WHERE LOWER(n) LIKE $${params.length}) OR
+      EXISTS (SELECT 1 FROM unnest(base_notes) n WHERE LOWER(n) LIKE $${params.length}) OR
+      LOWER(COALESCE(mood, '')) LIKE $${params.length}
+    )`;
+  }
+  if (gender) {
+    params.push(gender);
+    where += ` AND (gender = $${params.length} OR gender = 'unisex')`;
+  }
+  const result = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM fragrance f WHERE ${where}`,
+    params
+  );
+  return Number(result.rows[0]?.count ?? 0);
 }
 
 export type PresentationDetail = {

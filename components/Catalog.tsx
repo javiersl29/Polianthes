@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { genderBadge } from "@/lib/visual";
@@ -23,44 +23,85 @@ type Item = {
   min_price_cents: number | null;
 };
 
+const PAGE_SIZE = 60;
 const FAMILIES = ["", "Floral", "Oriental", "Amaderado", "Chipre", "Cítrico", "Gourmand"];
 const GENDERS: ("all" | Gender)[] = ["all", "hombre", "mujer", "unisex"];
 
 export default function Catalog() {
   const [items, setItems] = useState<Item[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const [query, setQuery] = useState("");
   const [note, setNote] = useState("");
   const [family, setFamily] = useState("");
   const [gender, setGender] = useState<"all" | Gender>("all");
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const filterKey = `${query}|${note}|${family}|${gender}`;
+  const filterKeyRef = useRef(filterKey);
 
   useEffect(() => {
+    filterKeyRef.current = filterKey;
     const controller = new AbortController();
     const t = setTimeout(async () => {
       setLoading(true);
       try {
         const params = new URLSearchParams();
+        params.set("limit", String(PAGE_SIZE));
+        params.set("offset", "0");
         if (query) params.set("q", query);
         if (note) params.set("note", note);
         if (gender !== "all") params.set("gender", gender);
         const res = await fetch(`/api/search?${params.toString()}`, { signal: controller.signal });
-        const data = (await res.json()) as { items: Item[] };
-        const filtered = family ? data.items.filter((i) => i.family === family) : data.items;
-        setItems(filtered);
+        const data = (await res.json()) as { items: Item[]; total: number; hasMore: boolean };
+        if (filterKeyRef.current !== filterKey) return;
+        setItems(data.items);
+        setTotal(data.total);
+        setHasMore(data.hasMore);
+        setOffset(data.items.length);
+      } catch (err) {
+        if ((err as { name?: string })?.name === "AbortError") return;
+        throw err;
       } finally {
-        setLoading(false);
+        if (filterKeyRef.current === filterKey) setLoading(false);
       }
     }, 200);
     return () => {
       clearTimeout(t);
       controller.abort();
     };
-  }, [query, note, family, gender]);
+  }, [filterKey, query, note, gender]);
+
+  const onLoadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    try {
+      const params = new URLSearchParams();
+      params.set("limit", String(PAGE_SIZE));
+      params.set("offset", String(offset));
+      if (query) params.set("q", query);
+      if (note) params.set("note", note);
+      if (gender !== "all") params.set("gender", gender);
+      const res = await fetch(`/api/search?${params.toString()}`);
+      const data = (await res.json()) as { items: Item[]; hasMore: boolean };
+      setItems((prev) => [...prev, ...data.items]);
+      setOffset((prev) => prev + data.items.length);
+      setHasMore(data.hasMore);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  const visible = useMemo(
+    () => (family ? items.filter((i) => i.family === family) : items),
+    [items, family]
+  );
 
   const empty = useMemo(
-    () => !loading && items.length === 0,
-    [loading, items]
+    () => !loading && visible.length === 0,
+    [loading, visible]
   );
 
   return (
@@ -159,7 +200,7 @@ export default function Catalog() {
         )}
 
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-          {items.map((it, idx) => (
+          {visible.map((it, idx) => (
             <motion.div
               key={it.id}
               initial={{ opacity: 0, y: 16 }}
@@ -173,6 +214,8 @@ export default function Catalog() {
                 <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
                   {it.image_url ? (
                     <img
+                      loading="lazy"
+                      decoding="async"
                       src={it.image_version != null ? `${it.image_url}?v=${it.image_version}` : it.image_url}
                       alt={it.full_name}
                       className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
@@ -214,6 +257,34 @@ export default function Catalog() {
               </Link>
             </motion.div>
           ))}
+        </div>
+
+        <div className="mt-8 sm:mt-10 flex flex-col items-center gap-3">
+          {total > 0 && (
+            <p className="text-xs sm:text-sm text-ink-mute">
+              Mostrando <span className="text-ink">{visible.length}</span> de <span className="text-gold">{total}</span> fragancias
+            </p>
+          )}
+          {hasMore && !family && (
+            <button
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="liquid-glass rounded-full px-6 py-2.5 text-sm text-ink/90 hover:text-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex items-center gap-2"
+              aria-label="Cargar más fragancias"
+            >
+              {loadingMore ? (
+                <>
+                  <span className="w-3.5 h-3.5 border-2 border-gold/40 border-t-gold rounded-full animate-spin" />
+                  Cargando…
+                </>
+              ) : (
+                <>
+                  Cargar más
+                  <span className="text-gold/70">({Math.min(PAGE_SIZE, total - offset)})</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </section>
