@@ -155,7 +155,12 @@ export async function POST(req: NextRequest) {
   }
 
   // 3) Crear Checkout Session en Stripe
-  const origin = req.nextUrl.origin;
+  // Construir origin público desde headers de proxy (Railway usa
+  // x-forwarded-proto / x-forwarded-host, no req.nextUrl.origin que
+  // devuelve localhost:8080).
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
+  const origin = `${proto}://${host}`;
   const lineItems = orderItems.map((oi) => ({
     quantity: oi.qty,
     price_data: {

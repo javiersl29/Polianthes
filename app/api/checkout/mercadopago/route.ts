@@ -237,7 +237,13 @@ export async function POST(req: NextRequest) {
   }
 
   // 6) Crear Preference en MercadoPago
-  const origin = req.nextUrl.origin;
+  // Construir el origin público desde los headers de proxy (Railway,
+  // Vercel, etc. exponen el host real vía x-forwarded-*). Si usamos
+  // req.nextUrl.origin, en Railway devuelve localhost:8080 (el puerto
+  // interno del proceso) y rompe los back_urls y notification_url.
+  const proto = req.headers.get("x-forwarded-proto") ?? "https";
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
+  const origin = `${proto}://${host}`;
   const items_mp = orderItems.map((oi) => ({
     id: String(oi.fragrance_id),
     title: `${oi.fragrance_brand} ${oi.fragrance_name} (${oi.size_ml}ml)`,
