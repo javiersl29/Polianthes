@@ -21,10 +21,10 @@ export default async function PanelLayout({ children }: { children: React.ReactN
   }
   const username = await getCurrentUser();
   return (
-    <main className="pt-24 px-4 lg:px-8">
-      <div className="max-w-7xl mx-auto flex gap-8">
+    <main className="pt-16 md:pt-24 px-3 md:px-4 lg:px-8">
+      <div className="max-w-7xl mx-auto flex gap-4 md:gap-8">
         <AdminSidebar username={username} />
-        <div className="flex-1 min-w-0 py-8">{children}</div>
+        <div className="flex-1 min-w-0 py-4 md:py-8 pl-12 md:pl-0">{children}</div>
       </div>
     </main>
   );
