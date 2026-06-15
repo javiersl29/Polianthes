@@ -32,11 +32,12 @@ const ZAI_API_BASE = "https://api.z.ai/api";
  * correcta.
  */
 const TRUSTED_SHOP_HOSTS: RegExp[] = [
+  // Marketplaces y tiendas departamentales
   /(^|\.)amazon\./i,
   /(^|\.)mercadolibre\.com\.mx$/i,
   /(^|\.)mercadolibre\.com$/i,
   /(^|\.)articulo\.mercadolibre\.com\.mx$/i,
-  /(^|\.)sephora\.com$/i,
+  /(^|\.)sephora\./i,
   /(^|\.)ulta\.com$/i,
   /(^|\.)fragrancenet\.com$/i,
   /(^|\.)macys\.com$/i,
@@ -44,7 +45,34 @@ const TRUSTED_SHOP_HOSTS: RegExp[] = [
   /(^|\.)walmart\.com\.mx$/i,
   /(^|\.)walmart\.com$/i,
   /(^|\.)coppel\.com$/i,
-  /(^|\.)ebay\.com$/i
+  /(^|\.)ebay\.com$/i,
+  // Sitios oficiales de marca (imágenes de producto de alta calidad)
+  /(^|\.)dior\.com$/i,
+  /(^|\.)chanel\.com$/i,
+  /(^|\.)gucci\.com$/i,
+  /(^|\.)ysl\.com$/i,
+  /(^|\.)hermes\.com$/i,
+  /(^|\.)lancome\.com$/i,
+  /(^|\.)lancome-paris\./i,
+  /(^|\.)tomford\.com$/i,
+  /(^|\.)tomfordbeauty\.com$/i,
+  /(^|\.)jo Malone\.|jomalone\.com/i,
+  /(^|\.)guerlain\.com$/i,
+  /(^|\.)dior\.com$/i,
+  /(^|\.)mugler\.com$/i,
+  /(^|\.)azzaro\.com$/i,
+  /(^|\.)lancôme\./i,
+  /(^|\.)jean-patugr|Com/i,
+  /(^|\.)carolina-herrera\./i,
+  /(^|\.)paco-rabanne\./i,
+  // CDNs de marca
+  /(^|\.)lancome-assets\./i,
+  /(^|\.)dior-assets\./i,
+  // Reviews / encyclopedia con fotos de producto de calidad
+  /(^|\.)parfumo\.com$/i,
+  /(^|\.)fragrantica\.com$/i,
+  /(^|\.)basenotes\.com$/i,
+  /(^|\.)fragrancevault\.net$/i
 ];
 
 function isTrustedShopHost(url: string): boolean {
@@ -72,9 +100,10 @@ function matchesPerfume(
   brand: string,
   name: string
 ): boolean {
-  // Tienda conocida → confiamos en el dominio (la query ya tiene comillas
-  // exactas con brand+name, Google no devuelve perfumes no relacionados
-  // en estas URLs)
+  // Tienda conocida (Amazon, Sephora, MercadoLibre, etc.) o sitio oficial
+  // de marca (dior.com, chanel.com, etc.) → confiamos en el dominio. La
+  // query ya tiene comillas exactas con brand+name, Google no devuelve
+  // perfumes no relacionados en estas URLs.
   if (isTrustedShopHost(img.url)) return true;
 
   const haystack = `${img.title ?? ""} ${img.source ?? ""}`.toLowerCase();
