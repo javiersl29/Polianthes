@@ -2,7 +2,7 @@ import { pickBestReference } from "./reference-judge";
 
 export type ReferenceImage = {
   url: string;
-  source: "serper_images" | "tavily" | "zai" | "pexels" | "unsplash" | "serpapi" | "fallback";
+  source: "serper_images" | "zai" | "fallback";
   thumbnail?: string;
   title?: string;
   width?: number;
@@ -10,7 +10,6 @@ export type ReferenceImage = {
   image_data?: string;
 };
 
-type TavilyImageHit = { url: string; description?: string };
 type SerperImageHit = {
   imageUrl: string;
   title?: string;
@@ -20,8 +19,6 @@ type SerperImageHit = {
   imageHeight?: number;
 };
 
-const PEXELS_BASE = "https://api.pexels.com/v1/search";
-const TAVILY_URL = "https://api.tavily.com/search";
 const SERPER_IMAGES_URL = "https://google.serper.dev/images";
 const ZAI_API_BASE = "https://api.z.ai/api";
 
@@ -533,156 +530,30 @@ function parseZaiReaderImages(raw: string): string[] {
   return images;
 }
 
-async function fromTavily(brand: string, name: string): Promise<ReferenceImage | null> {
-  const key = process.env.TAVILY_API_KEY;
-  if (!key) return null;
-  // Query con comillas para frase exacta + tamaño grande
-  const q = `"${brand}" "${name}" 100ml eau de parfum bottle`;
-  try {
-    const res = await fetch(TAVILY_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: key,
-        query: q,
-        max_results: 8,
-        search_depth: "advanced",
-        include_images: true,
-        include_answer: false,
-        include_raw_content: false
-      })
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { images?: TavilyImageHit[] };
-    const imgs = data.images ?? [];
-    // Tavily no devuelve title/source para validar; pedimos más y tomamos el
-    // primero. Si quieres validación estricta, usa SerpAPI (que sí valida).
-    for (const img of imgs) {
-      if (img?.url && /^https?:\/\//.test(img.url)) {
-        return { url: img.url, source: "tavily", thumbnail: img.url };
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function fromSerperLegacy(brand: string, name: string): Promise<ReferenceImage | null> {
-  // Fallback simple: si la versión optimizada multi-attempt falla,
-  // intentamos con la query genérica. Usada como último recurso antes
-  // de Tavily.
-  const key = process.env.SERPER_API_KEY;
-  if (!key) return null;
-  try {
-    const q = `"${brand}" "${name}" 100ml perfume bottle`;
-    const res = await fetch(SERPER_IMAGES_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-API-KEY": key },
-      body: JSON.stringify({ q, num: 10 }),
-      signal: AbortSignal.timeout(20000)
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { images?: SerperImageHit[] };
-    for (const img of data.images ?? []) {
-      if (img?.imageUrl && /^https?:\/\//.test(img.imageUrl)) {
-        const haystack = `${img.title ?? ""} ${img.source ?? ""} ${img.link ?? ""}`.toLowerCase();
-        if (haystack.trim()) {
-          const brandOk = brand.toLowerCase().split(/\s+/).some((t) => t.length >= 3 && haystack.includes(t));
-          const nameOk = name.toLowerCase().split(/\s+/).some((t) => t.length >= 3 && haystack.includes(t));
-          if (!brandOk || !nameOk) continue;
-        }
-        return { url: img.imageUrl, source: "serper_images", thumbnail: img.imageUrl };
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function fromPexels(brand: string, name: string): Promise<ReferenceImage | null> {
-  const key = process.env.PEXELS_API_KEY;
-  if (!key) return null;
-  try {
-    // Pexels es búsqueda genérica de fotos, no por producto. Solo como
-    // último recurso, sin validación.
-    const query = `${brand} ${name} perfume bottle`;
-    const res = await fetch(
-      `${PEXELS_BASE}?query=${encodeURIComponent(query)}&per_page=3&orientation=portrait`,
-      { headers: { Authorization: key } }
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as {
-      photos?: { src?: { large?: string; medium?: string; original?: string; portrait?: string } }[];
-    };
-    for (const photo of data.photos ?? []) {
-      const url = photo.src?.large ?? photo.src?.portrait ?? photo.src?.medium ?? photo.src?.original;
-      if (url) return { url, source: "pexels" };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function fromUnsplashFallback(query: string): Promise<ReferenceImage | null> {
-  try {
-    const res = await fetch(
-      `https://source.unsplash.com/featured/?${encodeURIComponent(query)}`,
-      { method: "HEAD", redirect: "manual" }
-    );
-    if (res.status >= 300 && res.status < 400) {
-      const location = res.headers.get("location");
-      if (location) return { url: location, source: "unsplash" };
-    }
-    return null;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Busca una imagen de referencia del perfume original.
- * Cascada: Serper Images (free 2.5K/mes) → Z.AI webSearch+webReader (plan activo) →
- *          Tavily (free 1K/mes) → Serper legacy fallback → Pexels → Unsplash
+ * Cascada simplificada: Serper (free 2.5K/mes) → Z.AI (plan activo).
  *
- * Nota: SerpAPI ya no es el primario. Si el admin sigue pagando SerpAPI,
- * se respeta como respaldo: cualquier serpApiKey lo inserta al inicio de
- * la cascada (no se ha hecho porque el objetivo es no depender de pago).
+ * @param _serpApiKey param legacy ignorado (se mantiene la firma por
+ *                   compatibilidad con el resto del código)
  */
 export async function findReferenceImage(
   brand: string,
   name: string,
-  _serpApiKey?: string | null, // param ignorado intencionalmente (legacy)
+  _serpApiKey?: string | null,
   attempt = 0
 ): Promise<ReferenceImage | null> {
-  // 1) Serper Images (free tier, multi-attempt optimizado)
+  // 1) Serper Images (free 2,500/mes sin tarjeta, multi-attempt optimizado)
   const serperKey = process.env.SERPER_API_KEY;
   if (serperKey) {
     const r = await fromSerperImages(brand, name, serperKey, attempt);
     if (r) return r;
   }
 
-  // 2) Z.AI (complemento, usa webSearchPrime + webReader)
+  // 2) Z.AI (complemento, plan activo) — usa webSearchPrime + webReader
   const rZai = await fromZaiImages(brand, name, attempt);
   if (rZai) return rZai;
 
-  // 3) Tavily (free tier, ya tenías integración)
-  const rTavily = await fromTavily(brand, name);
-  if (rTavily) return rTavily;
-
-  // 4) Serper legacy fallback (1 query genérica)
-  const rSerper = await fromSerperLegacy(brand, name);
-  if (rSerper) return rSerper;
-
-  // 5) Pexels (stock genérico)
-  const rPexels = await fromPexels(brand, name);
-  if (rPexels) return rPexels;
-
-  // 6) Unsplash fallback
-  const r = await fromUnsplashFallback(`${brand} ${name} perfume`);
-  if (r) return r;
   return null;
 }
 

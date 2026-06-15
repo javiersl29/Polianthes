@@ -55,7 +55,6 @@ export async function GET() {
     `SELECT image_data, filename, updated_at FROM brand_bottle_image WHERE id = 1`
   );
   const bbRow = bb.rows[0];
-  const hasSerpapi = Boolean(cfg?.serpapi_api_key);
   const bbSize = bbRow?.image_data
     ? Math.floor((bbRow.image_data.length * 3) / 4)
     : 0;
@@ -76,10 +75,8 @@ export async function GET() {
       updated_at: bbRow?.updated_at ?? null
     },
     search: {
-      has_serpapi_key: hasSerpapi,
-      has_tavily: Boolean(process.env.TAVILY_API_KEY),
-      has_serper: Boolean(process.env.SERPER_API_KEY),
-      has_pexels: Boolean(process.env.PEXELS_API_KEY)
+      has_serper_key: Boolean(process.env.SERPER_API_KEY),
+      has_zai_key: Boolean(process.env.ZAI_API_KEY)
     }
   });
 }

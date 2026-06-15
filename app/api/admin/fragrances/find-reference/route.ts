@@ -6,7 +6,6 @@ import {
   fetchAsDataUrl,
   isBlockedHost
 } from "@/lib/reference-image";
-import { getImageApiConfig } from "@/lib/ai-image";
 
 export const dynamic = "force-dynamic";
 
@@ -52,8 +51,6 @@ export async function POST(req: NextRequest) {
   }
   const row = r.rows[0];
 
-  const cfg = await getImageApiConfig();
-  const serpApiKey = cfg?.serpapi_api_key ?? process.env.SERPAPI_API_KEY ?? null;
   const serperKey = process.env.SERPER_API_KEY ?? null;
   const zaiKey = process.env.ZAI_API_KEY ?? null;
 
@@ -67,7 +64,7 @@ export async function POST(req: NextRequest) {
   let lastError: string | null = null;
   for (let offset = 0; offset < 3; offset += 1) {
     const attempt = baseAttempt + offset;
-    const candidate = await findReferenceImage(row.brand, row.name, serpApiKey, attempt);
+    const candidate = await findReferenceImage(row.brand, row.name, null, attempt);
     if (!candidate) {
       lastError = "no_results";
       continue;
@@ -95,7 +92,7 @@ export async function POST(req: NextRequest) {
       ok: false,
       reason: "no_reference_found",
       message: `No se encontró imagen de referencia válida para "${row.brand} ${row.name}"${lastError ? ` (${lastError})` : ""}`,
-      provider: serperKey ? "serper" : zaiKey ? "zai" : "tavily+fallback"
+      provider: serperKey ? "serper" : zaiKey ? "zai" : "ninguno"
     });
   }
 
@@ -145,7 +142,6 @@ export async function POST(req: NextRequest) {
     bytes,
     used_serper: Boolean(serperKey),
     used_zai: Boolean(zaiKey),
-    used_serpapi: Boolean(serpApiKey),
     blocked_attempts: lastError?.startsWith("blocked_host") ? 1 : 0
   });
 }

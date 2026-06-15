@@ -10,16 +10,10 @@ export async function GET() {
     return NextResponse.json({ error: "no autorizado" }, { status: 401 });
   }
   const cfg = await getImageApiConfig();
-  const envSerp = process.env.SERPAPI_API_KEY ?? null;
   const envSerper = process.env.SERPER_API_KEY ?? null;
   const envZai = process.env.ZAI_API_KEY ?? null;
   const envMiniMax = process.env.MINIMAX_API_KEY ?? null;
   const envGemini = process.env.GEMINI_API_KEY ?? null;
-  const serpSrc: "db" | "env" | "none" = cfg?.serpapi_api_key
-    ? "db"
-    : envSerp
-    ? "env"
-    : "none";
 
   // Cada provider tiene su key separada
   const geminiSrc: "db" | "env" | "none" = cfg?.gemini_api_key
@@ -50,13 +44,11 @@ export async function GET() {
     return NextResponse.json({
       config: null,
       sources: {
-        serpapi: serpSrc,
         serper: serperSrc,
         zai: zaiSrc,
         gen: genSrc,
         gemini: geminiSrc,
         minimax: minimaxSrc,
-        env_serpapi_length: envSerp?.length ?? 0,
         env_serper_length: envSerper?.length ?? 0,
         env_zai_length: envZai?.length ?? 0,
         env_gemini_length: envGemini?.length ?? 0,
@@ -80,11 +72,6 @@ export async function GET() {
           : envGemini
           ? `${maskKey(envGemini)} (env:GEMINI_API_KEY)`
           : null,
-      serpapi_api_key: cfg.serpapi_api_key
-        ? maskKey(cfg.serpapi_api_key)
-        : envSerp
-        ? `${maskKey(envSerp)} (env:SERPAPI_API_KEY)`
-        : null,
       serper_api_key: (cfg as { serper_api_key?: string | null }).serper_api_key
         ? maskKey((cfg as { serper_api_key?: string | null }).serper_api_key!)
         : envSerper
@@ -97,13 +84,11 @@ export async function GET() {
         : null
     },
     sources: {
-      serpapi: serpSrc,
       serper: serperSrc,
       zai: zaiSrc,
       gen: genSrc,
       gemini: geminiSrc,
       minimax: minimaxSrc,
-      env_serpapi_length: envSerp?.length ?? 0,
       env_serper_length: envSerper?.length ?? 0,
       env_zai_length: envZai?.length ?? 0,
       env_gemini_length: envGemini?.length ?? 0,
@@ -124,8 +109,6 @@ export async function PUT(req: NextRequest) {
     clear_api_key?: boolean;
     gemini_api_key?: string | null;
     clear_gemini_api_key?: boolean;
-    serpapi_api_key?: string | null;
-    clear_serpapi_api_key?: boolean;
     serper_api_key?: string | null;
     clear_serper_api_key?: boolean;
     zai_api_key?: string | null;
@@ -165,13 +148,6 @@ export async function PUT(req: NextRequest) {
   } else if (body.gemini_api_key && body.gemini_api_key.trim().length > 0) {
     fields.push(`gemini_api_key = $${i++}`);
     params.push(body.gemini_api_key.trim());
-  }
-  if (body.clear_serpapi_api_key) {
-    fields.push(`serpapi_api_key = $${i++}`);
-    params.push(null);
-  } else if (body.serpapi_api_key && body.serpapi_api_key.trim().length > 0) {
-    fields.push(`serpapi_api_key = $${i++}`);
-    params.push(body.serpapi_api_key.trim());
   }
   if (body.clear_serper_api_key) {
     fields.push(`serper_api_key = $${i++}`);
@@ -248,7 +224,6 @@ export async function PUT(req: NextRequest) {
       ? {
           ...updated,
           api_key: updated.api_key ? maskKey(updated.api_key) : null,
-          serpapi_api_key: updated.serpapi_api_key ? maskKey(updated.serpapi_api_key) : null,
           serper_api_key: (updated as { serper_api_key?: string | null }).serper_api_key
             ? maskKey((updated as { serper_api_key?: string | null }).serper_api_key!)
             : null,

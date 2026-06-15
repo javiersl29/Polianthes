@@ -61,7 +61,6 @@ type ImageConfig = {
   endpoint: string;
   api_key: string | null;
   gemini_api_key: string | null;
-  serpapi_api_key: string | null;
   serper_api_key: string | null;
   zai_api_key: string | null;
   model: string;
@@ -101,7 +100,7 @@ type BrandBottleInfo = {
   updated_at: string | null;
 };
 
-type SerpApiTestResult = {
+type SerperTestResult = {
   ok: boolean;
   source?: string;
   db_key_length?: number;
@@ -132,10 +131,10 @@ export default function ImagenesPanel() {
   const [showConfig, setShowConfig] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestResult | null>(null);
-  const [serpTesting, setSerpTesting] = useState(false);
-  const [serpResult, setSerpResult] = useState<SerpApiTestResult | null>(null);
+  const [serperTesting, setSerperTesting] = useState(false);
+  const [serperResult, setSerperResult] = useState<SerperTestResult | null>(null);
   const [brandBottle, setBrandBottle] = useState<BrandBottleInfo | null>(null);
-  const [searchStatus, setSearchStatus] = useState<{ has_serpapi_key: boolean; has_tavily: boolean; has_serper: boolean; has_pexels: boolean } | null>(null);
+  const [searchStatus, setSearchStatus] = useState<{ has_serper_key: boolean; has_zai_key: boolean } | null>(null);
   const [configForm, setConfigForm] = useState({
     provider: "minimax" as "minimax" | "gemini" | "imagen" | "openai" | "replicate",
     endpoint: "https://api.minimax.io/v1/image_generation",
@@ -143,8 +142,6 @@ export default function ImagenesPanel() {
     clear_api_key: false,
     gemini_api_key: "",
     clear_gemini_api_key: false,
-    serpapi_api_key: "",
-    clear_serpapi_api_key: false,
     serper_api_key: "",
     clear_serper_api_key: false,
     zai_api_key: "",
@@ -175,13 +172,11 @@ export default function ImagenesPanel() {
   }, [refUploadTarget]);
 
   const [sources, setSources] = useState<{
-    serpapi: "db" | "env" | "none";
     serper: "db" | "env" | "none";
     zai: "db" | "env" | "none";
     gen: "db" | "env" | "none";
     gemini: "db" | "env" | "none";
     minimax: "db" | "env" | "none";
-    env_serpapi_length: number;
     env_serper_length: number;
     env_zai_length: number;
     env_gemini_length: number;
@@ -209,8 +204,6 @@ export default function ImagenesPanel() {
           clear_api_key: false,
           gemini_api_key: "",
           clear_gemini_api_key: false,
-          serpapi_api_key: "",
-          clear_serpapi_api_key: false,
           serper_api_key: "",
           clear_serper_api_key: false,
           zai_api_key: "",
@@ -322,9 +315,9 @@ export default function ImagenesPanel() {
       toast.error("Selecciona al menos una fragancia");
       return;
     }
-    if (!searchStatus?.has_serpapi_key) {
+    if (!searchStatus?.has_serper_key && !searchStatus?.has_zai_key) {
       const proceed = window.confirm(
-        "No tienes SerpAPI configurada. La búsqueda usará Tavily/Serper/Pexels como fallback (calidad inferior). ¿Continuar?"
+        "No tienes Serper ni Z.AI configurados. No se encontrarán imágenes de referencia. ¿Continuar?"
       );
       if (!proceed) return;
     }
@@ -376,7 +369,7 @@ export default function ImagenesPanel() {
           n.delete(row.id);
           return n;
         });
-        // Pequeña pausa para no saturar SerpAPI
+        // Pequeña pausa para no saturar Serper
         await new Promise((r) => setTimeout(r, 300));
       }
     }
@@ -451,7 +444,7 @@ export default function ImagenesPanel() {
     setBatchRunning(true);
     const targets = items.filter((i) => selected.has(i.id));
     for (const row of targets) {
-      if (!row.has_original_reference && searchStatus?.has_serpapi_key) {
+      if (!row.has_original_reference && (searchStatus?.has_serper_key || searchStatus?.has_zai_key)) {
         await findReferenceFor(row);
       } else if (!row.has_original_reference) {
         toast.warning(`${row.full_name}: sin referencia original, se generará solo con la botella de marca`);
@@ -620,7 +613,7 @@ export default function ImagenesPanel() {
     let succeeded = 0;
     let failed = 0;
     for (const row of targets) {
-      if (!row.has_original_reference && searchStatus?.has_serpapi_key) {
+      if (!row.has_original_reference && (searchStatus?.has_serper_key || searchStatus?.has_zai_key)) {
         await findReferenceFor(row);
       }
       // Genera
@@ -713,30 +706,30 @@ export default function ImagenesPanel() {
     }
   };
 
-  const runSerpApiTest = async () => {
-    setSerpTesting(true);
-    setSerpResult(null);
+  const runSerperTest = async () => {
+    setSerperTesting(true);
+    setSerperResult(null);
     try {
-      const r = await fetch("/api/admin/image-config/test-serpapi", { method: "GET" });
+      const r = await fetch("/api/admin/image-config/test-serper", { method: "GET" });
       const text = await r.text();
-      let data: SerpApiTestResult;
+      let data: SerperTestResult;
       try {
-        data = JSON.parse(text) as SerpApiTestResult;
+        data = JSON.parse(text) as SerperTestResult;
       } catch {
         const msg = text
           ? `HTTP ${r.status}: ${text.slice(0, 200)}`
           : `HTTP ${r.status}: respuesta vacía`;
-        setSerpResult({ ok: false, error: msg });
+        setSerperResult({ ok: false, error: msg });
         toast.error(msg);
         return;
       }
-      setSerpResult(data);
-      if (data.ok) toast.success(`SerpAPI OK · ${data.image_count} imágenes`);
-      else toast.error(data.error || "SerpAPI falló");
+      setSerperResult(data);
+      if (data.ok) toast.success(`Serper OK · ${data.image_count} imágenes`);
+      else toast.error(data.error || "Serper falló");
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Error");
     } finally {
-      setSerpTesting(false);
+      setSerperTesting(false);
     }
   };
 
@@ -807,11 +800,6 @@ export default function ImagenesPanel() {
       } else if (configForm.gemini_api_key.trim().length > 0) {
         payload.gemini_api_key = configForm.gemini_api_key.trim();
       }
-      if (configForm.clear_serpapi_api_key) {
-        payload.clear_serpapi_api_key = true;
-      } else if (configForm.serpapi_api_key.trim().length > 0) {
-        payload.serpapi_api_key = configForm.serpapi_api_key.trim();
-      }
       if (configForm.clear_serper_api_key) {
         payload.clear_serper_api_key = true;
       } else if (configForm.serper_api_key.trim().length > 0) {
@@ -836,8 +824,6 @@ export default function ImagenesPanel() {
         clear_api_key: false,
         gemini_api_key: "",
         clear_gemini_api_key: false,
-        serpapi_api_key: "",
-        clear_serpapi_api_key: false,
         serper_api_key: "",
         clear_serper_api_key: false,
         zai_api_key: "",
@@ -863,7 +849,7 @@ export default function ImagenesPanel() {
   const readyCount = selectedIds(items, previews).length;
   const hasMiniMaxKey = Boolean(config?.api_key);
   const hasGeminiKey = Boolean(config?.gemini_api_key);
-  const hasSerpKey = Boolean(config?.serpapi_api_key);
+  const hasSerperKey = Boolean((config as { serper_api_key?: string | null } | null)?.serper_api_key);
 
   return (
     <div className="space-y-6">
@@ -886,15 +872,15 @@ export default function ImagenesPanel() {
       <StatusBadges
         hasMiniMaxKey={hasMiniMaxKey || sources?.minimax !== "none"}
         hasGeminiKey={hasGeminiKey || sources?.gemini !== "none"}
-        hasSerpKey={hasSerpKey || sources?.serpapi !== "none"}
+        hasSerperKey={hasSerperKey || sources?.serper !== "none"}
         minimaxSrc={sources?.minimax ?? "none"}
         geminiSrc={sources?.gemini ?? "none"}
-        serpSrc={sources?.serpapi ?? "none"}
+        serperSrc={sources?.serper ?? "none"}
         provider={config?.provider ?? "minimax"}
         searchStatus={searchStatus}
       />
 
-      {diag && <DiagPanel diag={diag} testResult={testResult} serpResult={serpResult} />}
+      {diag && <DiagPanel diag={diag} testResult={testResult} serperResult={serperResult} />}
 
       <ConfigPanel
         show={showConfig}
@@ -903,13 +889,13 @@ export default function ImagenesPanel() {
         setForm={setConfigForm}
         onSave={saveConfig}
         onTest={runTestConnection}
-        onTestSerpApi={runSerpApiTest}
+        onTestSerper={runSerperTest}
         saving={savingConfig}
         testing={testing}
-        serpTesting={serpTesting}
+        serperTesting={serperTesting}
         testResult={testResult}
         config={config}
-        serpResult={serpResult}
+        serperResult={serperResult}
         sources={sources}
       />
 
@@ -1479,21 +1465,21 @@ function selectedIds(items: Item[], previews: Record<number, Preview>): number[]
 function StatusBadges({
   hasMiniMaxKey,
   hasGeminiKey,
-  hasSerpKey,
+  hasSerperKey,
   minimaxSrc,
   geminiSrc,
-  serpSrc,
+  serperSrc,
   provider,
   searchStatus
 }: {
   hasMiniMaxKey: boolean;
   hasGeminiKey: boolean;
-  hasSerpKey: boolean;
+  hasSerperKey: boolean;
   minimaxSrc: "db" | "env" | "none";
   geminiSrc: "db" | "env" | "none";
-  serpSrc: "db" | "env" | "none";
+  serperSrc: "db" | "env" | "none";
   provider: string;
-  searchStatus: { has_serpapi_key: boolean; has_tavily: boolean; has_serper: boolean; has_pexels: boolean } | null;
+  searchStatus: { has_serper_key: boolean; has_zai_key: boolean } | null;
 }) {
   return (
     <div className="liquid-glass rounded-2xl p-3 sm:p-4">
@@ -1523,19 +1509,16 @@ function StatusBadges({
               : "falta"
             : "—"}
         </span>
-        <span className={`px-2 py-1 rounded-full ${hasSerpKey ? "badge-ok" : "badge-warn"}`}>
-          {hasSerpKey ? "✔ SerpAPI" : "⚠ Sin SerpAPI"}
-          {serpSrc === "db" ? " (db)" : serpSrc === "env" ? " (env)" : ""}
-          {!hasSerpKey && " — cae a Tavily/Serper/Pexels"}
+        <span className={`px-2 py-1 rounded-full ${hasSerperKey ? "badge-ok" : "badge-warn"}`}>
+          {hasSerperKey ? "✔ Serper" : "⚠ Sin Serper"}
+          {serperSrc === "db" ? " (db)" : serperSrc === "env" ? " (env)" : ""}
+          {!hasSerperKey && " — cae a Z.AI"}
         </span>
-        {searchStatus?.has_tavily && (
-          <span className="px-2 py-1 rounded-full badge-info">Tavily</span>
-        )}
-        {searchStatus?.has_serper && (
+        {searchStatus?.has_serper_key && (
           <span className="px-2 py-1 rounded-full badge-info">Serper</span>
         )}
-        {searchStatus?.has_pexels && (
-          <span className="px-2 py-1 rounded-full badge-info">Pexels</span>
+        {searchStatus?.has_zai_key && (
+          <span className="px-2 py-1 rounded-full badge-info">Z.AI</span>
         )}
       </div>
     </div>
@@ -1611,11 +1594,11 @@ function BrandBottlePanel({
 function DiagPanel({
   diag,
   testResult,
-  serpResult
+  serperResult
 }: {
   diag: Diag;
   testResult: TestResult | null;
-  serpResult: SerpApiTestResult | null;
+  serperResult: SerperTestResult | null;
 }) {
   const resolved = diag.resolved;
   const hasKey = diag.has_db_config || diag.has_env_key;
@@ -1652,21 +1635,21 @@ function DiagPanel({
           </span>
         </div>
       )}
-      {serpResult && (
+      {serperResult && (
         <div className="kv-row">
-          <span className="kv-key">Último test SerpAPI:</span>
+          <span className="kv-key">Último test Serper:</span>
           <span
             className={`px-2 py-0.5 rounded-full text-[10px] ${
-              serpResult.ok ? "badge-ok" : "badge-err"
+              serperResult.ok ? "badge-ok" : "badge-err"
             }`}
           >
-            {serpResult.ok
-              ? `OK · ${serpResult.image_count} img · ${serpResult.elapsed_ms}ms${
-                  serpResult.source ? ` · fuente: ${serpResult.source}` : ""
+            {serperResult.ok
+              ? `OK · ${serperResult.image_count} img · ${serperResult.elapsed_ms}ms${
+                  serperResult.source ? ` · fuente: ${serperResult.source}` : ""
                 }`
-              : `falló · ${serpResult.error ?? ""}${
-                  serpResult.db_key_length !== undefined
-                    ? ` · DB key len: ${serpResult.db_key_length}, ENV key len: ${serpResult.env_key_length}`
+              : `falló · ${serperResult.error ?? ""}${
+                  serperResult.db_key_length !== undefined
+                    ? ` · DB key len: ${serperResult.db_key_length}, ENV key len: ${serperResult.env_key_length}`
                     : ""
                 }`}
           </span>
@@ -1683,13 +1666,13 @@ function ConfigPanel({
   setForm,
   onSave,
   onTest,
-  onTestSerpApi,
+  onTestSerper,
   saving,
   testing,
-  serpTesting,
+  serperTesting,
   testResult,
   config,
-  serpResult,
+  serperResult,
   sources
 }: {
   show: boolean;
@@ -1700,10 +1683,7 @@ function ConfigPanel({
     api_key: string;
     clear_api_key: boolean;
     gemini_api_key: string;
-    clear_gemini_api_key: boolean;
-    serpapi_api_key: string;
-    clear_serpapi_api_key: boolean;
-    serper_api_key: string;
+    clear_gemini_api_key: boolean;serper_api_key: string;
     clear_serper_api_key: boolean;
     zai_api_key: string;
     clear_zai_api_key: boolean;
@@ -1717,15 +1697,14 @@ function ConfigPanel({
   setForm: React.Dispatch<React.SetStateAction<typeof form>>;
   onSave: () => void;
   onTest: () => void;
-  onTestSerpApi: () => void;
+  onTestSerper: () => void;
   saving: boolean;
   testing: boolean;
-  serpTesting: boolean;
+  serperTesting: boolean;
   testResult: TestResult | null;
   config: ImageConfig | null;
-  serpResult: SerpApiTestResult | null;
+  serperResult: SerperTestResult | null;
   sources: {
-    serpapi: "db" | "env" | "none";
     serper: "db" | "env" | "none";
     zai: "db" | "env" | "none";
     gen: "db" | "env" | "none";
@@ -1774,19 +1753,6 @@ function ConfigPanel({
               </span>
             </div>
             <div className="kv-row">
-              <span className="kv-key">🔍 SerpAPI (búsqueda legacy):</span>
-              <span className="kv-value">
-                {config?.serpapi_api_key ?? (sources?.serpapi === "env" ? "(env:SERPAPI_API_KEY)" : "(no guardada)")}
-              </span>
-              <span
-                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                  sources?.serpapi !== "none" ? "badge-ok" : "badge-warn"
-                }`}
-              >
-                {sources?.serpapi === "db" ? "DB ✔" : sources?.serpapi === "env" ? "ENV ✔" : "falta"}
-              </span>
-            </div>
-            <div className="kv-row">
               <span className="kv-key">🔎 Serper.dev (primario):</span>
               <span className="kv-value">
                 {config?.serper_api_key ?? (sources?.serper === "env" ? "(env:SERPER_API_KEY)" : "(no guardada — free 2.5K/mes)")}
@@ -1813,7 +1779,7 @@ function ConfigPanel({
               </span>
             </div>
             <p className="text-[10px] text-ink-mute/80 pt-1">
-              Cascada de búsqueda: <strong>Serper → Z.AI → Tavily → Serper legacy → Pexels → Unsplash</strong>.
+              Cascada de búsqueda: <strong>Serper → Z.AI</strong>.
               Cada key es independiente. DB toma precedencia si está guardada. ENV se usa como fallback.
             </p>
           </div>
@@ -1931,7 +1897,7 @@ function ConfigPanel({
                   </button>
                 </div>
                 <p className="text-[10px] text-ink-mute/80">
-                  Distinta de SerpAPI. Obtén la tuya en{" "}
+                  Obtén la tuya en{" "}
                   <a
                     href="https://aistudio.google.com/apikey"
                     target="_blank"
@@ -1944,41 +1910,6 @@ function ConfigPanel({
                 </p>
               </div>
             )}
-
-            {/* === SerpAPI key === */}
-            <div className="sm:col-span-2 space-y-1">
-              <span className="field-label">
-                API Key de SerpAPI (Google Images) — opcional, modo legacy
-              </span>
-              <div className="flex gap-2">
-                <input
-                  type="password"
-                  value={form.serpapi_api_key}
-                  onChange={(e) => setForm((f) => ({ ...f, serpapi_api_key: e.target.value, clear_serpapi_api_key: false }))}
-                  placeholder={config?.serpapi_api_key ?? "serpapi key…"}
-                  className="field-input font-mono"
-                  style={{ fontSize: 12 }}
-                />
-                <button
-                  onClick={() => setForm((f) => ({ ...f, clear_serpapi_api_key: !f.clear_serpapi_api_key, serpapi_api_key: "" }))}
-                  className={`px-3 py-2 rounded-md text-xs whitespace-nowrap ${
-                    form.clear_serpapi_api_key
-                      ? "badge-err"
-                      : "liquid-glass text-ink-mute hover:text-rose-300"
-                  }`}
-                >
-                  {form.clear_serpapi_api_key ? "Borrará al guardar" : "Borrar"}
-                </button>
-              </div>
-              <a
-                href="https://serpapi.com/manage-api-key"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] text-ink-mute hover:underline mt-1 inline-block"
-              >
-                Obtener api_key en serpapi.com (de pago, ya no es necesario)
-              </a>
-            </div>
 
             {/* === Serper.dev key (primario) === */}
             <div className="sm:col-span-2 space-y-1">
@@ -2136,11 +2067,11 @@ function ConfigPanel({
                 : "Probar generación"}
             </button>
             <button
-              onClick={onTestSerpApi}
-              disabled={serpTesting}
+              onClick={onTestSerper}
+              disabled={serperTesting}
               className="liquid-glass rounded-full px-4 py-2 text-sm hover:text-gold disabled:opacity-50"
             >
-              {serpTesting ? "Probando…" : "Probar SerpAPI"}
+              {serperTesting ? "Probando…" : "Probar Serper"}
             </button>
             {testResult && (
               <span
@@ -2153,19 +2084,19 @@ function ConfigPanel({
                   : `gen falló · ${testResult.error ?? ""}`}
               </span>
             )}
-            {serpResult && (
+            {serperResult && (
               <span
                 className={`text-[11px] px-2 py-1 rounded-full ${
-                  serpResult.ok ? "badge-ok" : "badge-err"
+                  serperResult.ok ? "badge-ok" : "badge-err"
                 }`}
               >
-                {serpResult.ok
-                  ? `serp OK · ${serpResult.image_count ?? 0} img · ${serpResult.elapsed_ms ?? 0}ms${
-                      serpResult.source ? ` · ${serpResult.source}` : ""
+                {serperResult.ok
+                  ? `serp OK · ${serperResult.image_count ?? 0} img · ${serperResult.elapsed_ms ?? 0}ms${
+                      serperResult.source ? ` · ${serperResult.source}` : ""
                     }`
-                  : `serp falló · ${serpResult.error ?? ""}${
-                      serpResult.db_key_length !== undefined
-                        ? ` · DB:${serpResult.db_key_length}c ENV:${serpResult.env_key_length}c`
+                  : `serp falló · ${serperResult.error ?? ""}${
+                      serperResult.db_key_length !== undefined
+                        ? ` · DB:${serperResult.db_key_length}c ENV:${serperResult.env_key_length}c`
                         : ""
                     }`}
               </span>

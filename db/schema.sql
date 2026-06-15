@@ -200,7 +200,6 @@ CREATE TABLE IF NOT EXISTS image_api_config (
   prompt_optimizer BOOLEAN NOT NULL DEFAULT FALSE,
   n INTEGER NOT NULL DEFAULT 1 CHECK (n BETWEEN 1 AND 9),
   active BOOLEAN NOT NULL DEFAULT TRUE,
-  serpapi_api_key TEXT,
   gemini_api_key TEXT,
   serper_api_key TEXT,
   zai_api_key TEXT,

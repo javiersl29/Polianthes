@@ -92,7 +92,6 @@ export async function POST(req: NextRequest) {
   await ensureColumn(pool, "fragrance", "original_image_url", "TEXT");
   await ensureColumn(pool, "fragrance", "original_image_fetched_at", "TIMESTAMPTZ");
   await ensureColumn(pool, "fragrance", "use_brand_bottle_override", "BOOLEAN NOT NULL DEFAULT FALSE");
-  await ensureColumn(pool, "image_api_config", "serpapi_api_key", "TEXT");
   await ensureColumn(pool, "image_api_config", "gemini_api_key", "TEXT");
   await ensureColumn(pool, "image_api_config", "serper_api_key", "TEXT");
   await ensureColumn(pool, "image_api_config", "zai_api_key", "TEXT");
