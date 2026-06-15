@@ -272,7 +272,8 @@ export default function ImagenesPanel() {
           slug: row.slug,
           persist: true,
           refetch_count: currentCount,
-          gender: row.gender ?? null
+          gender: row.gender ?? null,
+          exclude_urls: row.original_image_url ? [row.original_image_url] : []
         })
       });
       const data = await res.json();
@@ -340,7 +341,8 @@ export default function ImagenesPanel() {
             slug: row.slug,
             persist: true,
             refetch_count: currentCount,
-            gender: row.gender ?? null
+            gender: row.gender ?? null,
+            exclude_urls: row.original_image_url ? [row.original_image_url] : []
           })
         });
         const data = await res.json();

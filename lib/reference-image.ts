@@ -185,7 +185,8 @@ async function fromSerperImages(
   name: string,
   apiKey: string,
   gender?: "hombre" | "mujer" | "unisex" | null,
-  attempt = 0
+  attempt = 0,
+  excludeUrls: string[] = []
 ): Promise<ReferenceImage | null> {
   if (!apiKey) return null;
 
@@ -208,6 +209,22 @@ async function fromSerperImages(
       : "";
   const neg = "-shoes -clothing -apparel -shirt -jacket -sneaker -t-shirt -poster -wallpaper -logo -svg";
 
+  // Variantes que cambian los resultados de Serper. Cada attempt usa
+  // una variante distinta para que re-buscar devuelva imágenes diferentes.
+  // No es solo rotar el pool: cada variante cambia los términos de búsqueda
+  // y por ende Google devuelve resultados distintos.
+  const variants = [
+    "",               // base: sin modificador extra
+    " eau de parfum", // edp
+    " edt",           // eau de toilette
+    " parfum",        // concentración parfum
+    " intense",       // versión intense
+    " new",           // lanzamiento reciente
+    " original",      // listing oficial
+    " review"         // sitios de reseña con fotos de producto
+  ];
+  const variant = variants[attempt % variants.length];
+
   // Variamos queries según el intento (attempt) para que re-buscar no
   // devuelva la misma imagen siempre. Cada attempt usa una combinación
   // diferente de queries. Priorizamos marketplaces y tiendas con fotos
@@ -226,29 +243,29 @@ async function fromSerperImages(
   // (ej: "Dior Miss Dior" mujer vs "Chanel Bleu de Chanel" hombre).
   const queryPool: string[] = [
     // 1. Amazon prioritario (mejor calidad de listing, más resultados)
-    `${b} ${n}${g} 100ml site:amazon.com`,
+    `${b} ${n}${g}${variant} 100ml site:amazon.com`,
     // 2. Mercado Libre (excelente para perfumes vendidos en Latam)
-    `${b} ${n}${g} 100ml site:mercadolibre.com.mx`,
+    `${b} ${n}${g}${variant} 100ml site:mercadolibre.com.mx`,
     // 3. Amazon.com.mx
-    `${b} ${n}${g} 100ml site:amazon.com.mx`,
+    `${b} ${n}${g}${variant} 100ml site:amazon.com.mx`,
     // 4. Sephora / Ulta / FragranceNet (marcas oficiales)
-    `${b} ${n}${g} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`,
+    `${b} ${n}${g}${variant} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`,
     // 5. Tiendas departamentales mexicanas
-    `${b} ${n}${g} site:liverpool.com.mx OR site:walmart.com.mx`,
+    `${b} ${n}${g}${variant} site:liverpool.com.mx OR site:walmart.com.mx`,
     // 6. Ebay (listings variados)
-    `${b} ${n}${g} 100ml site:ebay.com`,
+    `${b} ${n}${g}${variant} 100ml site:ebay.com`,
     // 7. Genérica con tamaño
-    `${b} ${n}${g} 100ml eau de parfum bottle ${neg}`,
+    `${b} ${n}${g}${variant} 100ml bottle ${neg}`,
     // 8. Tamaño US 100ml
-    `${b} ${n}${g} 3.4oz fragrance ${neg}`,
+    `${b} ${n}${g}${variant} 3.4oz fragrance ${neg}`,
     // 9. Fallback genérico (sin tamaño)
-    `${b} ${n}${g} perfume bottle ${neg}`,
+    `${b} ${n}${g}${variant} perfume bottle ${neg}`,
     // 10. Con "buy" prioriza listings
-    `${b} ${n}${g} perfume buy ${neg}`,
+    `${b} ${n}${g}${variant} perfume buy ${neg}`,
     // 11. Oficial
-    `${b} ${n}${g} oficial fragrance bottle`,
+    `${b} ${n}${g}${variant} official fragrance bottle`,
     // 12. Walmart US
-    `${b} ${n}${g} 100ml site:walmart.com`
+    `${b} ${n}${g}${variant} 100ml site:walmart.com`
   ];
 
   // Cada attempt usa un offset diferente en el pool para garantizar
@@ -263,8 +280,11 @@ async function fromSerperImages(
     queryPool[(offset + 3) % queryPool.length]
   ];
 
-  // Recolectar candidatos únicos de múltiples queries. Filtros más
+   // Recolectar candidatos únicos de múltiples queries. Filtros más
   // permisivos para no descartar imágenes legítimas de tamaño medio.
+  // excludeUrls contiene URLs que ya se mostraron antes (de re-búsquedas
+  // anteriores) para que re-buscar devuelva SIEMPRE una imagen diferente.
+  const excludeSet = new Set(excludeUrls.map(u => u.split("?")[0])); // comparar sin query params
   const allCandidates: SerperImageHit[] = [];
   const seenUrls = new Set<string>();
   for (const q of selected) {
@@ -275,6 +295,9 @@ async function fromSerperImages(
     if (!r.ok || r.images.length === 0) continue;
     for (const img of r.images) {
       if (!img.imageUrl || seenUrls.has(img.imageUrl)) continue;
+      // Excluir URLs ya mostradas en re-búsquedas anteriores
+      const baseUrl = img.imageUrl.split("?")[0];
+      if (excludeSet.has(baseUrl)) continue;
       const matchResult = matchesPerfume(
         { title: img.title, source: img.source, url: img.imageUrl },
         brand,
@@ -660,7 +683,8 @@ export async function findReferenceImage(
   name: string,
   _serpApiKey?: string | null,
   attempt = 0,
-  gender?: "hombre" | "mujer" | "unisex" | null
+  gender?: "hombre" | "mujer" | "unisex" | null,
+  excludeUrls: string[] = []
 ): Promise<ReferenceImage | null> {
   // Leemos la config de DB una sola vez. La cascada solo necesita serper
   // y zai; la demás config (provider de generación, MiniMax, etc.) se
@@ -677,7 +701,7 @@ export async function findReferenceImage(
 
   // 1) Serper Images (free 2,500/mes sin tarjeta, multi-attempt optimizado)
   if (serperKey) {
-    const r = await fromSerperImages(brand, name, serperKey, gender, attempt);
+    const r = await fromSerperImages(brand, name, serperKey, gender, attempt, excludeUrls);
     if (r) return r;
   }
 

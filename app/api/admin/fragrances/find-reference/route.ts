@@ -25,6 +25,12 @@ type Body = {
    * forzar un género distinto al de la DB.
    */
   gender?: "hombre" | "mujer" | "unisex" | null;
+  /**
+   * URLs de imágenes a EXCLUIR de los resultados (sin query params).
+   * Se usan para que "Re-buscar" devuelva SIEMPRE una imagen diferente
+   * a las ya mostradas. El cliente envía la URL actual guardada.
+   */
+  exclude_urls?: string[];
 };
 
 type FragranceRow = {
@@ -60,6 +66,12 @@ export async function POST(req: NextRequest) {
   // El género es de la DB pero el cliente puede hacer override
   // (útil si el admin quiere buscar la versión de otro género).
   const gender = body.gender !== undefined ? body.gender : row.gender;
+  // URLs a excluir: combinamos las que envía el cliente + la URL actual
+  // guardada en la DB (para que re-buscar NUNCA devuelva la misma imagen)
+  const excludeUrls = [
+    ...(body.exclude_urls ?? []),
+    ...(row.original_image_url ? [row.original_image_url] : [])
+  ].filter(Boolean);
 
   // Las keys las lee findReferenceImage internamente (DB con fallback ENV).
   // Aquí solo las consultamos para reportar el estado al cliente.
@@ -84,7 +96,7 @@ export async function POST(req: NextRequest) {
   let lastError: string | null = null;
   for (let offset = 0; offset < 3; offset += 1) {
     const attempt = baseAttempt + offset;
-    const candidate = await findReferenceImage(row.brand, row.name, null, attempt, gender);
+    const candidate = await findReferenceImage(row.brand, row.name, null, attempt, gender, excludeUrls);
     if (!candidate) {
       lastError = "no_results";
       continue;
