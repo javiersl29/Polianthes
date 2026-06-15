@@ -62,6 +62,8 @@ type ImageConfig = {
   api_key: string | null;
   gemini_api_key: string | null;
   serpapi_api_key: string | null;
+  serper_api_key: string | null;
+  zai_api_key: string | null;
   model: string;
   aspect_ratio: string;
   response_format: "url" | "base64";
@@ -143,6 +145,10 @@ export default function ImagenesPanel() {
     clear_gemini_api_key: false,
     serpapi_api_key: "",
     clear_serpapi_api_key: false,
+    serper_api_key: "",
+    clear_serper_api_key: false,
+    zai_api_key: "",
+    clear_zai_api_key: false,
     model: "image-01",
     aspect_ratio: "1:1",
     response_format: "url" as "url" | "base64",
@@ -170,10 +176,14 @@ export default function ImagenesPanel() {
 
   const [sources, setSources] = useState<{
     serpapi: "db" | "env" | "none";
+    serper: "db" | "env" | "none";
+    zai: "db" | "env" | "none";
     gen: "db" | "env" | "none";
     gemini: "db" | "env" | "none";
     minimax: "db" | "env" | "none";
     env_serpapi_length: number;
+    env_serper_length: number;
+    env_zai_length: number;
     env_gemini_length: number;
     env_minimax_length: number;
     preferred_provider: string;
@@ -201,6 +211,10 @@ export default function ImagenesPanel() {
           clear_gemini_api_key: false,
           serpapi_api_key: "",
           clear_serpapi_api_key: false,
+          serper_api_key: "",
+          clear_serper_api_key: false,
+          zai_api_key: "",
+          clear_zai_api_key: false,
           model: cfg.config.model ?? "image-01",
           aspect_ratio: cfg.config.aspect_ratio ?? "1:1",
           response_format: cfg.config.response_format ?? "url",
@@ -798,6 +812,16 @@ export default function ImagenesPanel() {
       } else if (configForm.serpapi_api_key.trim().length > 0) {
         payload.serpapi_api_key = configForm.serpapi_api_key.trim();
       }
+      if (configForm.clear_serper_api_key) {
+        payload.clear_serper_api_key = true;
+      } else if (configForm.serper_api_key.trim().length > 0) {
+        payload.serper_api_key = configForm.serper_api_key.trim();
+      }
+      if (configForm.clear_zai_api_key) {
+        payload.clear_zai_api_key = true;
+      } else if (configForm.zai_api_key.trim().length > 0) {
+        payload.zai_api_key = configForm.zai_api_key.trim();
+      }
       const r = await fetch("/api/admin/image-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -813,7 +837,11 @@ export default function ImagenesPanel() {
         gemini_api_key: "",
         clear_gemini_api_key: false,
         serpapi_api_key: "",
-        clear_serpapi_api_key: false
+        clear_serpapi_api_key: false,
+        serper_api_key: "",
+        clear_serper_api_key: false,
+        zai_api_key: "",
+        clear_zai_api_key: false
       }));
       await loadAll();
     } catch (err) {
@@ -1675,6 +1703,10 @@ function ConfigPanel({
     clear_gemini_api_key: boolean;
     serpapi_api_key: string;
     clear_serpapi_api_key: boolean;
+    serper_api_key: string;
+    clear_serper_api_key: boolean;
+    zai_api_key: string;
+    clear_zai_api_key: boolean;
     model: string;
     aspect_ratio: string;
     response_format: "url" | "base64";
@@ -1694,6 +1726,8 @@ function ConfigPanel({
   serpResult: SerpApiTestResult | null;
   sources: {
     serpapi: "db" | "env" | "none";
+    serper: "db" | "env" | "none";
+    zai: "db" | "env" | "none";
     gen: "db" | "env" | "none";
     gemini: "db" | "env" | "none";
     minimax: "db" | "env" | "none";
@@ -1740,7 +1774,7 @@ function ConfigPanel({
               </span>
             </div>
             <div className="kv-row">
-              <span className="kv-key">ðŸ” SerpAPI (búsqueda):</span>
+              <span className="kv-key">🔍 SerpAPI (búsqueda legacy):</span>
               <span className="kv-value">
                 {config?.serpapi_api_key ?? (sources?.serpapi === "env" ? "(env:SERPAPI_API_KEY)" : "(no guardada)")}
               </span>
@@ -1752,9 +1786,35 @@ function ConfigPanel({
                 {sources?.serpapi === "db" ? "DB ✔" : sources?.serpapi === "env" ? "ENV ✔" : "falta"}
               </span>
             </div>
+            <div className="kv-row">
+              <span className="kv-key">🔎 Serper.dev (primario):</span>
+              <span className="kv-value">
+                {config?.serper_api_key ?? (sources?.serper === "env" ? "(env:SERPER_API_KEY)" : "(no guardada — free 2.5K/mes)")}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                  sources?.serper && sources.serper !== "none" ? "badge-ok" : "badge-warn"
+                }`}
+              >
+                {sources?.serper === "db" ? "DB ✔" : sources?.serper === "env" ? "ENV ✔" : "falta"}
+              </span>
+            </div>
+            <div className="kv-row">
+              <span className="kv-key">⚡ Z.AI (complemento):</span>
+              <span className="kv-value">
+                {config?.zai_api_key ?? (sources?.zai === "env" ? "(env:ZAI_API_KEY)" : "(no guardada — plan Z.AI)")}
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                  sources?.zai && sources.zai !== "none" ? "badge-ok" : "badge-warn"
+                }`}
+              >
+                {sources?.zai === "db" ? "DB ✔" : sources?.zai === "env" ? "ENV ✔" : "falta"}
+              </span>
+            </div>
             <p className="text-[10px] text-ink-mute/80 pt-1">
+              Cascada de búsqueda: <strong>Serper → Z.AI → Tavily → Serper legacy → Pexels → Unsplash</strong>.
               Cada key es independiente. DB toma precedencia si está guardada. ENV se usa como fallback.
-              Configura el provider arriba para usar Gemini o MiniMax.
             </p>
           </div>
 
@@ -1888,7 +1948,7 @@ function ConfigPanel({
             {/* === SerpAPI key === */}
             <div className="sm:col-span-2 space-y-1">
               <span className="field-label">
-                API Key de SerpAPI (Google Images) — opcional pero recomendado
+                API Key de SerpAPI (Google Images) — opcional, modo legacy
               </span>
               <div className="flex gap-2">
                 <input
@@ -1914,9 +1974,79 @@ function ConfigPanel({
                 href="https://serpapi.com/manage-api-key"
                 target="_blank"
                 rel="noreferrer"
+                className="text-[10px] text-ink-mute hover:underline mt-1 inline-block"
+              >
+                Obtener api_key en serpapi.com (de pago, ya no es necesario)
+              </a>
+            </div>
+
+            {/* === Serper.dev key (primario) === */}
+            <div className="sm:col-span-2 space-y-1">
+              <span className="field-label">
+                🔎 API Key de Serper.dev (Google Images) — primario, <strong>free 2,500/mes</strong>
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={form.serper_api_key}
+                  onChange={(e) => setForm((f) => ({ ...f, serper_api_key: e.target.value, clear_serper_api_key: false }))}
+                  placeholder={config?.serper_api_key ?? "serper key…"}
+                  className="field-input font-mono"
+                  style={{ fontSize: 12 }}
+                />
+                <button
+                  onClick={() => setForm((f) => ({ ...f, clear_serper_api_key: !f.clear_serper_api_key, serper_api_key: "" }))}
+                  className={`px-3 py-2 rounded-md text-xs whitespace-nowrap ${
+                    form.clear_serper_api_key
+                      ? "badge-err"
+                      : "liquid-glass text-ink-mute hover:text-rose-300"
+                  }`}
+                >
+                  {form.clear_serper_api_key ? "Borrará al guardar" : "Borrar"}
+                </button>
+              </div>
+              <a
+                href="https://serper.dev"
+                target="_blank"
+                rel="noreferrer"
                 className="text-[10px] text-gold hover:underline mt-1 inline-block"
               >
-                Obtener api_key en serpapi.com →
+                Obtener api_key gratis en serper.dev →
+              </a>
+            </div>
+
+            {/* === Z.AI key (complemento) === */}
+            <div className="sm:col-span-2 space-y-1">
+              <span className="field-label">
+                ⚡ API Key de Z.AI (web search + reader) — complemento, plan activo
+              </span>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  value={form.zai_api_key}
+                  onChange={(e) => setForm((f) => ({ ...f, zai_api_key: e.target.value, clear_zai_api_key: false }))}
+                  placeholder={config?.zai_api_key ?? "zai key…"}
+                  className="field-input font-mono"
+                  style={{ fontSize: 12 }}
+                />
+                <button
+                  onClick={() => setForm((f) => ({ ...f, clear_zai_api_key: !f.clear_zai_api_key, zai_api_key: "" }))}
+                  className={`px-3 py-2 rounded-md text-xs whitespace-nowrap ${
+                    form.clear_zai_api_key
+                      ? "badge-err"
+                      : "liquid-glass text-ink-mute hover:text-rose-300"
+                  }`}
+                >
+                  {form.clear_zai_api_key ? "Borrará al guardar" : "Borrar"}
+                </button>
+              </div>
+              <a
+                href="https://z.ai/manage-apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-gold hover:underline mt-1 inline-block"
+              >
+                Obtener api_key en z.ai →
               </a>
             </div>
 

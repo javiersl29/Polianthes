@@ -130,13 +130,15 @@ export type ImageApiConfig = {
   active: boolean;
   serpapi_api_key: string | null;
   gemini_api_key: string | null;
+  serper_api_key: string | null;
+  zai_api_key: string | null;
   updated_at: string;
 };
 
 export async function getImageApiConfig(): Promise<ImageApiConfig | null> {
   const r = await query<ImageApiConfig>(
     `SELECT id, COALESCE(provider, 'minimax') AS provider, endpoint, api_key, model, aspect_ratio, response_format,
-            prompt_optimizer, n, active, serpapi_api_key, gemini_api_key, updated_at
+            prompt_optimizer, n, active, serpapi_api_key, gemini_api_key, serper_api_key, zai_api_key, updated_at
      FROM image_api_config WHERE id = 1`
   );
   return r.rows[0] ?? null;

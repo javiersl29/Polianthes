@@ -202,6 +202,8 @@ CREATE TABLE IF NOT EXISTS image_api_config (
   active BOOLEAN NOT NULL DEFAULT TRUE,
   serpapi_api_key TEXT,
   gemini_api_key TEXT,
+  serper_api_key TEXT,
+  zai_api_key TEXT,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT single_row_image_config CHECK (id = 1)
 );

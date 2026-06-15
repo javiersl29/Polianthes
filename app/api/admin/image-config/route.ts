@@ -11,6 +11,8 @@ export async function GET() {
   }
   const cfg = await getImageApiConfig();
   const envSerp = process.env.SERPAPI_API_KEY ?? null;
+  const envSerper = process.env.SERPER_API_KEY ?? null;
+  const envZai = process.env.ZAI_API_KEY ?? null;
   const envMiniMax = process.env.MINIMAX_API_KEY ?? null;
   const envGemini = process.env.GEMINI_API_KEY ?? null;
   const serpSrc: "db" | "env" | "none" = cfg?.serpapi_api_key
@@ -30,6 +32,16 @@ export async function GET() {
     : envMiniMax
     ? "env"
     : "none";
+  const serperSrc: "db" | "env" | "none" = (cfg as { serper_api_key?: string } | null)?.serper_api_key
+    ? "db"
+    : envSerper
+    ? "env"
+    : "none";
+  const zaiSrc: "db" | "env" | "none" = (cfg as { zai_api_key?: string } | null)?.zai_api_key
+    ? "db"
+    : envZai
+    ? "env"
+    : "none";
   const preferredProvider = (cfg?.provider ?? (envGemini ? "gemini" : "minimax")) as string;
   const genSrc: "db" | "env" | "none" =
     preferredProvider === "gemini" ? geminiSrc : minimaxSrc;
@@ -39,10 +51,14 @@ export async function GET() {
       config: null,
       sources: {
         serpapi: serpSrc,
+        serper: serperSrc,
+        zai: zaiSrc,
         gen: genSrc,
         gemini: geminiSrc,
         minimax: minimaxSrc,
         env_serpapi_length: envSerp?.length ?? 0,
+        env_serper_length: envSerper?.length ?? 0,
+        env_zai_length: envZai?.length ?? 0,
         env_gemini_length: envGemini?.length ?? 0,
         env_minimax_length: envMiniMax?.length ?? 0,
         preferred_provider: preferredProvider
@@ -68,14 +84,28 @@ export async function GET() {
         ? maskKey(cfg.serpapi_api_key)
         : envSerp
         ? `${maskKey(envSerp)} (env:SERPAPI_API_KEY)`
+        : null,
+      serper_api_key: (cfg as { serper_api_key?: string | null }).serper_api_key
+        ? maskKey((cfg as { serper_api_key?: string | null }).serper_api_key!)
+        : envSerper
+        ? `${maskKey(envSerper)} (env:SERPER_API_KEY)`
+        : null,
+      zai_api_key: (cfg as { zai_api_key?: string | null }).zai_api_key
+        ? maskKey((cfg as { zai_api_key?: string | null }).zai_api_key!)
+        : envZai
+        ? `${maskKey(envZai)} (env:ZAI_API_KEY)`
         : null
     },
     sources: {
       serpapi: serpSrc,
+      serper: serperSrc,
+      zai: zaiSrc,
       gen: genSrc,
       gemini: geminiSrc,
       minimax: minimaxSrc,
       env_serpapi_length: envSerp?.length ?? 0,
+      env_serper_length: envSerper?.length ?? 0,
+      env_zai_length: envZai?.length ?? 0,
       env_gemini_length: envGemini?.length ?? 0,
       env_minimax_length: envMiniMax?.length ?? 0,
       preferred_provider: preferredProvider
@@ -96,6 +126,10 @@ export async function PUT(req: NextRequest) {
     clear_gemini_api_key?: boolean;
     serpapi_api_key?: string | null;
     clear_serpapi_api_key?: boolean;
+    serper_api_key?: string | null;
+    clear_serper_api_key?: boolean;
+    zai_api_key?: string | null;
+    clear_zai_api_key?: boolean;
     model?: string;
     aspect_ratio?: string;
     response_format?: "url" | "base64";
@@ -138,6 +172,20 @@ export async function PUT(req: NextRequest) {
   } else if (body.serpapi_api_key && body.serpapi_api_key.trim().length > 0) {
     fields.push(`serpapi_api_key = $${i++}`);
     params.push(body.serpapi_api_key.trim());
+  }
+  if (body.clear_serper_api_key) {
+    fields.push(`serper_api_key = $${i++}`);
+    params.push(null);
+  } else if (body.serper_api_key && body.serper_api_key.trim().length > 0) {
+    fields.push(`serper_api_key = $${i++}`);
+    params.push(body.serper_api_key.trim());
+  }
+  if (body.clear_zai_api_key) {
+    fields.push(`zai_api_key = $${i++}`);
+    params.push(null);
+  } else if (body.zai_api_key && body.zai_api_key.trim().length > 0) {
+    fields.push(`zai_api_key = $${i++}`);
+    params.push(body.zai_api_key.trim());
   }
   if (body.model) {
     fields.push(`model = $${i++}`);
@@ -200,7 +248,13 @@ export async function PUT(req: NextRequest) {
       ? {
           ...updated,
           api_key: updated.api_key ? maskKey(updated.api_key) : null,
-          serpapi_api_key: updated.serpapi_api_key ? maskKey(updated.serpapi_api_key) : null
+          serpapi_api_key: updated.serpapi_api_key ? maskKey(updated.serpapi_api_key) : null,
+          serper_api_key: (updated as { serper_api_key?: string | null }).serper_api_key
+            ? maskKey((updated as { serper_api_key?: string | null }).serper_api_key!)
+            : null,
+          zai_api_key: (updated as { zai_api_key?: string | null }).zai_api_key
+            ? maskKey((updated as { zai_api_key?: string | null }).zai_api_key!)
+            : null
         }
       : null
   });
