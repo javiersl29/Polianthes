@@ -198,12 +198,15 @@ async function fromSerperImages(
   ];
 
   // Cada attempt usa un offset diferente en el pool para garantizar
-  // variación entre llamadas
-  const offset = (attempt * 3) % queryPool.length;
+  // variación entre llamadas. Usamos 4 queries por attempt (en lugar
+  // de 3) para compensar el bug de Serper que devuelve 0 con num=10+
+  // y operador site:.
+  const offset = (attempt * 4) % queryPool.length;
   const selected = [
     queryPool[offset % queryPool.length],
     queryPool[(offset + 1) % queryPool.length],
-    queryPool[(offset + 2) % queryPool.length]
+    queryPool[(offset + 2) % queryPool.length],
+    queryPool[(offset + 3) % queryPool.length]
   ];
 
   // Recolectar candidatos únicos de múltiples queries. Filtros más
@@ -211,16 +214,15 @@ async function fromSerperImages(
   const allCandidates: SerperImageHit[] = [];
   const seenUrls = new Set<string>();
   for (const q of selected) {
-    const r = await searchSerperImagesWithQuery(q, apiKey, 15);
+    // num=5-7 es el sweet spot de Serper. num=10+ con site: a veces
+    // devuelve 0 imagenes (bug de Serper con operadores site: en
+    // peticiones grandes). Cada query es una llamada separada.
+    const r = await searchSerperImagesWithQuery(q, apiKey, 7);
     if (!r.ok || r.images.length === 0) continue;
     for (const img of r.images) {
       if (!img.imageUrl || seenUrls.has(img.imageUrl)) continue;
       const matchResult = matchesPerfume({ title: img.title, source: img.source, url: img.imageUrl }, brand, name);
-      if (!matchResult) {
-        console.log(`[serper-rejected] url=${img.imageUrl.substring(0, 100)} | title="${(img.title || '').substring(0, 50)}" source="${(img.source || '').substring(0, 30)}" w=${img.imageWidth} h=${img.imageHeight}`);
-        continue;
-      }
-      console.log(`[serper-accepted] url=${img.imageUrl.substring(0, 100)} | title="${(img.title || '').substring(0, 50)}" source="${(img.source || '').substring(0, 30)}"`);
+      if (!matchResult) continue;
       // Validación de tamaño más permisiva: ≥400px lado mayor, ratio
       // 0.4-2.5 (incluye botellas verticales y cuadradas, excluye
       // banners y logos)
@@ -233,10 +235,7 @@ async function fromSerperImages(
       allCandidates.push(img);
     }
   }
-  if (allCandidates.length === 0) {
-    console.warn(`[serper] no candidates for ${brand} ${name} after ${selected.length} queries`);
-    return null;
-  }
+  if (allCandidates.length === 0) return null;
 
   // Si solo hay 1 candidato, lo devolvemos directo (no vale la pena
   // gastar tokens del LLM). Si hay 2+, usamos el LLM-as-judge.
