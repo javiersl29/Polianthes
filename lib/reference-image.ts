@@ -101,6 +101,20 @@ function matchesPerfume(
   name: string,
   gender?: "hombre" | "mujer" | "unisex" | null
 ): boolean {
+  // Filtro anti-knockoff: rechazar listings de imitaciones/dupe/clone.
+  // Amazon y MercadoLibre están llenos de "nuestra impresión de Le Male",
+  // "inspired by Chanel", "alternative to Sauvage", etc. Estos productos
+  // NO son el perfume original y darían una imagen incorrecta como
+  // referencia para la generación de IA.
+  const titleLc = (img.title ?? "").toLowerCase();
+  if (
+    /\bour impression of\b|\binspired by\b|\balternative to\b|\bdupe\b|\bclone\b|\btype of\b/i.test(
+      titleLc
+    )
+  ) {
+    return false;
+  }
+
   // Tienda conocida (Amazon, Sephora, MercadoLibre, etc.) o sitio oficial
   // de marca (dior.com, chanel.com, etc.) → confiamos en el dominio con
   // UNA EXCEPCIÓN: si el title del listing contiene keywords del género
@@ -108,7 +122,6 @@ function matchesPerfume(
   // "for men" / "for women", así que un listing que dice "for Men" en
   // respuesta a una query "for women" es ruido).
   if (isTrustedShopHost(img.url)) {
-    const titleLc = (img.title ?? "").toLowerCase();
     if (gender === "mujer" && /\bfor men\b|\bmen'?s\b|\bhombre\b/i.test(titleLc)) {
       return false;
     }
