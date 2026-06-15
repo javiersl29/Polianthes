@@ -217,10 +217,10 @@ async function fromSerperImages(
       if (!img.imageUrl || seenUrls.has(img.imageUrl)) continue;
       const matchResult = matchesPerfume({ title: img.title, source: img.source, url: img.imageUrl }, brand, name);
       if (!matchResult) {
-        // DEBUG: log de candidatos rechazados
-        console.warn(`[serper] rejected: ${img.imageUrl.substring(0, 80)} | title="${img.title?.substring(0, 40)}" source="${img.source?.substring(0, 30)}"`);
+        console.log(`[serper-rejected] url=${img.imageUrl.substring(0, 100)} | title="${(img.title || '').substring(0, 50)}" source="${(img.source || '').substring(0, 30)}" w=${img.imageWidth} h=${img.imageHeight}`);
         continue;
       }
+      console.log(`[serper-accepted] url=${img.imageUrl.substring(0, 100)} | title="${(img.title || '').substring(0, 50)}" source="${(img.source || '').substring(0, 30)}"`);
       // Validación de tamaño más permisiva: ≥400px lado mayor, ratio
       // 0.4-2.5 (incluye botellas verticales y cuadradas, excluye
       // banners y logos)
