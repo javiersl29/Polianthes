@@ -1,9 +1,8 @@
-import { searchSerpApiImages, type SerpApiImage, type SerpApiResult } from "./serpapi";
 import { pickBestReference } from "./reference-judge";
 
 export type ReferenceImage = {
   url: string;
-  source: "serpapi" | "tavily" | "serper_images" | "pexels" | "unsplash" | "fallback";
+  source: "serper_images" | "tavily" | "zai" | "pexels" | "unsplash" | "serpapi" | "fallback";
   thumbnail?: string;
   title?: string;
   width?: number;
@@ -12,11 +11,19 @@ export type ReferenceImage = {
 };
 
 type TavilyImageHit = { url: string; description?: string };
-type SerperImageHit = { imageUrl: string; title?: string; source?: string; link?: string };
+type SerperImageHit = {
+  imageUrl: string;
+  title?: string;
+  source?: string;
+  link?: string;
+  imageWidth?: number;
+  imageHeight?: number;
+};
 
 const PEXELS_BASE = "https://api.pexels.com/v1/search";
 const TAVILY_URL = "https://api.tavily.com/search";
 const SERPER_IMAGES_URL = "https://google.serper.dev/images";
+const ZAI_API_BASE = "https://api.z.ai/api";
 
 /**
  * Hostnames de tiendas conocidas. Para estos, confiamos más en el dominio
@@ -107,7 +114,7 @@ function matchesPerfume(
   return false;
 }
 
-async function fromSerpApi(
+async function fromSerperImages(
   brand: string,
   name: string,
   apiKey: string,
@@ -125,8 +132,8 @@ async function fromSerpApi(
 
   // Variamos queries según el intento (attempt) para que re-buscar no
   // devuelva la misma imagen siempre. Cada attempt usa una combinación
-  // diferente de queries + páginas. Priorizamos marketplaces y tiendas
-  // con fotos de producto de alta calidad.
+  // diferente de queries. Priorizamos marketplaces y tiendas con fotos
+  // de producto de alta calidad.
   //
   // Tienda ranking (mejor -> peor para calidad de foto de producto):
   //  1. Amazon (amazon.com / amazon.com.mx) — fotos de listing profesionales
@@ -136,35 +143,31 @@ async function fromSerpApi(
   //  5. Ebay — listings variados (a veces muy buena calidad)
   //
   // Queries cortas (max ~50 chars) — Google devuelve más resultados.
-  const queryPool: { q: string; page: number }[] = [
+  const queryPool: string[] = [
     // 1. Amazon prioritario (mejor calidad de listing, más resultados)
-    { q: `${b} ${n} 100ml site:amazon.com`, page: 0 },
+    `${b} ${n} 100ml site:amazon.com`,
     // 2. Mercado Libre (excelente para perfumes vendidos en Latam)
-    { q: `${b} ${n} 100ml site:mercadolibre.com.mx`, page: 0 },
+    `${b} ${n} 100ml site:mercadolibre.com.mx`,
     // 3. Amazon.com.mx
-    { q: `${b} ${n} 100ml site:amazon.com.mx`, page: 0 },
+    `${b} ${n} 100ml site:amazon.com.mx`,
     // 4. Sephora / Ulta / FragranceNet (marcas oficiales)
-    { q: `${b} ${n} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`, page: 0 },
+    `${b} ${n} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`,
     // 5. Tiendas departamentales mexicanas
-    { q: `${b} ${n} site:liverpool.com.mx OR site:walmart.com.mx`, page: 0 },
+    `${b} ${n} site:liverpool.com.mx OR site:walmart.com.mx`,
     // 6. Ebay (listings variados)
-    { q: `${b} ${n} 100ml site:ebay.com`, page: 0 },
+    `${b} ${n} 100ml site:ebay.com`,
     // 7. Genérica con tamaño
-    { q: `${b} ${n} 100ml eau de parfum bottle ${neg}`, page: 0 },
+    `${b} ${n} 100ml eau de parfum bottle ${neg}`,
     // 8. Tamaño US 100ml
-    { q: `${b} ${n} 3.4oz fragrance ${neg}`, page: 0 },
+    `${b} ${n} 3.4oz fragrance ${neg}`,
     // 9. Fallback genérico (sin tamaño)
-    { q: `${b} ${n} perfume bottle ${neg}`, page: 0 },
+    `${b} ${n} perfume bottle ${neg}`,
     // 10. Con "buy" prioriza listings
-    { q: `${b} ${n} perfume buy ${neg}`, page: 0 },
-    // 11. Página 2 de Amazon
-    { q: `${b} ${n} 100ml site:amazon.com`, page: 1 },
-    // 12. Página 2 de Mercado Libre
-    { q: `${b} ${n} 100ml site:mercadolibre.com.mx`, page: 1 },
-    // 13. Oficial
-    { q: `${b} ${n} official fragrance bottle`, page: 0 },
-    // 14. Walmart US
-    { q: `${b} ${n} 100ml site:walmart.com`, page: 0 }
+    `${b} ${n} perfume buy ${neg}`,
+    // 11. Oficial
+    `${b} ${n} official fragrance bottle`,
+    // 12. Walmart US
+    `${b} ${n} 100ml site:walmart.com`
   ];
 
   // Cada attempt usa un offset diferente en el pool para garantizar
@@ -178,23 +181,23 @@ async function fromSerpApi(
 
   // Recolectar candidatos únicos de múltiples queries. Filtros más
   // permisivos para no descartar imágenes legítimas de tamaño medio.
-  const allCandidates: SerpApiImage[] = [];
+  const allCandidates: SerperImageHit[] = [];
   const seenUrls = new Set<string>();
-  for (const { q, page } of selected) {
-    const r = await searchSerpApiImagesWithPage(q, apiKey, 15, page);
+  for (const q of selected) {
+    const r = await searchSerperImagesWithQuery(q, apiKey, 15);
     if (!r.ok || r.images.length === 0) continue;
     for (const img of r.images) {
-      if (!img.url || seenUrls.has(img.url)) continue;
-      if (!matchesPerfume(img, brand, name)) continue;
+      if (!img.imageUrl || seenUrls.has(img.imageUrl)) continue;
+      if (!matchesPerfume({ title: img.title, source: img.source, url: img.imageUrl }, brand, name)) continue;
       // Validación de tamaño más permisiva: ≥400px lado mayor, ratio
       // 0.4-2.5 (incluye botellas verticales y cuadradas, excluye
       // banners y logos)
-      if (img.width && img.height) {
-        const ratio = img.width / img.height;
+      if (img.imageWidth && img.imageHeight) {
+        const ratio = img.imageWidth / img.imageHeight;
         if (ratio < 0.4 || ratio > 2.5) continue;
-        if (Math.max(img.width, img.height) < 400) continue;
+        if (Math.max(img.imageWidth, img.imageHeight) < 400) continue;
       }
-      seenUrls.add(img.url);
+      seenUrls.add(img.imageUrl);
       allCandidates.push(img);
     }
   }
@@ -203,16 +206,33 @@ async function fromSerpApi(
   // Si solo hay 1 candidato, lo devolvemos directo (no vale la pena
   // gastar tokens del LLM). Si hay 2+, usamos el LLM-as-judge.
   if (allCandidates.length === 1) {
-    return { ...allCandidates[0], source: "serpapi" as const };
+    const only = allCandidates[0];
+    return {
+      url: only.imageUrl,
+      source: "serper_images" as const,
+      thumbnail: only.imageUrl,
+      title: only.title,
+      width: only.imageWidth,
+      height: only.imageHeight
+    };
   }
   const topCandidates = allCandidates
-    .sort((a, b) => (b.width ?? 0) - (a.width ?? 0))
+    .sort((a, b) => (b.imageWidth ?? 0) - (a.imageWidth ?? 0))
     .slice(0, 6); // máximo 6 candidatos al LLM
+
+  // Adaptamos al shape que espera pickBestReference
+  const forJudge = topCandidates.map((c) => ({
+    url: c.imageUrl,
+    thumbnail: c.imageUrl,
+    title: c.title,
+    width: c.imageWidth,
+    height: c.imageHeight
+  }));
 
   let chosenUrl: string | null = null;
   let judgeReason: string | undefined;
   try {
-    const judge = await pickBestReference(brand, name, topCandidates);
+    const judge = await pickBestReference(brand, name, forJudge);
     if (judge) {
       chosenUrl = judge.bestUrl;
       judgeReason = judge.reason;
@@ -223,99 +243,294 @@ async function fromSerpApi(
   if (!chosenUrl) {
     // Fallback: el de mayor resolución
     const best = topCandidates[0];
-    chosenUrl = best.url;
+    chosenUrl = best.imageUrl;
   }
-  const best = allCandidates.find((c) => c.url === chosenUrl) ?? topCandidates[0];
+  const best = allCandidates.find((c) => c.imageUrl === chosenUrl) ?? topCandidates[0];
   return {
-    url: best.url,
-    thumbnail: best.thumbnail,
-    source: "serpapi",
+    url: best.imageUrl,
+    thumbnail: best.imageUrl,
+    source: "serper_images",
     title: best.title ?? judgeReason,
-    width: best.width,
-    height: best.height
+    width: best.imageWidth,
+    height: best.imageHeight
   };
 }
 
 /**
- * Variante de searchSerpApiImages que permite especificar el número
- * de página (ijn) para que re-buscar traiga imágenes diferentes.
+ * Llama al endpoint /images de Serper (Google Images vía Serper.dev).
+ * Devuelve hasta `limit` resultados. Tier free: 2,500/mes.
  */
-async function searchSerpApiImagesWithPage(
+async function searchSerperImagesWithQuery(
   query: string,
   apiKey: string,
-  limit: number,
-  page: number
-): Promise<SerpApiResult> {
-  // Construimos manualmente la URL para poder pasar ijn
-  const url = new URL("https://serpapi.com/search.json");
-  url.searchParams.set("engine", "google_images");
-  url.searchParams.set("q", query);
-  url.searchParams.set("api_key", apiKey);
-  url.searchParams.set("ijn", String(page));
-  url.searchParams.set("num", String(Math.max(1, Math.min(50, limit))));
-  url.searchParams.set("gl", "us");
-  url.searchParams.set("hl", "en");
-  url.searchParams.set("google_domain", "google.com");
-  url.searchParams.set("imgsz", "l");
-  url.searchParams.set("imgar", "t");
-  url.searchParams.set("image_type", "photo");
-  url.searchParams.set("tbs", "itp:photo,iar:t,isz:l,ift:jpg");
-  url.searchParams.set("safe", "active");
+  limit: number
+): Promise<{ ok: boolean; images: SerperImageHit[]; error?: string; statusCode?: number }> {
   try {
-    const res = await fetch(url.toString(), {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
-      },
+    const res = await fetch(SERPER_IMAGES_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-KEY": apiKey },
+      body: JSON.stringify({ q: query, num: Math.max(1, Math.min(100, limit)) }),
       signal: AbortSignal.timeout(30000)
     });
     if (!res.ok) {
       return {
         ok: false,
-        source: "serpapi",
-        query,
         images: [],
         statusCode: res.status,
-        error: `SerpAPI HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`
+        error: `Serper HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`
       };
     }
-    const data = (await res.json()) as {
-      images_results?: {
-        original?: string;
-        thumbnail?: string;
-        title?: string;
-        source?: string;
-        source_logo?: string;
-        link?: string;
-        original_width?: number;
-        original_height?: number;
-        is_product?: boolean;
-      }[];
-      error?: string;
-    };
-    if (data.error) {
-      return { ok: false, source: "serpapi", query, images: [], error: data.error };
-    }
-    const images: SerpApiImage[] = (data.images_results ?? [])
-      .map((r) => ({
-        url: r.original ?? "",
-        thumbnail: r.thumbnail,
-        title: r.title,
-        source: r.source,
-        width: r.original_width,
-        height: r.original_height
-      }))
-      .filter((i) => i.url && /^https?:\/\//.test(i.url));
-    return { ok: true, source: "serpapi", query, images };
+    const data = (await res.json()) as { images?: SerperImageHit[] };
+    return { ok: true, images: data.images ?? [] };
   } catch (err) {
     return {
       ok: false,
-      source: "serpapi",
-      query,
       images: [],
       error: err instanceof Error ? err.message : "Error de red"
     };
   }
+}
+
+/**
+ * Z.AI image search: combina webSearchPrime (devuelve URLs de sitios)
+ * + webReader (extrae imágenes reales de producto de esas URLs).
+ *
+ * Funciona especialmente bien con Sephora, Ulta, FragranceNet, Parfumo
+ * (que no bloquean webReader). Amazon bloquea webReader, pero la búsqueda
+ * de webSearchPrime también devuelve sitios oficiales y reseñas que sí
+ * tienen imágenes.
+ *
+ * Requiere ZAI_API_KEY en env (o el default configurado en opencode).
+ * Tier: depende del plan Z.AI activo.
+ */
+async function fromZaiImages(brand: string, name: string, attempt = 0): Promise<ReferenceImage | null> {
+  const apiKey = process.env.ZAI_API_KEY;
+  if (!apiKey) return null;
+
+  const quote = (s: string) => `"${s.replace(/"/g, "")}"`;
+  const b = quote(brand);
+  const n = quote(name);
+
+  // Queries optimizadas para sitios que sí funcionan con webReader
+  const queryPool: string[] = [
+    `${b} ${n} 100ml site:sephora.com OR site:ulta.com`,
+    `${b} ${n} 100ml site:fragrancenet.com OR site:parfumo.com`,
+    `${b} ${n} 100ml bottle official`,
+    `${b} ${n} perfume review`
+  ];
+  const offset = attempt % queryPool.length;
+  const query = queryPool[offset];
+
+  // 1) webSearchPrime devuelve URLs
+  const searchResults = await zaiWebSearch(query, apiKey);
+  if (searchResults.length === 0) return null;
+
+  // 2) Para cada URL, extraemos imágenes con webReader
+  // Solo las top 4 URLs (límite práctico para evitar latencia)
+  const topUrls = searchResults.slice(0, 4);
+  const allImages: { url: string; sourceUrl: string; width?: number; height?: number; title?: string }[] = [];
+  const seen = new Set<string>();
+
+  for (const { url, title } of topUrls) {
+    if (!/^https?:\/\//.test(url)) continue;
+    if (isBlockedHost(url)) continue;
+    const images = await zaiWebReader(url, apiKey);
+    for (const img of images) {
+      if (!img || seen.has(img)) continue;
+      seen.add(img);
+      allImages.push({ url: img, sourceUrl: url, title });
+      if (allImages.length >= 12) break; // suficiente para juez
+    }
+    if (allImages.length >= 12) break;
+  }
+  if (allImages.length === 0) return null;
+
+  // Filtros: descartar imágenes obviamente decorativas
+  const candidates = allImages.filter((c) => {
+    const lower = c.url.toLowerCase();
+    // Patrones típicamente de producto (Sephora, Ulta, Parfumo)
+    if (lower.includes("productimages/sku/")) return true;
+    if (lower.includes("/media/") && lower.includes(".jpg")) return true;
+    if (lower.includes("/images/") && lower.match(/\.(jpg|jpeg|webp|png)(\?|$)/i)) return true;
+    // Descartar UI
+    if (lower.includes("logo") || lower.includes("sprite") || lower.includes("icon")) return false;
+    if (lower.includes("placeholder") || lower.includes("transparent")) return false;
+    if (lower.includes("avatar") || lower.includes("thumb") && !lower.match(/s\d+x\d+/)) return false;
+    return true;
+  });
+
+  if (candidates.length === 0) return null;
+  if (candidates.length === 1) {
+    return { url: candidates[0].url, source: "zai", thumbnail: candidates[0].url, title: candidates[0].title };
+  }
+
+  // Si hay varias, devolvemos la primera con source: zai. El LLM-as-judge
+  // no es necesario aquí porque las URLs de productimages/sku/ son
+  // muy probablemente la botella correcta.
+  return {
+    url: candidates[0].url,
+    source: "zai",
+    thumbnail: candidates[0].url,
+    title: candidates[0].title ?? candidates[0].sourceUrl
+  };
+}
+
+/**
+ * Llama al MCP webSearchPrime de Z.AI vía HTTP.
+ * Devuelve hasta 10 resultados con title + url.
+ */
+async function zaiWebSearch(query: string, apiKey: string): Promise<{ title: string; url: string }[]> {
+  try {
+    const res = await fetch(`${ZAI_API_BASE}/mcp/web_search_prime/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "webSearchPrime",
+          arguments: {
+            search_query: query,
+            count: 10
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(20000)
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    return parseZaiSearchResponse(text);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Llama al MCP webReader de Z.AI para extraer imágenes de una URL.
+ */
+async function zaiWebReader(url: string, apiKey: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${ZAI_API_BASE}/mcp/web_reader/mcp`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: {
+          name: "webReader",
+          arguments: {
+            url,
+            return_format: "markdown",
+            retain_images: true
+          }
+        }
+      }),
+      signal: AbortSignal.timeout(25000)
+    });
+    if (!res.ok) return [];
+    const text = await res.text();
+    return parseZaiReaderImages(text);
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Parsea la respuesta SSE/JSON de webSearchPrime y extrae título + URL.
+ * Z.AI MCP responde con formato JSON-RPC 2.0 envuelto en SSE.
+ */
+function parseZaiSearchResponse(raw: string): { title: string; url: string }[] {
+  const results: { title: string; url: string }[] = [];
+  // SSE format: data: {json}\n\n
+  const lines = raw.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const json = trimmed.slice(5).trim();
+    if (!json || json === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(json) as {
+        result?: {
+          content?: { type: string; text?: string }[];
+        };
+      };
+      const content = parsed.result?.content;
+      if (!Array.isArray(content)) continue;
+      for (const c of content) {
+        if (c.type === "text" && c.text) {
+          // El texto es un JSON stringify del array de resultados
+          try {
+            const arr = JSON.parse(c.text) as Array<{
+              title?: string;
+              link?: string;
+              url?: string;
+            }>;
+            for (const r of arr) {
+              const u = r.link ?? r.url;
+              if (u && /^https?:\/\//.test(u)) {
+                results.push({ title: r.title ?? "", url: u });
+              }
+            }
+          } catch {
+            // Si no es JSON, intentar regex sobre el texto
+            const links = c.text.matchAll(/https?:\/\/[^\s"<>]+/g);
+            for (const m of links) {
+              results.push({ title: "", url: m[0] });
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return results.slice(0, 10);
+}
+
+/**
+ * Parsea la respuesta de webReader y extrae URLs de imágenes del markdown.
+ * Formato esperado: ![alt](https://...)
+ */
+function parseZaiReaderImages(raw: string): string[] {
+  const images: string[] = [];
+  const lines = raw.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const json = trimmed.slice(5).trim();
+    if (!json || json === "[DONE]") continue;
+    try {
+      const parsed = JSON.parse(json) as {
+        result?: {
+          content?: { type: string; text?: string }[];
+        };
+      };
+      const content = parsed.result?.content;
+      if (!Array.isArray(content)) continue;
+      for (const c of content) {
+        if (c.type === "text" && c.text) {
+          // Extraer ![alt](url) del markdown
+          const mdImgs = c.text.matchAll(/!\[([^\]]*)\]\((https?:\/\/[^)\s]+)\)/g);
+          for (const m of mdImgs) {
+            images.push(m[2]);
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return images;
 }
 
 async function fromTavily(brand: string, name: string): Promise<ReferenceImage | null> {
@@ -353,22 +568,24 @@ async function fromTavily(brand: string, name: string): Promise<ReferenceImage |
   }
 }
 
-async function fromSerperImages(brand: string, name: string): Promise<ReferenceImage | null> {
+async function fromSerperLegacy(brand: string, name: string): Promise<ReferenceImage | null> {
+  // Fallback simple: si la versión optimizada multi-attempt falla,
+  // intentamos con la query genérica. Usada como último recurso antes
+  // de Tavily.
   const key = process.env.SERPER_API_KEY;
   if (!key) return null;
   try {
-    // Query con comillas exactas
     const q = `"${brand}" "${name}" 100ml perfume bottle`;
     const res = await fetch(SERPER_IMAGES_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-API-KEY": key },
-      body: JSON.stringify({ q, num: 10 })
+      body: JSON.stringify({ q, num: 10 }),
+      signal: AbortSignal.timeout(20000)
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { images?: SerperImageHit[] };
     for (const img of data.images ?? []) {
       if (img?.imageUrl && /^https?:\/\//.test(img.imageUrl)) {
-        // Validación: title o link debe mencionar brand y name
         const haystack = `${img.title ?? ""} ${img.source ?? ""} ${img.link ?? ""}`.toLowerCase();
         if (haystack.trim()) {
           const brandOk = brand.toLowerCase().split(/\s+/).some((t) => t.length >= 3 && haystack.includes(t));
@@ -427,30 +644,43 @@ async function fromUnsplashFallback(query: string): Promise<ReferenceImage | nul
 
 /**
  * Busca una imagen de referencia del perfume original.
- * Cascada: SerpAPI (si api_key provista) → Tavily → Serper Images → Pexels → Unsplash
+ * Cascada: Serper Images (free 2.5K/mes) → Z.AI webSearch+webReader (plan activo) →
+ *          Tavily (free 1K/mes) → Serper legacy fallback → Pexels → Unsplash
+ *
+ * Nota: SerpAPI ya no es el primario. Si el admin sigue pagando SerpAPI,
+ * se respeta como respaldo: cualquier serpApiKey lo inserta al inicio de
+ * la cascada (no se ha hecho porque el objetivo es no depender de pago).
  */
 export async function findReferenceImage(
   brand: string,
   name: string,
-  serpApiKey?: string | null,
+  _serpApiKey?: string | null, // param ignorado intencionalmente (legacy)
   attempt = 0
 ): Promise<ReferenceImage | null> {
-  // 1) SerpAPI Google Images (preferido cuando hay api_key)
-  if (serpApiKey) {
-    const r = await fromSerpApi(brand, name, serpApiKey, attempt);
+  // 1) Serper Images (free tier, multi-attempt optimizado)
+  const serperKey = process.env.SERPER_API_KEY;
+  if (serperKey) {
+    const r = await fromSerperImages(brand, name, serperKey, attempt);
     if (r) return r;
   }
 
-  // 2) Tavily: ya no necesita query, usa brand+name directamente
+  // 2) Z.AI (complemento, usa webSearchPrime + webReader)
+  const rZai = await fromZaiImages(brand, name, attempt);
+  if (rZai) return rZai;
+
+  // 3) Tavily (free tier, ya tenías integración)
   const rTavily = await fromTavily(brand, name);
   if (rTavily) return rTavily;
-  // 3) Serper Images
-  const rSerper = await fromSerperImages(brand, name);
+
+  // 4) Serper legacy fallback (1 query genérica)
+  const rSerper = await fromSerperLegacy(brand, name);
   if (rSerper) return rSerper;
-  // 4) Pexels
+
+  // 5) Pexels (stock genérico)
   const rPexels = await fromPexels(brand, name);
   if (rPexels) return rPexels;
-  // 5) Unsplash fallback
+
+  // 6) Unsplash fallback
   const r = await fromUnsplashFallback(`${brand} ${name} perfume`);
   if (r) return r;
   return null;

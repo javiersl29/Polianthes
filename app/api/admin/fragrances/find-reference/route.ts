@@ -54,11 +54,13 @@ export async function POST(req: NextRequest) {
 
   const cfg = await getImageApiConfig();
   const serpApiKey = cfg?.serpapi_api_key ?? process.env.SERPAPI_API_KEY ?? null;
+  const serperKey = process.env.SERPER_API_KEY ?? null;
+  const zaiKey = process.env.ZAI_API_KEY ?? null;
 
-  // Hacemos hasta 3 intentos de búsqueda con queries/páginas DIFERENTES
+  // Hacemos hasta 3 intentos de búsqueda con queries DIFERENTES
   // para garantizar variación entre llamadas. Cada intento pasa un
   // "attempt" que cambia el offset en el pool de queries y hace que
-  // fromSerpApi recolecte candidatos diferentes. El LLM-as-judge
+  // fromSerperImages recolecte candidatos diferentes. El LLM-as-judge
   // selecciona el mejor de los candidatos recolectados.
   const baseAttempt = Number(body.refetch_count ?? 0) * 3;
   let ref = null;
@@ -93,7 +95,7 @@ export async function POST(req: NextRequest) {
       ok: false,
       reason: "no_reference_found",
       message: `No se encontró imagen de referencia válida para "${row.brand} ${row.name}"${lastError ? ` (${lastError})` : ""}`,
-      provider: serpApiKey ? "serpapi" : "tavily+fallback"
+      provider: serperKey ? "serper" : zaiKey ? "zai" : "tavily+fallback"
     });
   }
 
@@ -141,6 +143,8 @@ export async function POST(req: NextRequest) {
     },
     persisted: Boolean(persistedDataUrl),
     bytes,
+    used_serper: Boolean(serperKey),
+    used_zai: Boolean(zaiKey),
     used_serpapi: Boolean(serpApiKey),
     blocked_attempts: lastError?.startsWith("blocked_host") ? 1 : 0
   });
