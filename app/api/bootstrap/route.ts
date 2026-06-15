@@ -103,7 +103,9 @@ export async function POST(req: NextRequest) {
             (30, 25000, 19000, 100, 'PLT', 2),
             (60, 35000, 28000, 100, 'PLT', 3),
             (100, 45000, 36000, 100, 'PLT', 4)
-     ON CONFLICT (size_ml) DO NOTHING`
+     ON CONFLICT (size_ml) DO UPDATE SET
+       price_cents = EXCLUDED.price_cents,
+       cost_cents = EXCLUDED.cost_cents`
   );
 
   // Backfill A: asegurar 4 presentaciones por fragancia con precios, stock 100 y SKU
