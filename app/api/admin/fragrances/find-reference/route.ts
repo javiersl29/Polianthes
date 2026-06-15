@@ -51,8 +51,18 @@ export async function POST(req: NextRequest) {
   }
   const row = r.rows[0];
 
-  const serperKey = process.env.SERPER_API_KEY ?? null;
-  const zaiKey = process.env.ZAI_API_KEY ?? null;
+  // Las keys las lee findReferenceImage internamente (DB con fallback ENV).
+  // Aquí solo las consultamos para reportar el estado al cliente.
+  const { getImageApiConfig } = await import("@/lib/ai-image");
+  const cfg = await getImageApiConfig();
+  const serperKey =
+    (cfg as { serper_api_key?: string | null } | null)?.serper_api_key ??
+    process.env.SERPER_API_KEY ??
+    null;
+  const zaiKey =
+    (cfg as { zai_api_key?: string | null } | null)?.zai_api_key ??
+    process.env.ZAI_API_KEY ??
+    null;
 
   // Hacemos hasta 3 intentos de búsqueda con queries DIFERENTES
   // para garantizar variación entre llamadas. Cada intento pasa un

@@ -1,4 +1,5 @@
 import { pickBestReference } from "./reference-judge";
+import { getImageApiConfig } from "./ai-image";
 
 export type ReferenceImage = {
   url: string;
@@ -300,8 +301,7 @@ async function searchSerperImagesWithQuery(
  * Requiere ZAI_API_KEY en env (o el default configurado en opencode).
  * Tier: depende del plan Z.AI activo.
  */
-async function fromZaiImages(brand: string, name: string, attempt = 0): Promise<ReferenceImage | null> {
-  const apiKey = process.env.ZAI_API_KEY;
+async function fromZaiImages(brand: string, name: string, apiKey: string, attempt = 0): Promise<ReferenceImage | null> {
   if (!apiKey) return null;
 
   const quote = (s: string) => `"${s.replace(/"/g, "")}"`;
@@ -534,6 +534,8 @@ function parseZaiReaderImages(raw: string): string[] {
  * Busca una imagen de referencia del perfume original.
  * Cascada simplificada: Serper (free 2.5K/mes) → Z.AI (plan activo).
  *
+ * Las keys se leen de la DB (image_api_config) con fallback a env vars.
+ *
  * @param _serpApiKey param legacy ignorado (se mantiene la firma por
  *                   compatibilidad con el resto del código)
  */
@@ -543,16 +545,30 @@ export async function findReferenceImage(
   _serpApiKey?: string | null,
   attempt = 0
 ): Promise<ReferenceImage | null> {
+  // Leemos la config de DB una sola vez. La cascada solo necesita serper
+  // y zai; la demás config (provider de generación, MiniMax, etc.) se
+  // ignora aquí.
+  const cfg = await getImageApiConfig();
+  const serperKey =
+    (cfg as { serper_api_key?: string | null } | null)?.serper_api_key ??
+    process.env.SERPER_API_KEY ??
+    null;
+  const zaiKey =
+    (cfg as { zai_api_key?: string | null } | null)?.zai_api_key ??
+    process.env.ZAI_API_KEY ??
+    null;
+
   // 1) Serper Images (free 2,500/mes sin tarjeta, multi-attempt optimizado)
-  const serperKey = process.env.SERPER_API_KEY;
   if (serperKey) {
     const r = await fromSerperImages(brand, name, serperKey, attempt);
     if (r) return r;
   }
 
   // 2) Z.AI (complemento, plan activo) — usa webSearchPrime + webReader
-  const rZai = await fromZaiImages(brand, name, attempt);
-  if (rZai) return rZai;
+  if (zaiKey) {
+    const rZai = await fromZaiImages(brand, name, zaiKey, attempt);
+    if (rZai) return rZai;
+  }
 
   return null;
 }
