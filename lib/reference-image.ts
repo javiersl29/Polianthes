@@ -98,7 +98,8 @@ function isTrustedShopHost(url: string): boolean {
 function matchesPerfume(
   img: { title?: string; source?: string; url: string },
   brand: string,
-  name: string
+  name: string,
+  gender?: "hombre" | "mujer" | "unisex" | null
 ): boolean {
   // Tienda conocida (Amazon, Sephora, MercadoLibre, etc.) o sitio oficial
   // de marca (dior.com, chanel.com, etc.) → confiamos en el dominio. La
@@ -138,6 +139,20 @@ function matchesPerfume(
     if (brandMatched / brandTokens.length >= 0.5) return true;
   }
 
+  // Validación de género (opcional): si sabemos el género objetivo y el
+  // title contiene keywords del género OPUESTO, rechazamos. Esto evita
+  // que aparezca "Bleu de Chanel" para hombre cuando buscamos una
+  // fragancia de mujer, o viceversa. Unisex no rechaza nada.
+  if (gender === "mujer") {
+    if (/\bfor men\b|\bmen'?s\b|\bhombre\b|\bmen edt\b|\bmen edp\b/i.test(haystack)) {
+      return false;
+    }
+  } else if (gender === "hombre") {
+    if (/\bfor women\b|\bwomen'?s\b|\bmujer\b|\bladies\b/i.test(haystack)) {
+      return false;
+    }
+  }
+
   return false;
 }
 
@@ -145,6 +160,7 @@ async function fromSerperImages(
   brand: string,
   name: string,
   apiKey: string,
+  gender?: "hombre" | "mujer" | "unisex" | null,
   attempt = 0
 ): Promise<ReferenceImage | null> {
   if (!apiKey) return null;
@@ -155,6 +171,17 @@ async function fromSerperImages(
   const quote = (s: string) => `"${s.replace(/"/g, "")}"`;
   const b = quote(brand);
   const n = quote(name);
+  // Modificador de género para distinguir fragancias con el mismo
+  // nombre (ej: "Dior Miss Dior" para mujer vs "Dior Sauvage" para hombre).
+  // Si no hay género, no se agrega modificador.
+  const g =
+    gender === "hombre"
+      ? " for men"
+      : gender === "mujer"
+      ? " for women"
+      : gender === "unisex"
+      ? " unisex"
+      : "";
   const neg = "-shoes -clothing -apparel -shirt -jacket -sneaker -t-shirt -poster -wallpaper -logo -svg";
 
   // Variamos queries según el intento (attempt) para que re-buscar no
@@ -170,31 +197,34 @@ async function fromSerperImages(
   //  5. Ebay — listings variados (a veces muy buena calidad)
   //
   // Queries cortas (max ~50 chars) — Google devuelve más resultados.
+  // Cada query incluye el modificador de género (`g`) para que Serper
+  // no mezcle fragancias con el mismo nombre pero distinto género
+  // (ej: "Dior Miss Dior" mujer vs "Chanel Bleu de Chanel" hombre).
   const queryPool: string[] = [
     // 1. Amazon prioritario (mejor calidad de listing, más resultados)
-    `${b} ${n} 100ml site:amazon.com`,
+    `${b} ${n}${g} 100ml site:amazon.com`,
     // 2. Mercado Libre (excelente para perfumes vendidos en Latam)
-    `${b} ${n} 100ml site:mercadolibre.com.mx`,
+    `${b} ${n}${g} 100ml site:mercadolibre.com.mx`,
     // 3. Amazon.com.mx
-    `${b} ${n} 100ml site:amazon.com.mx`,
+    `${b} ${n}${g} 100ml site:amazon.com.mx`,
     // 4. Sephora / Ulta / FragranceNet (marcas oficiales)
-    `${b} ${n} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`,
+    `${b} ${n}${g} site:sephora.com OR site:ulta.com OR site:fragrancenet.com`,
     // 5. Tiendas departamentales mexicanas
-    `${b} ${n} site:liverpool.com.mx OR site:walmart.com.mx`,
+    `${b} ${n}${g} site:liverpool.com.mx OR site:walmart.com.mx`,
     // 6. Ebay (listings variados)
-    `${b} ${n} 100ml site:ebay.com`,
+    `${b} ${n}${g} 100ml site:ebay.com`,
     // 7. Genérica con tamaño
-    `${b} ${n} 100ml eau de parfum bottle ${neg}`,
+    `${b} ${n}${g} 100ml eau de parfum bottle ${neg}`,
     // 8. Tamaño US 100ml
-    `${b} ${n} 3.4oz fragrance ${neg}`,
+    `${b} ${n}${g} 3.4oz fragrance ${neg}`,
     // 9. Fallback genérico (sin tamaño)
-    `${b} ${n} perfume bottle ${neg}`,
+    `${b} ${n}${g} perfume bottle ${neg}`,
     // 10. Con "buy" prioriza listings
-    `${b} ${n} perfume buy ${neg}`,
+    `${b} ${n}${g} perfume buy ${neg}`,
     // 11. Oficial
-    `${b} ${n} official fragrance bottle`,
+    `${b} ${n}${g} oficial fragrance bottle`,
     // 12. Walmart US
-    `${b} ${n} 100ml site:walmart.com`
+    `${b} ${n}${g} 100ml site:walmart.com`
   ];
 
   // Cada attempt usa un offset diferente en el pool para garantizar
@@ -221,7 +251,12 @@ async function fromSerperImages(
     if (!r.ok || r.images.length === 0) continue;
     for (const img of r.images) {
       if (!img.imageUrl || seenUrls.has(img.imageUrl)) continue;
-      const matchResult = matchesPerfume({ title: img.title, source: img.source, url: img.imageUrl }, brand, name);
+      const matchResult = matchesPerfume(
+        { title: img.title, source: img.source, url: img.imageUrl },
+        brand,
+        name,
+        gender
+      );
       if (!matchResult) continue;
       // Validación de tamaño más permisiva: ≥400px lado mayor, ratio
       // 0.4-2.5 (incluye botellas verticales y cuadradas, excluye
@@ -337,19 +372,33 @@ async function searchSerperImagesWithQuery(
  * Requiere ZAI_API_KEY en env (o el default configurado en opencode).
  * Tier: depende del plan Z.AI activo.
  */
-async function fromZaiImages(brand: string, name: string, apiKey: string, attempt = 0): Promise<ReferenceImage | null> {
+async function fromZaiImages(
+  brand: string,
+  name: string,
+  apiKey: string,
+  gender?: "hombre" | "mujer" | "unisex" | null,
+  attempt = 0
+): Promise<ReferenceImage | null> {
   if (!apiKey) return null;
 
   const quote = (s: string) => `"${s.replace(/"/g, "")}"`;
   const b = quote(brand);
   const n = quote(name);
+  const g =
+    gender === "hombre"
+      ? " for men"
+      : gender === "mujer"
+      ? " for women"
+      : gender === "unisex"
+      ? " unisex"
+      : "";
 
   // Queries optimizadas para sitios que sí funcionan con webReader
   const queryPool: string[] = [
-    `${b} ${n} 100ml site:sephora.com OR site:ulta.com`,
-    `${b} ${n} 100ml site:fragrancenet.com OR site:parfumo.com`,
-    `${b} ${n} 100ml bottle official`,
-    `${b} ${n} perfume review`
+    `${b} ${n}${g} 100ml site:sephora.com OR site:ulta.com`,
+    `${b} ${n}${g} 100ml site:fragrancenet.com OR site:parfumo.com`,
+    `${b} ${n}${g} 100ml bottle oficial`,
+    `${b} ${n}${g} perfume review`
   ];
   const offset = attempt % queryPool.length;
   const query = queryPool[offset];
@@ -572,6 +621,13 @@ function parseZaiReaderImages(raw: string): string[] {
  *
  * Las keys se leen de la DB (image_api_config) con fallback a env vars.
  *
+ * @param gender "hombre" | "mujer" | "unisex" — si se conoce, se agrega
+ *             "for men" / "for women" / "unisex" a las queries de Serper
+ *             y se filtran candidatos del género opuesto en matchesPerfume.
+ *             Esto evita que aparezca "Bleu de Chanel" para hombre cuando
+ *             se busca la versión mujer de una fragancia con el mismo
+ *             nombre (o viceversa).
+ *
  * @param _serpApiKey param legacy ignorado (se mantiene la firma por
  *                   compatibilidad con el resto del código)
  */
@@ -579,7 +635,8 @@ export async function findReferenceImage(
   brand: string,
   name: string,
   _serpApiKey?: string | null,
-  attempt = 0
+  attempt = 0,
+  gender?: "hombre" | "mujer" | "unisex" | null
 ): Promise<ReferenceImage | null> {
   // Leemos la config de DB una sola vez. La cascada solo necesita serper
   // y zai; la demás config (provider de generación, MiniMax, etc.) se
@@ -596,13 +653,13 @@ export async function findReferenceImage(
 
   // 1) Serper Images (free 2,500/mes sin tarjeta, multi-attempt optimizado)
   if (serperKey) {
-    const r = await fromSerperImages(brand, name, serperKey, attempt);
+    const r = await fromSerperImages(brand, name, serperKey, gender, attempt);
     if (r) return r;
   }
 
   // 2) Z.AI (complemento, plan activo) — usa webSearchPrime + webReader
   if (zaiKey) {
-    const rZai = await fromZaiImages(brand, name, zaiKey, attempt);
+    const rZai = await fromZaiImages(brand, name, zaiKey, gender, attempt);
     if (rZai) return rZai;
   }
 

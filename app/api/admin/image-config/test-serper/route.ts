@@ -76,8 +76,13 @@ export async function GET(req: NextRequest) {
     // Test de cascada real: simula el flow de findReferenceImage
     const brand = url.searchParams.get("brand") ?? "Dior";
     const name = url.searchParams.get("name") ?? "Miss Dior";
+    const genderParam = url.searchParams.get("gender");
+    const gender =
+      genderParam === "hombre" || genderParam === "mujer" || genderParam === "unisex"
+        ? (genderParam as "hombre" | "mujer" | "unisex")
+        : null;
     const start = Date.now();
-    const ref = await findReferenceImage(brand, name, null, 0);
+    const ref = await findReferenceImage(brand, name, null, 0, gender);
     return NextResponse.json({
       ok: !!ref,
       elapsed_ms: Date.now() - start,

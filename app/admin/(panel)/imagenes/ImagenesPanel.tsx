@@ -271,7 +271,8 @@ export default function ImagenesPanel() {
         body: JSON.stringify({
           slug: row.slug,
           persist: true,
-          refetch_count: currentCount
+          refetch_count: currentCount,
+          gender: row.gender ?? null
         })
       });
       const data = await res.json();
@@ -338,7 +339,8 @@ export default function ImagenesPanel() {
           body: JSON.stringify({
             slug: row.slug,
             persist: true,
-            refetch_count: currentCount
+            refetch_count: currentCount,
+            gender: row.gender ?? null
           })
         });
         const data = await res.json();

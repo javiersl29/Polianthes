@@ -19,6 +19,12 @@ type Body = {
    * (de lo contrario siempre devolvería la misma primera imagen).
    */
   refetch_count?: number;
+  /**
+   * Override manual del género para esta búsqueda. Si se omite, se usa
+   * el género guardado en la fragancia. Útil cuando el admin quiere
+   * forzar un género distinto al de la DB.
+   */
+  gender?: "hombre" | "mujer" | "unisex" | null;
 };
 
 type FragranceRow = {
@@ -26,6 +32,7 @@ type FragranceRow = {
   slug: string;
   brand: string;
   name: string;
+  gender: "hombre" | "mujer" | "unisex" | null;
   original_image_data: string | null;
   original_image_url: string | null;
   original_image_source: string | null;
@@ -42,7 +49,7 @@ export async function POST(req: NextRequest) {
   const persist = body.persist !== false;
 
   const r = await query<FragranceRow>(
-    `SELECT id, slug, brand, name, original_image_data, original_image_url, original_image_source
+    `SELECT id, slug, brand, name, gender, original_image_data, original_image_url, original_image_source
      FROM fragrance WHERE slug = $1`,
     [body.slug]
   );
@@ -50,6 +57,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Fragancia no encontrada" }, { status: 404 });
   }
   const row = r.rows[0];
+  // El género es de la DB pero el cliente puede hacer override
+  // (útil si el admin quiere buscar la versión de otro género).
+  const gender = body.gender !== undefined ? body.gender : row.gender;
 
   // Las keys las lee findReferenceImage internamente (DB con fallback ENV).
   // Aquí solo las consultamos para reportar el estado al cliente.
@@ -74,7 +84,7 @@ export async function POST(req: NextRequest) {
   let lastError: string | null = null;
   for (let offset = 0; offset < 3; offset += 1) {
     const attempt = baseAttempt + offset;
-    const candidate = await findReferenceImage(row.brand, row.name, null, attempt);
+    const candidate = await findReferenceImage(row.brand, row.name, null, attempt, gender);
     if (!candidate) {
       lastError = "no_results";
       continue;
