@@ -215,7 +215,12 @@ async function fromSerperImages(
     if (!r.ok || r.images.length === 0) continue;
     for (const img of r.images) {
       if (!img.imageUrl || seenUrls.has(img.imageUrl)) continue;
-      if (!matchesPerfume({ title: img.title, source: img.source, url: img.imageUrl }, brand, name)) continue;
+      const matchResult = matchesPerfume({ title: img.title, source: img.source, url: img.imageUrl }, brand, name);
+      if (!matchResult) {
+        // DEBUG: log de candidatos rechazados
+        console.warn(`[serper] rejected: ${img.imageUrl.substring(0, 80)} | title="${img.title?.substring(0, 40)}" source="${img.source?.substring(0, 30)}"`);
+        continue;
+      }
       // Validación de tamaño más permisiva: ≥400px lado mayor, ratio
       // 0.4-2.5 (incluye botellas verticales y cuadradas, excluye
       // banners y logos)
@@ -228,7 +233,10 @@ async function fromSerperImages(
       allCandidates.push(img);
     }
   }
-  if (allCandidates.length === 0) return null;
+  if (allCandidates.length === 0) {
+    console.warn(`[serper] no candidates for ${brand} ${name} after ${selected.length} queries`);
+    return null;
+  }
 
   // Si solo hay 1 candidato, lo devolvemos directo (no vale la pena
   // gastar tokens del LLM). Si hay 2+, usamos el LLM-as-judge.
