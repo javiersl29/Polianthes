@@ -14,7 +14,8 @@ const items = [
   { href: "/admin/envio", label: "Envíos", icon: "🚚" },
   { href: "/admin/pagos", label: "Pagos", icon: "💳" },
   { href: "/admin/notificaciones", label: "Notificaciones", icon: "🔔" },
-  { href: "/admin/menu", label: "Menús", icon: "☰" }
+  { href: "/admin/menu", label: "Menús", icon: "☰" },
+  { href: "/admin/seguridad", label: "Seguridad", icon: "🔐" }
 ];
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {

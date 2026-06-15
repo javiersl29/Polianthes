@@ -176,6 +176,8 @@ export async function POST(req: NextRequest) {
       );
     }
   }
+  await ensureColumn(pool, "admin_user", "totp_secret", "TEXT");
+  await ensureColumn(pool, "admin_user", "totp_enabled", "BOOLEAN NOT NULL DEFAULT FALSE");
   await ensureDefaultAdmin();
   return NextResponse.json({ ok: true, fragrances_inserted: inserted, total: rows.length });
 }
