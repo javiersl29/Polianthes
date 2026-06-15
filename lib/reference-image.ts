@@ -102,10 +102,21 @@ function matchesPerfume(
   gender?: "hombre" | "mujer" | "unisex" | null
 ): boolean {
   // Tienda conocida (Amazon, Sephora, MercadoLibre, etc.) o sitio oficial
-  // de marca (dior.com, chanel.com, etc.) → confiamos en el dominio. La
-  // query ya tiene comillas exactas con brand+name, Google no devuelve
-  // perfumes no relacionados en estas URLs.
-  if (isTrustedShopHost(img.url)) return true;
+  // de marca (dior.com, chanel.com, etc.) → confiamos en el dominio con
+  // UNA EXCEPCIÓN: si el title del listing contiene keywords del género
+  // OPUESTO al que buscamos, lo rechazamos (la query Serper ya incluye
+  // "for men" / "for women", así que un listing que dice "for Men" en
+  // respuesta a una query "for women" es ruido).
+  if (isTrustedShopHost(img.url)) {
+    const titleLc = (img.title ?? "").toLowerCase();
+    if (gender === "mujer" && /\bfor men\b|\bmen'?s\b|\bhombre\b/i.test(titleLc)) {
+      return false;
+    }
+    if (gender === "hombre" && /\bfor women\b|\bwomen'?s\b|\bmujer\b|\bladies\b/i.test(titleLc)) {
+      return false;
+    }
+    return true;
+  }
 
   const haystack = `${img.title ?? ""} ${img.source ?? ""}`.toLowerCase();
   if (!haystack.trim()) return true; // sin metadata, no podemos validar
