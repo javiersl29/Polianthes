@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath, revalidateTag } from "next/cache";
-import { getAdminFromRequest } from "@/lib/auth";
+import { isAuthenticated } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
-  if (!getAdminFromRequest(req)) {
+  if (!isAuthenticated()) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
   let body: { path?: string; paths?: string[]; tag?: string } = {};
