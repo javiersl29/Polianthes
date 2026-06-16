@@ -46,7 +46,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const frags = await listActiveFragranceSlugs();
     fragranceRoutes = frags.map((f) => ({
       url: `${base}/fragancias/${f.slug}`,
-      lastModified: f.updated_at ?? now,
+      lastModified: f.created_at ?? now,
       changeFrequency: "weekly",
       priority: 0.7
     }));
