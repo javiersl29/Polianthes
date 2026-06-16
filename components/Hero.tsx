@@ -5,7 +5,7 @@ import FadingVideo from "./FadingVideo";
 
 const HERO_VIDEO = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4";
 
-const easeOut = { duration: 0.8, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] };
+const easeOut = { duration: 0.7, ease: [0.16, 1, 0.3, 1] as [number, number, number, number] };
 
 export default function Hero() {
   return (
@@ -14,29 +14,32 @@ export default function Hero() {
         src={HERO_VIDEO}
         scale={1.2}
         className="absolute inset-0 w-full h-full object-cover object-top z-0"
+        preload="metadata"
       />
 
       <div className="relative z-10 flex flex-col px-4 sm:px-6">
         <div className="flex flex-col items-center justify-center text-center max-w-3xl mx-auto min-h-[calc(100vh-7rem)]">
           <motion.div
-            initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
+            initial={{ filter: "blur(8px)", opacity: 0, y: 16 }}
             animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-            transition={{ ...easeOut, delay: 0.25 }}
+            transition={{ ...easeOut, delay: 0.2 }}
             className="mb-6 sm:mb-8"
           >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/brand/Logo-Blanco.png"
-              alt="Polianthes Parfums"
+              alt="Polianthes — Perfumería de inspiración"
               width={560}
               height={240}
-              className="h-40 sm:h-48 md:h-56 w-auto mx-auto"
+              className="h-36 sm:h-48 md:h-56 w-auto mx-auto"
+              fetchPriority="high"
             />
           </motion.div>
 
           <motion.div
-            initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
+            initial={{ filter: "blur(8px)", opacity: 0, y: 16 }}
             animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-            transition={{ ...easeOut, delay: 0.4 }}
+            transition={{ ...easeOut, delay: 0.35 }}
             className="liquid-glass inline-flex items-center gap-2 sm:gap-3 rounded-full pl-1 pr-3 py-1"
           >
             <span className="bg-ink text-bg rounded-full px-2.5 sm:px-3 py-1 text-[10px] sm:text-xs font-semibold tracking-wide">Nuevo</span>
@@ -48,19 +51,19 @@ export default function Hero() {
           </h1>
 
           <motion.p
-            initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
-            animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-            transition={{ ...easeOut, delay: 0.8 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...easeOut, delay: 0.55 }}
             className="mt-4 sm:mt-5 text-sm sm:text-base text-ink-mute max-w-xl font-light leading-snug px-2"
           >
-            Una curaduría de perfumería de autor. Mueve los seis ejes del decodificador y deja que nuestra IA
+            Perfumes de inspiración. Mueve los seis ejes del decodificador y deja que nuestra IA
             reconozca la fragancia que firma tu presencia.
           </motion.p>
 
           <motion.div
-            initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
-            animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-            transition={{ ...easeOut, delay: 1.1 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...easeOut, delay: 0.7 }}
             className="mt-6 sm:mt-7 flex items-center gap-4 sm:gap-6 flex-wrap justify-center"
           >
             <a
@@ -82,9 +85,9 @@ export default function Hero() {
           </motion.div>
 
           <motion.div
-            initial={{ filter: "blur(10px)", opacity: 0, y: 20 }}
-            animate={{ filter: "blur(0px)", opacity: 1, y: 0 }}
-            transition={{ ...easeOut, delay: 1.3 }}
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ ...easeOut, delay: 0.85 }}
             className="mt-8 sm:mt-10 flex flex-wrap items-stretch justify-center gap-3 sm:gap-4"
           >
             <div className="liquid-glass rounded-2xl sm:rounded-3xl p-4 sm:p-5 flex-1 min-w-[140px] max-w-[230px] text-left">
@@ -107,3 +110,4 @@ export default function Hero() {
     </section>
   );
 }
+

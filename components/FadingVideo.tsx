@@ -7,12 +7,13 @@ type FadingVideoProps = {
   style?: React.CSSProperties;
   scale?: number;
   poster?: string;
+  preload?: "auto" | "metadata" | "none";
 };
 
 const FADE_MS = 600;
 const FADE_OUT_LEAD = 0.6;
 
-export default function FadingVideo({ src, className, style, scale = 1, poster }: FadingVideoProps) {
+export default function FadingVideo({ src, className, style, scale = 1, poster, preload = "metadata" }: FadingVideoProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const restartTimerRef = useRef<number | null>(null);
@@ -198,7 +199,7 @@ export default function FadingVideo({ src, className, style, scale = 1, poster }
         autoPlay
         loop
         playsInline
-        preload="metadata"
+        preload={preload}
         width="100%"
         height="100%"
         disablePictureInPicture
