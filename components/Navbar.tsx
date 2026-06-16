@@ -288,7 +288,8 @@ function NavbarInner() {
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: -8, scale: 0.96 }}
                       transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="hidden md:block absolute right-0 top-full mt-2 w-72 liquid-glass-strong rounded-2xl p-3 z-[70] origin-top-right"
+                      className="hidden md:block liquid-glass-strong rounded-2xl p-3 z-[70] origin-top-right w-72"
+                      style={{ position: "absolute", right: 0, top: "100%", marginTop: 8 }}
                       role="menu"
                     >
                       <div className="px-3 py-2.5 border-b border-line/40 mb-1.5">
