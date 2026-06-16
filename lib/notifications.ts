@@ -632,3 +632,4 @@ function emailTemplate(opts: { title: string; icon: string; iconColor: string; b
 </html>
   `.trim();
 }
+
