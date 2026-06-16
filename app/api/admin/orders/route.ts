@@ -32,6 +32,23 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "status inválido" }, { status: 400 });
     }
     await updateOrderStatus(id, status, body.note);
+
+    // Notificar al cliente según el nuevo estado (fire-and-forget)
+    try {
+      const { sendOrderStatusEmail, sendShippedNotification } = await import("@/lib/notifications");
+      // Si es in_transit, mandamos la plantilla "shipped" con guía si existe
+      if (status === "in_transit") {
+        const fullOrder = await getAdminOrder(id);
+        if (fullOrder) {
+          await sendShippedNotification(id, fullOrder.carrier ?? null, fullOrder.tracking_number ?? null);
+        }
+      } else {
+        await sendOrderStatusEmail(id, status, body.note);
+      }
+    } catch (e) {
+      console.error("[admin/orders] notify error:", e);
+    }
+
     const order = await getAdminOrder(id);
     return NextResponse.json({ order });
   }

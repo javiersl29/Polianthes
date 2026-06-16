@@ -1,5 +1,87 @@
 import { query } from "./db";
 
+// ────────────────────────────────────────────────────────────
+// Log de emails (auditoría de todo lo enviado al cliente)
+// ────────────────────────────────────────────────────────────
+
+export type OrderEmailKind =
+  | "manual"
+  | "confirmation"
+  | "shipped"
+  | "cancelled"
+  | "refunded"
+  | "delivered"
+  | "status_update"
+  | "system";
+
+export type OrderEmailLog = {
+  id: number;
+  order_id: number;
+  direction: "outbound" | "inbound";
+  kind: OrderEmailKind;
+  subject: string;
+  body_html: string;
+  body_text: string | null;
+  to_email: string;
+  from_email: string;
+  provider: string | null;
+  provider_message_id: string | null;
+  ok: boolean;
+  error: string | null;
+  sent_at: string;
+  sent_by: string | null;
+};
+
+export async function listOrderEmails(orderId: number): Promise<OrderEmailLog[]> {
+  const r = await query<OrderEmailLog>(
+    `SELECT id, order_id, direction, kind, subject, body_html, body_text,
+            to_email, from_email, provider, provider_message_id, ok, error, sent_at, sent_by
+     FROM order_email WHERE order_id = $1 ORDER BY sent_at DESC, id DESC`,
+    [orderId]
+  );
+  return r.rows;
+}
+
+async function logOrderEmail(opts: {
+  orderId: number;
+  kind: OrderEmailKind;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string | null;
+  toEmail: string;
+  fromEmail: string;
+  provider: string;
+  providerMessageId: string | null;
+  ok: boolean;
+  error: string | null;
+  sentBy: string | null;
+}): Promise<void> {
+  try {
+    await query(
+      `INSERT INTO order_email
+        (order_id, direction, kind, subject, body_html, body_text, to_email, from_email,
+         provider, provider_message_id, ok, error, sent_by)
+       VALUES ($1, 'outbound', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        opts.orderId,
+        opts.kind,
+        opts.subject,
+        opts.bodyHtml,
+        opts.bodyText,
+        opts.toEmail,
+        opts.fromEmail,
+        opts.provider,
+        opts.providerMessageId,
+        opts.ok,
+        opts.error,
+        opts.sentBy
+      ]
+    );
+  } catch (e) {
+    console.error("[notifications] no se pudo registrar email en log:", e);
+  }
+}
+
 type NotificationConfig = {
   provider: "resend" | "smtp" | "none";
   from_email: string;
@@ -30,13 +112,20 @@ export async function getNotificationConfig(): Promise<NotificationConfig | null
 // Envío base
 // ────────────────────────────────────────────────────────────
 
+type SendResult = {
+  ok: boolean;
+  message: string;
+  provider: string;
+  providerMessageId: string | null;
+};
+
 async function sendEmail(
   config: NotificationConfig,
   to: string | string[],
   subject: string,
   html: string,
   text: string
-): Promise<{ ok: boolean; message: string }> {
+): Promise<SendResult> {
   const from = `${config.from_name} <${config.from_email}>`;
   const recipients = Array.isArray(to) ? to : [to];
 
@@ -57,12 +146,26 @@ async function sendEmail(
         try { parsed = JSON.parse(errText); } catch { /* */ }
         return {
           ok: false,
-          message: parsed.message ?? `Resend error ${r.status}: ${errText.slice(0, 300)}`
+          message: parsed.message ?? `Resend error ${r.status}: ${errText.slice(0, 300)}`,
+          provider: "resend",
+          providerMessageId: null
         };
       }
-      return { ok: true, message: `Enviado a ${recipients.join(", ")} vía Resend` };
+      let data: { id?: string } = {};
+      try { data = await r.json(); } catch { /* */ }
+      return {
+        ok: true,
+        message: `Enviado a ${recipients.join(", ")} vía Resend`,
+        provider: "resend",
+        providerMessageId: data.id ?? null
+      };
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : "Error Resend" };
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : "Error Resend",
+        provider: "resend",
+        providerMessageId: null
+      };
     }
   }
 
@@ -77,14 +180,24 @@ async function sendEmail(
           ? { user: config.smtp_user, pass: config.smtp_password ?? "" }
           : undefined
       });
-      await transporter.sendMail({ from, to: recipients.join(","), subject, html, text });
-      return { ok: true, message: `Enviado a ${recipients.join(", ")} vía SMTP` };
+      const info = await transporter.sendMail({ from, to: recipients.join(","), subject, html, text });
+      return {
+        ok: true,
+        message: `Enviado a ${recipients.join(", ")} vía SMTP`,
+        provider: "smtp",
+        providerMessageId: info?.messageId ?? null
+      };
     } catch (e) {
-      return { ok: false, message: e instanceof Error ? e.message : "Error SMTP" };
+      return {
+        ok: false,
+        message: e instanceof Error ? e.message : "Error SMTP",
+        provider: "smtp",
+        providerMessageId: null
+      };
     }
   }
 
-  return { ok: false, message: "Proveedor no configurado" };
+  return { ok: false, message: "Proveedor no configurado", provider: config.provider, providerMessageId: null };
 }
 
 // ────────────────────────────────────────────────────────────
@@ -140,6 +253,21 @@ export async function sendOrderConfirmationEmail(orderId: number): Promise<void>
     html,
     `Polianthes — Pedido ${order.public_id} confirmado. Total: $${(order.total_cents / 100).toLocaleString("es-MX")} ${order.currency}`
   );
+
+  await logOrderEmail({
+    orderId,
+    kind: "confirmation",
+    subject: `¡Pago confirmado! Pedido ${order.public_id}`,
+    bodyHtml: html,
+    bodyText: `Polianthes — Pedido ${order.public_id} confirmado. Total: $${(order.total_cents / 100).toLocaleString("es-MX")} ${order.currency}`,
+    toEmail: order.customer_email,
+    fromEmail: config.from_email,
+    provider: config.provider,
+    providerMessageId: null,
+    ok: true,
+    error: null,
+    sentBy: "system"
+  });
 }
 
 export async function sendShippedNotification(orderId: number, carrier: string | null, trackingNumber: string | null): Promise<void> {
@@ -166,6 +294,21 @@ export async function sendShippedNotification(orderId: number, carrier: string |
   });
 
   await sendEmail(config, order.customer_email, `Tu pedido ${order.public_id} fue enviado`, html, "");
+
+  await logOrderEmail({
+    orderId,
+    kind: "shipped",
+    subject: `Tu pedido ${order.public_id} fue enviado`,
+    bodyHtml: html,
+    bodyText: null,
+    toEmail: order.customer_email,
+    fromEmail: config.from_email,
+    provider: config.provider,
+    providerMessageId: null,
+    ok: true,
+    error: null,
+    sentBy: "system"
+  });
 }
 
 // ────────────────────────────────────────────────────────────
@@ -210,6 +353,213 @@ export async function sendAdminNewOrderNotification(orderId: number): Promise<vo
   });
 
   await sendEmail(config, config.admin_email, `🛎 Nuevo pedido ${order.public_id}`, html, "");
+
+  // No registramos en order_email porque este va al admin, no al cliente
+}
+
+// ────────────────────────────────────────────────────────────
+// Email manual del admin al cliente (hilo de comunicación)
+// ────────────────────────────────────────────────────────────
+
+export type ManualEmailInput = {
+  orderId: number;
+  subject: string;
+  html: string;
+  text: string;
+  sentBy?: string;
+  kind?: OrderEmailKind;
+};
+
+/**
+ * Envía un email personalizado del admin al cliente, lo registra en
+ * order_email y devuelve el resultado.
+ */
+export async function sendManualEmailToCustomer(
+  input: ManualEmailInput
+): Promise<{ ok: boolean; message: string; emailId?: number; providerMessageId?: string | null }> {
+  const config = await getNotificationConfig();
+  if (!config) {
+    return { ok: false, message: "No hay configuración de email. Ve a Notificaciones." };
+  }
+  if (!config.active) {
+    return { ok: false, message: "Notificaciones desactivadas. Actívalas primero." };
+  }
+  if (config.provider === "none" || (!config.resend_api_key && !config.smtp_host)) {
+    return { ok: false, message: "Proveedor no configurado." };
+  }
+
+  const order = await loadOrderForEmail(input.orderId);
+  if (!order) {
+    return { ok: false, message: "Pedido no encontrado." };
+  }
+
+  const result = await sendEmail(config, order.customer_email, input.subject, input.html, input.text);
+
+  const emailId = await logOrderEmailAndReturnId({
+    orderId: input.orderId,
+    kind: input.kind ?? "manual",
+    subject: input.subject,
+    bodyHtml: input.html,
+    bodyText: input.text,
+    toEmail: order.customer_email,
+    fromEmail: config.from_email,
+    provider: result.provider,
+    providerMessageId: result.providerMessageId,
+    ok: result.ok,
+    error: result.ok ? null : result.message,
+    sentBy: input.sentBy ?? "admin"
+  });
+
+  return { ok: result.ok, message: result.message, emailId, providerMessageId: result.providerMessageId };
+}
+
+/**
+ * Email automático cuando el admin cambia el estado del pedido a uno
+ * relevante para el cliente: approved, in_transit, delivered, cancelled, refunded.
+ */
+export async function sendOrderStatusEmail(
+  orderId: number,
+  status: string,
+  note?: string | null
+): Promise<void> {
+  const config = await getNotificationConfig();
+  if (!config || !config.active) return;
+
+  const order = await loadOrderForEmail(orderId);
+  if (!order) return;
+
+  const triggers: Record<string, { title: string; icon: string; subject: string }> = {
+    approved: {
+      title: "¡Tu pedido fue aprobado!",
+      icon: "✓",
+      subject: `Tu pedido ${order.public_id} fue aprobado`
+    },
+    in_transit: {
+      title: "¡Tu pedido está en camino!",
+      icon: "📦",
+      subject: `Tu pedido ${order.public_id} fue enviado`
+    },
+    delivered: {
+      title: "¡Tu pedido fue entregado!",
+      icon: "🎁",
+      subject: `Tu pedido ${order.public_id} fue entregado`
+    },
+    cancelled: {
+      title: "Tu pedido fue cancelado",
+      icon: "✕",
+      subject: `Tu pedido ${order.public_id} fue cancelado`
+    },
+    refunded: {
+      title: "Reembolso procesado",
+      icon: "↩",
+      subject: `Reembolso de tu pedido ${order.public_id}`
+    }
+  };
+
+  const t = triggers[status];
+  if (!t) return;
+
+  const noteHtml = note
+    ? `<p style="background:#1a1a1a;border-left:3px solid #d4af37;padding:12px;margin:16px 0;color:#f5f5f5;font-size:14px;border-radius:4px;"><strong style="color:#d4af37;">Mensaje del equipo:</strong><br>${escapeHtml(note)}</p>`
+    : "";
+
+  const html = emailTemplate({
+    title: t.title,
+    icon: t.icon,
+    iconColor: "#d4af37",
+    body: `
+      <p style="color:#999;font-size:14px;margin-top:8px;">Pedido <strong style="color:#d4af37;font-family:monospace;">${order.public_id}</strong></p>
+      ${noteHtml}
+      <p style="color:#999;font-size:12px;margin-top:16px;">Si tienes preguntas, responde este email o escríbenos a ventas@polianthes.shop.</p>
+    `,
+    footer: "Polianthes — Perfumería de autor"
+  });
+
+  const result = await sendEmail(config, order.customer_email, t.subject, html, "");
+
+  await logOrderEmailAndReturnId({
+    orderId,
+    kind: status as OrderEmailKind,
+    subject: t.subject,
+    bodyHtml: html,
+    bodyText: null,
+    toEmail: order.customer_email,
+    fromEmail: config.from_email,
+    provider: result.provider,
+    providerMessageId: result.providerMessageId,
+    ok: result.ok,
+    error: result.ok ? null : result.message,
+    sentBy: "admin:status"
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+async function logOrderEmailAndReturnId(opts: {
+  orderId: number;
+  kind: OrderEmailKind;
+  subject: string;
+  bodyHtml: string;
+  bodyText: string | null;
+  toEmail: string;
+  fromEmail: string;
+  provider: string;
+  providerMessageId: string | null;
+  ok: boolean;
+  error: string | null;
+  sentBy: string;
+}): Promise<number | undefined> {
+  try {
+    const r = await query<{ id: number }>(
+      `INSERT INTO order_email
+        (order_id, direction, kind, subject, body_html, body_text, to_email, from_email,
+         provider, provider_message_id, ok, error, sent_by)
+       VALUES ($1, 'outbound', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+       RETURNING id`,
+      [
+        opts.orderId,
+        opts.kind,
+        opts.subject,
+        opts.bodyHtml,
+        opts.bodyText,
+        opts.toEmail,
+        opts.fromEmail,
+        opts.provider,
+        opts.providerMessageId,
+        opts.ok,
+        opts.error,
+        opts.sentBy
+      ]
+    );
+    return r.rows[0]?.id;
+  } catch (e) {
+    console.error("[notifications] no se pudo registrar email en log:", e);
+    return undefined;
+  }
+}
+
+type OrderSlim = {
+  public_id: string;
+  customer_email: string;
+  customer_name: string;
+  total_cents: number;
+  currency: string;
+};
+
+async function loadOrderForEmail(orderId: number): Promise<OrderSlim | null> {
+  const r = await query<OrderSlim>(
+    `SELECT public_id, customer_email, customer_name, total_cents, currency
+     FROM "order" WHERE id = $1`,
+    [orderId]
+  );
+  return r.rows[0] ?? null;
 }
 
 // ────────────────────────────────────────────────────────────

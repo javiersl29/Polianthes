@@ -4,6 +4,7 @@ import { isAuthenticated } from "@/lib/auth";
 import { getAdminOrder, getOrderItems, ORDER_STATUSES, ORDER_STATUS_LABELS } from "@/lib/admin-data";
 import { genderBadge } from "@/lib/visual";
 import OrderActions from "./OrderActions";
+import EmailThread from "./EmailThread";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,9 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               statuses={ORDER_STATUSES}
             />
           </div>
+
+          {/* Hilo de emails */}
+          <EmailThread orderId={order.id} />
         </div>
 
         <div className="space-y-4">

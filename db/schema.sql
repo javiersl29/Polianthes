@@ -178,6 +178,27 @@ CREATE TABLE IF NOT EXISTS order_item (
 );
 CREATE INDEX IF NOT EXISTS idx_order_item_order ON order_item(order_id);
 
+-- Hilo de emails enviados al cliente por orden (admin → cliente y sistema → cliente)
+CREATE TABLE IF NOT EXISTS order_email (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES "order"(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL DEFAULT 'outbound' CHECK (direction IN ('outbound','inbound')),
+  kind TEXT NOT NULL DEFAULT 'manual'
+    CHECK (kind IN ('manual','confirmation','shipped','cancelled','refunded','delivered','status_update','system')),
+  subject TEXT NOT NULL,
+  body_html TEXT NOT NULL,
+  body_text TEXT,
+  to_email TEXT NOT NULL,
+  from_email TEXT NOT NULL,
+  provider TEXT,
+  provider_message_id TEXT,
+  ok BOOLEAN NOT NULL DEFAULT TRUE,
+  error TEXT,
+  sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_by TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_order_email_order ON order_email(order_id, sent_at DESC);
+
 -- Auditoría de redenciones de cupón
 CREATE TABLE IF NOT EXISTS coupon_redemption (
   id SERIAL PRIMARY KEY,
