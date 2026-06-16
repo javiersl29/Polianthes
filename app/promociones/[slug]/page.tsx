@@ -47,7 +47,7 @@ async function getFragrances(sizeMl: number) {
     family: string | null; display_code: string | null; artistic_name: string | null;
     inspired_by_name: string | null; inspired_by_brand: string | null;
     image_url: string | null; image_version: number | null; gender: string;
-    min_price_cents: number | null;
+    price_cents: number | null;
   }>(
     `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.display_code, f.artistic_name,
             f.inspired_by_name, f.inspired_by_brand, f.gender,
@@ -57,11 +57,10 @@ async function getFragrances(sizeMl: number) {
               ELSE f.image_url
             END AS image_url,
             LENGTH(f.image_data) AS image_version,
-            (SELECT MIN(p.price_cents) FROM presentation p
-             WHERE p.fragrance_id = f.id AND p.active = TRUE AND p.price_cents IS NOT NULL AND p.price_cents > 0) AS min_price_cents
+            MIN(p.price_cents) AS price_cents
      FROM fragrance f
      INNER JOIN presentation p ON p.fragrance_id = f.id AND p.active = TRUE AND p.size_ml = $1
-     WHERE f.active = TRUE
+     WHERE f.active = TRUE AND p.price_cents IS NOT NULL AND p.price_cents > 0
      GROUP BY f.id
      ORDER BY f.brand, f.name
      LIMIT 200`,

@@ -36,7 +36,7 @@ type Fragrance = {
   image_url: string | null;
   image_version: number | null;
   gender: string;
-  min_price_cents: number | null;
+  price_cents: number | null;
 };
 
 function money(cents: number | null) {
@@ -88,7 +88,7 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
   const allSelected = count === itemsCount;
 
   // Calcular el precio estimado
-  const subtotalCents = selected.reduce((s, f) => s + (f.min_price_cents ?? 0), 0);
+  const subtotalCents = selected.reduce((s, f) => s + (f.price_cents ?? 0), 0);
   const discountCents = isPercent ? Math.round(subtotalCents * (promo.value / 100)) : (isFixed ? promo.value : 0);
   const paidCents = subtotalCents - discountCents;
   const payCount = isQuantityPromo ? pay : 1;
@@ -112,7 +112,7 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
         image_version: f.image_version,
         size_ml: requiredMl || 0,
         qty: 1,
-        unit_price_cents: f.min_price_cents ?? 0
+        unit_price_cents: f.price_cents ?? 0
       });
     }
 
@@ -223,8 +223,8 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
                 <p className="text-[10px] text-ink-mute truncate">
                   {f.brand} {f.family && `· ${f.family}`}
                 </p>
-                {f.min_price_cents !== null && (
-                  <p className="text-[11px] text-gold mt-1">{money(f.min_price_cents)}</p>
+                {f.price_cents !== null && (
+                  <p className="text-[11px] text-gold mt-1">{money(f.price_cents)}</p>
                 )}
               </button>
             );
