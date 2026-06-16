@@ -95,6 +95,29 @@ export async function GET(req: NextRequest) {
       result.test_update_error = e instanceof Error ? e.message : String(e);
     }
   }
+  if (action === "test_status_history") {
+    try {
+      const r = await query(
+        `UPDATE "order" SET status_history = status_history || jsonb_build_array(
+            jsonb_build_object('status', $1, 'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'note', COALESCE($2, ''))
+          ) WHERE id = $3`,
+        ["approved", null, 13]
+      );
+      result.test_status_history = r.rows;
+    } catch (e) {
+      result.test_status_history_error = e instanceof Error ? e.message : String(e);
+    }
+  }
+  if (action === "add_status_history_col") {
+    try {
+      const r = await query(
+        `ALTER TABLE "order" ADD COLUMN IF NOT EXISTS status_history JSONB NOT NULL DEFAULT '[]'::jsonb`
+      );
+      result.added_col = r.rows;
+    } catch (e) {
+      result.added_col_error = e instanceof Error ? e.message : String(e);
+    }
+  }
 
   return NextResponse.json(result);
 }
