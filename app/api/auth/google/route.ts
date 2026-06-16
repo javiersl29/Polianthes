@@ -14,8 +14,10 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Google OAuth no está configurado" }, { status: 500 });
   }
 
-  const baseUrl = req.nextUrl.origin || `https://${req.headers.get("host")}`;
-  const redirectUri = `${baseUrl}/api/auth/google/callback`;
+  // Usar X-Forwarded-* si estamos detrás de un proxy (Railway, etc.)
+  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
+  const redirectUri = `${proto}://${host}/api/auth/google/callback`;
 
   // state para CSRF + datos del redirect
   const stateRaw = randomBytes(16).toString("hex");
