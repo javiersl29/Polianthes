@@ -188,17 +188,17 @@ export default function MonthlyOffers({ promotions }: { promotions: Promotion[] 
                 type="button"
                 onClick={() => go(-1)}
                 aria-label="Anterior"
-                className="absolute left-2 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-white/15 backdrop-blur-md border border-white/25 grid place-items-center text-white hover:bg-gold hover:text-bg hover:border-gold transition-all shadow-2xl"
+                className="absolute left-2 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-gold text-bg grid place-items-center shadow-[0_4px_24px_rgba(201,162,39,0.5)] hover:scale-110 hover:shadow-[0_6px_32px_rgba(201,162,39,0.7)] active:scale-95 transition-all"
               >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>
               </button>
               <button
                 type="button"
                 onClick={() => go(1)}
                 aria-label="Siguiente"
-                className="absolute right-2 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-white/15 backdrop-blur-md border border-white/25 grid place-items-center text-white hover:bg-gold hover:text-bg hover:border-gold transition-all shadow-2xl"
+                className="absolute right-2 top-1/2 -translate-y-1/2 z-30 w-12 h-12 rounded-full bg-gold text-bg grid place-items-center shadow-[0_4px_24px_rgba(201,162,39,0.5)] hover:scale-110 hover:shadow-[0_6px_32px_rgba(201,162,39,0.7)] active:scale-95 transition-all"
               >
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>
               </button>
             </>
           )}
