@@ -38,10 +38,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Google OAuth no está configurado" }, { status: 500 });
   }
 
+  // Construir la base URL usando X-Forwarded-* si estamos detrás de un proxy.
+  // req.url en Railway viene como http://localhost:8080/... y rompe los redirects.
+  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
+  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
+  const baseUrl = `${proto}://${host}`;
+  const redirectUri = `${baseUrl}/api/auth/google/callback`;
+  const safeRedirect = (path: string) => new URL(path, baseUrl);
+
   const code = req.nextUrl.searchParams.get("code");
   const error = req.nextUrl.searchParams.get("error");
   if (error) {
-    return NextResponse.redirect(new URL(`/?login=error&reason=${encodeURIComponent(error)}`, req.url));
+    return NextResponse.redirect(safeRedirect(`/?login=error&reason=${encodeURIComponent(error)}`));
   }
   if (!code) {
     return NextResponse.json({ error: "Falta código de Google" }, { status: 400 });
@@ -57,11 +65,6 @@ export async function GET(req: NextRequest) {
       /* ignore */
     }
   }
-
-  // Usar X-Forwarded-* si estamos detrás de un proxy (Railway, etc.)
-  const proto = req.headers.get("x-forwarded-proto") ?? req.nextUrl.protocol.replace(":", "");
-  const host = req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? req.nextUrl.host;
-  const redirectUri = `${proto}://${host}/api/auth/google/callback`;
 
   // 1. Intercambiar code por tokens
   const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
@@ -79,7 +82,7 @@ export async function GET(req: NextRequest) {
   const tokens = (await tokenRes.json()) as GoogleTokenResponse;
   if (!tokenRes.ok || !tokens.id_token) {
     console.error("[google/callback] token error", tokens);
-    return NextResponse.redirect(new URL("/?login=error&reason=token", req.url));
+    return NextResponse.redirect(safeRedirect("/?login=error&reason=token"));
   }
 
   // 2. Obtener perfil de Google
@@ -88,11 +91,11 @@ export async function GET(req: NextRequest) {
   });
   if (!profileRes.ok) {
     console.error("[google/callback] profile error", profileRes.status);
-    return NextResponse.redirect(new URL("/?login=error&reason=profile", req.url));
+    return NextResponse.redirect(safeRedirect("/?login=error&reason=profile"));
   }
   const profile = (await profileRes.json()) as GoogleUserInfo;
   if (!profile.email || !profile.sub) {
-    return NextResponse.redirect(new URL("/?login=error&reason=incomplete", req.url));
+    return NextResponse.redirect(safeRedirect("/?login=error&reason=incomplete"));
   }
 
   const email = profile.email.toLowerCase().trim();
@@ -101,13 +104,9 @@ export async function GET(req: NextRequest) {
   // 3. Si es admin, autenticar como admin (no crear customer)
   if (email === adminEmail) {
     await ensureDefaultAdmin();
-    // Asegurar que el admin_user existe con el email correcto
-    // (el username sigue siendo "admin", pero el email debe matchear)
-    // El admin actual se autentica con admin/polianthes. Aquí le damos
-    // sesión de admin directamente porque el email coincide.
     setSessionCookie(1); // ID 1 = admin principal
     const dest = redirectAfter.startsWith("/admin") ? redirectAfter : "/admin";
-    return NextResponse.redirect(new URL(dest, req.url));
+    return NextResponse.redirect(safeRedirect(dest));
   }
 
   // 4. Si NO es admin, crear/actualizar customer
@@ -129,7 +128,7 @@ export async function GET(req: NextRequest) {
   const params = new URLSearchParams();
   if (isNew) params.set("affiliate", "prompt");
   params.set("login", "ok");
-  return NextResponse.redirect(new URL(`${dest}${sep}${params.toString()}`, req.url));
+  return NextResponse.redirect(safeRedirect(`${dest}${sep}${params.toString()}`));
 }
 
 async function isNewlyCreated(googleId: string): Promise<boolean> {
