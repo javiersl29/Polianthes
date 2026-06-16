@@ -143,12 +143,12 @@ export async function updateOrderStatus(
 ): Promise<void> {
   await query(
     `UPDATE "order"
-     SET status = $1,
-         updated_at = NOW(),
-         status_history = status_history || jsonb_build_array(
-           jsonb_build_object('status', $1, 'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'note', COALESCE($2, ''))
-         ),
-         paid_at = CASE WHEN $1 = 'approved' AND paid_at IS NULL THEN NOW() ELSE paid_at END
+     SET status = $1::text,
+          updated_at = NOW(),
+          status_history = status_history || jsonb_build_array(
+            jsonb_build_object('status', $1::text, 'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'note', COALESCE($2::text, ''))
+          ),
+          paid_at = CASE WHEN $1::text = 'approved' AND paid_at IS NULL THEN NOW() ELSE paid_at END
      WHERE id = $3`,
     [status, note ?? null, id]
   );
