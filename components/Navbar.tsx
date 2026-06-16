@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useRef } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -69,6 +69,31 @@ function NavbarInner() {
   const [links, setLinks] = useState<NavLink[]>(FALLBACK_LINKS);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const { total, toggle } = useCart();
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Cerrar menú de usuario al hacer click fuera
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [userMenuOpen]);
+
+  // Cerrar menú de usuario al cambiar de ruta
+  useEffect(() => {
+    setUserMenuOpen(false);
+  }, [pathname]);
 
   // Cargar links dinámicos desde la API. Si falla, usar fallbacks.
   useEffect(() => {
@@ -187,11 +212,13 @@ function NavbarInner() {
         <div className="flex items-center gap-2">
           {/* Cuenta / Login */}
           {customer ? (
-            <div className="relative">
+            <div className="relative shrink-0" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen((o) => !o)}
                 aria-label="Mi cuenta"
-                className="liquid-glass h-10 w-10 sm:h-12 sm:h-12 sm:w-12 rounded-full grid place-items-center shrink-0 overflow-hidden hover:ring-2 hover:ring-gold/40 transition-all"
+                aria-expanded={userMenuOpen}
+                aria-haspopup="menu"
+                className="liquid-glass h-10 w-10 sm:h-12 sm:w-12 rounded-full grid place-items-center overflow-hidden hover:ring-2 hover:ring-gold/40 transition-all"
               >
                 {customer.picture_url ? (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -204,43 +231,87 @@ function NavbarInner() {
               </button>
               <AnimatePresence>
                 {userMenuOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -6, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: -6, scale: 0.97 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                    className="absolute right-0 mt-2 w-64 liquid-glass-strong rounded-2xl p-3 z-40"
-                  >
-                    <div className="px-2 py-2 border-b border-line/40 mb-1">
-                      <p className="text-sm font-medium text-ink truncate">{customer.name}</p>
-                      <p className="text-[11px] text-ink-mute truncate">{customer.email}</p>
-                      {customer.affiliated && (
-                        <span className="inline-block mt-1 text-[10px] uppercase tracking-wider text-gold border border-gold/30 bg-gold/10 rounded-full px-1.5 py-0.5">
-                          ★ Afiliado
-                        </span>
-                      )}
-                    </div>
-                    <Link
-                      href="/cuenta"
-                      onClick={closeUserMenu}
-                      className="block px-3 py-2 rounded-xl text-sm text-ink hover:bg-white/5 transition-colors"
+                  <>
+                    {/* Overlay invisible para móvil — bloquea interacción detrás del sheet */}
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm md:hidden"
+                      onClick={() => setUserMenuOpen(false)}
+                      aria-hidden="true"
+                    />
+                    {/* Móvil: bottom sheet */}
+                    <motion.div
+                      initial={{ opacity: 0, y: "100%" }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: "100%" }}
+                      transition={{ type: "spring", damping: 30, stiffness: 280 }}
+                      className="fixed bottom-0 left-0 right-0 z-[70] liquid-glass-strong rounded-t-3xl p-5 pb-8 md:hidden"
+                      role="menu"
                     >
-                      👤 Mi cuenta
-                    </Link>
-                    <Link
-                      href="/cuenta#pedidos"
-                      onClick={closeUserMenu}
-                      className="block px-3 py-2 rounded-xl text-sm text-ink hover:bg-white/5 transition-colors"
+                      <div className="mx-auto w-10 h-1 rounded-full bg-ink/20 mb-4" />
+                      <div className="flex items-center gap-3 pb-4 border-b border-line/40">
+                        {customer.picture_url ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={customer.picture_url} alt="" className="w-12 h-12 rounded-full object-cover shrink-0" />
+                        ) : (
+                          <div className="w-12 h-12 rounded-full bg-gold/10 border border-gold/30 grid place-items-center text-gold text-sm font-semibold shrink-0">
+                            {customer.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <p className="text-base font-medium text-ink truncate">{customer.name}</p>
+                          <p className="text-xs text-ink-mute truncate">{customer.email}</p>
+                          {customer.affiliated && (
+                            <span className="inline-block mt-1.5 text-[10px] uppercase tracking-wider text-gold border border-gold/30 bg-gold/10 rounded-full px-1.5 py-0.5">
+                              ★ Afiliado
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        <Link href="/cuenta" onClick={closeUserMenu} role="menuitem" className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-ink hover:bg-white/5 transition-colors min-h-[44px]">
+                          <span className="text-base">👤</span> Mi cuenta
+                        </Link>
+                        <Link href="/cuenta#pedidos" onClick={closeUserMenu} role="menuitem" className="flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-ink hover:bg-white/5 transition-colors min-h-[44px]">
+                          <span className="text-base">📦</span> Mis pedidos
+                        </Link>
+                        <button onClick={handleLogout} role="menuitem" className="w-full flex items-center gap-3 mt-1 px-3 py-3 rounded-xl text-sm text-rose-300 hover:bg-rose-400/10 transition-colors min-h-[44px] text-left">
+                          <span className="text-base">↪</span> Cerrar sesión
+                        </button>
+                      </div>
+                    </motion.div>
+                    {/* Desktop: dropdown anclado al avatar */}
+                    <motion.div
+                      initial={{ opacity: 0, y: -8, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -8, scale: 0.96 }}
+                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+                      className="hidden md:block absolute right-0 top-full mt-2 w-72 liquid-glass-strong rounded-2xl p-3 z-[70] origin-top-right"
+                      role="menu"
                     >
-                      📦 Mis pedidos
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="w-full text-left mt-1 px-3 py-2 rounded-xl text-sm text-rose-300 hover:bg-rose-400/10 transition-colors"
-                    >
-                      ↪ Cerrar sesión
-                    </button>
-                  </motion.div>
+                      <div className="px-3 py-2.5 border-b border-line/40 mb-1.5">
+                        <p className="text-sm font-medium text-ink truncate">{customer.name}</p>
+                        <p className="text-[11px] text-ink-mute truncate">{customer.email}</p>
+                        {customer.affiliated && (
+                          <span className="inline-block mt-1.5 text-[10px] uppercase tracking-wider text-gold border border-gold/30 bg-gold/10 rounded-full px-1.5 py-0.5">
+                            ★ Afiliado
+                          </span>
+                        )}
+                      </div>
+                      <Link href="/cuenta" onClick={closeUserMenu} role="menuitem" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-ink hover:bg-white/5 transition-colors">
+                        <span>👤</span> Mi cuenta
+                      </Link>
+                      <Link href="/cuenta#pedidos" onClick={closeUserMenu} role="menuitem" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-ink hover:bg-white/5 transition-colors">
+                        <span>📦</span> Mis pedidos
+                      </Link>
+                      <div className="my-1 border-t border-line/30" />
+                      <button onClick={handleLogout} role="menuitem" className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-rose-300 hover:bg-rose-400/10 transition-colors text-left">
+                        <span>↪</span> Cerrar sesión
+                      </button>
+                    </motion.div>
+                  </>
                 )}
               </AnimatePresence>
             </div>
