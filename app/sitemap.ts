@@ -1,6 +1,9 @@
 import type { MetadataRoute } from "next";
 import { listActiveFragranceSlugs } from "@/lib/fragrances";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const base = "https://polianthes.shop";
   const now = new Date();
@@ -47,8 +50,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       changeFrequency: "weekly",
       priority: 0.7
     }));
-  } catch {
-    /* DB indisponible, solo devolver rutas estáticas */
+  } catch (e) {
+    console.error("[sitemap] error cargando fragancias:", e);
   }
 
   return [...staticRoutes, ...fragranceRoutes];
