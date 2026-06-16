@@ -175,6 +175,18 @@ export async function POST(req: NextRequest) {
       console.error("[bricks/process] notifications (non-critical):", e instanceof Error ? e.message : e);
     }
 
+    // Si el cliente tiene cuenta, marcar como afiliado y actualizar stats
+    try {
+      const { getCurrentCustomer, markCustomerAffiliated, incrementCustomerStats } = await import("@/lib/customer-auth");
+      const customer = await getCurrentCustomer();
+      if (customer) {
+        await markCustomerAffiliated(customer.id);
+        await incrementCustomerStats(customer.id, orderRow.total_cents);
+      }
+    } catch (e) {
+      console.error("[bricks/process] customer stats (non-critical):", e instanceof Error ? e.message : e);
+    }
+
     return NextResponse.json({
       status: payment.status,
       status_detail: payment.status_detail,

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getPaymentProvider } from "@/lib/admin-data";
 import { parseMXN } from "@/lib/money";
+import { getCurrentCustomer, markCustomerAffiliated, incrementCustomerStats } from "@/lib/customer-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -154,22 +155,26 @@ export async function POST(req: NextRequest) {
 
   // 4) Crear orden en DB
   const publicId = `PLT-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+  const customer = await getCurrentCustomer();
+  const customerId = customer?.id ?? null;
   const orderRes = await pool.query<{ id: number }>(
     `INSERT INTO "order"
        (public_id, status, customer_email, customer_name, customer_phone,
         shipping_zone_name, shipping_address_line, shipping_address_line2,
         shipping_city, shipping_state, shipping_postal_code, shipping_country,
         subtotal_cents, discount_cents, shipping_cents, total_cents, currency,
-        coupon_code, provider, status_history)
+        coupon_code, provider, status_history, customer_id)
      VALUES ($1, 'pending', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
              $12, $13, $14, $15, $16, $17, 'mercadopago',
-             jsonb_build_array(jsonb_build_object('status','pending','at',to_char(NOW() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'))))
+             jsonb_build_array(jsonb_build_object('status','pending','at',to_char(NOW() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS"Z"'))),
+             $18)
      RETURNING id`,
     [
       publicId, body.customer.email, body.customer.name, body.customer.phone ?? null,
       shipName, shipLine, shipLine2, shipCity, shipState, shipCP,
       body.shipping.country ?? "MX",
-      subtotalCents, discountCents, shippingCents, totalCents, "MXN", couponCode
+      subtotalCents, discountCents, shippingCents, totalCents, "MXN", couponCode,
+      customerId
     ]
   );
   const orderId = orderRes.rows[0].id;

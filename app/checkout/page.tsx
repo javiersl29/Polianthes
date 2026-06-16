@@ -77,11 +77,24 @@ export default function CheckoutPage() {
   useEffect(() => {
     Promise.all([
       fetch("/api/public/shipping-zones").then((r) => r.json()),
-      fetch("/api/public/payment-providers").then((r) => r.json())
-    ]).then(([z, p]) => {
+      fetch("/api/public/payment-providers").then((r) => r.json()),
+      fetch("/api/customer/me").then((r) => r.json()).catch(() => ({ customer: null }))
+    ]).then(([z, p, c]) => {
       setZones(z.zones ?? []);
       setPickups(z.pickups ?? []);
       setProviders(p.providers ?? []);
+      if (c.customer) {
+        setName(c.customer.name ?? "");
+        setEmail(c.customer.email ?? "");
+        if (c.customer.phone) setPhone(c.customer.phone);
+        if (c.customer.default_address_line) {
+          setAddressLine(c.customer.default_address_line);
+          setAddressLine2(c.customer.default_address_line2 ?? "");
+          setCity(c.customer.default_city ?? "");
+          setState(c.customer.default_state ?? "");
+          setCp(c.customer.default_postal_code ?? "");
+        }
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);

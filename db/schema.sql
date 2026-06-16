@@ -178,6 +178,37 @@ CREATE TABLE IF NOT EXISTS order_item (
 );
 CREATE INDEX IF NOT EXISTS idx_order_item_order ON order_item(order_id);
 
+-- Clientes con cuenta (login con Google o email)
+CREATE TABLE IF NOT EXISTS customer (
+  id SERIAL PRIMARY KEY,
+  email TEXT UNIQUE NOT NULL,
+  google_id TEXT UNIQUE,
+  name TEXT NOT NULL,
+  picture_url TEXT,
+  phone TEXT,
+  birth_date DATE,
+  -- Dirección predeterminada (la que se usa en checkout si hay sesión)
+  default_address_line TEXT,
+  default_address_line2 TEXT,
+  default_city TEXT,
+  default_state TEXT,
+  default_postal_code TEXT,
+  default_country TEXT DEFAULT 'MX',
+  -- Estado del cliente
+  affiliated BOOLEAN NOT NULL DEFAULT FALSE,
+  total_orders INTEGER NOT NULL DEFAULT 0,
+  total_spent_cents BIGINT NOT NULL DEFAULT 0,
+  last_login_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_customer_google_id ON customer(google_id);
+CREATE INDEX IF NOT EXISTS idx_customer_email ON customer(email);
+
+-- Vincula órdenes con la cuenta del cliente (nullable: órdenes guest no tienen cuenta)
+ALTER TABLE "order" ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customer(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_order_customer ON "order"(customer_id) WHERE customer_id IS NOT NULL;
+
 -- Hilo de emails enviados al cliente por orden (admin → cliente y sistema → cliente)
 CREATE TABLE IF NOT EXISTS order_email (
   id SERIAL PRIMARY KEY,

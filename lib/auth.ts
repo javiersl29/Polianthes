@@ -120,7 +120,7 @@ export function getPending2FaUserId(): number | null {
   return Number(id);
 }
 
-function setSessionCookie(userId: number): void {
+export function setSessionCookie(userId: number): void {
   const expires = Date.now() + SESSION_TTL_HOURS * 3600 * 1000;
   const payload = `${userId}:${expires}`;
   const signature = sign(payload);
