@@ -19,51 +19,35 @@ export default function OpengraphImage() {
           background: "linear-gradient(135deg, #0c0c0c 0%, #1a1a1a 50%, #0c0c0c 100%)",
           color: "#f5f5f5",
           fontFamily: "sans-serif",
-          position: "relative",
-          overflow: "hidden"
+          position: "relative"
         }}
       >
-        {/* Glow radial */}
         <div
           style={{
             position: "absolute",
-            top: "20%",
-            left: "50%",
-            width: "700px",
-            height: "700px",
-            transform: "translate(-50%, -50%)",
-            background: "radial-gradient(circle, rgba(212,175,55,0.20) 0%, rgba(212,175,55,0) 65%)",
-            display: "flex"
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            background: "radial-gradient(circle at 50% 40%, rgba(212,175,55,0.25) 0%, rgba(212,175,55,0) 60%)"
           }}
         />
-        {/* Patrón de hexágonos sutil */}
         <div
           style={{
-            position: "absolute",
-            inset: 0,
-            backgroundImage:
-              "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.04) 1px, transparent 0)",
-            backgroundSize: "48px 48px",
-            display: "flex"
-          }}
-        />
-        {/* Contenido */}
-        <div
-          style={{
-            position: "relative",
             display: "flex",
             flexDirection: "column",
             alignItems: "center",
-            gap: "16px"
+            gap: 20
           }}
         >
           <div
             style={{
-              fontSize: "120px",
+              fontSize: 130,
               fontWeight: 400,
               fontStyle: "italic",
               color: "#d4af37",
-              letterSpacing: "-0.04em",
+              letterSpacing: "-4px",
               lineHeight: 1,
               display: "flex"
             }}
@@ -72,10 +56,10 @@ export default function OpengraphImage() {
           </div>
           <div
             style={{
-              fontSize: "28px",
+              fontSize: 32,
               color: "#f5f5f5",
               fontWeight: 300,
-              letterSpacing: "0.05em",
+              letterSpacing: "2px",
               display: "flex"
             }}
           >
@@ -83,34 +67,32 @@ export default function OpengraphImage() {
           </div>
           <div
             style={{
-              marginTop: "24px",
-              padding: "12px 28px",
-              border: "1px solid rgba(212,175,55,0.4)",
-              borderRadius: "999px",
-              fontSize: "18px",
+              marginTop: 30,
+              padding: "14px 32px",
+              border: "1px solid rgba(212,175,55,0.5)",
+              borderRadius: 999,
+              fontSize: 22,
               color: "#d4af37",
               display: "flex"
             }}
           >
             Decodificador con IA · 146 fragancias
           </div>
-          <div
-            style={{
-              position: "absolute",
-              top: "560px",
-              left: 0,
-              right: 0,
-              textAlign: "center",
-              fontSize: "16px",
-              color: "rgba(255,255,255,0.5)",
-              letterSpacing: "0.2em",
-              textTransform: "uppercase",
-              display: "flex",
-              justifyContent: "center"
-            }}
-          >
-            polianthes.shop
-          </div>
+        </div>
+        <div
+          style={{
+            position: "absolute",
+            bottom: 40,
+            left: 0,
+            right: 0,
+            display: "flex",
+            justifyContent: "center",
+            fontSize: 18,
+            color: "rgba(255,255,255,0.5)",
+            letterSpacing: "4px"
+          }}
+        >
+          POLIANTHES.SHOP
         </div>
       </div>
     ),
