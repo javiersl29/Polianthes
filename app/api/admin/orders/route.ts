@@ -31,7 +31,14 @@ export async function PATCH(req: NextRequest) {
     if (!ORDER_STATUSES.some((s) => s.value === status)) {
       return NextResponse.json({ error: "status inválido" }, { status: 400 });
     }
-    await updateOrderStatus(id, status, body.note);
+    console.log("[orders/PATCH] status change", { id, status, note: body.note });
+    try {
+      await updateOrderStatus(id, status, body.note);
+      console.log("[orders/PATCH] status updated OK");
+    } catch (e) {
+      console.error("[orders/PATCH] updateOrderStatus failed:", e);
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Error al actualizar" }, { status: 500 });
+    }
 
     // Notificar al cliente según el nuevo estado (fire-and-forget)
     try {
@@ -48,6 +55,7 @@ export async function PATCH(req: NextRequest) {
     } catch (e) {
       console.error("[admin/orders] notify error:", e);
     }
+    console.log("[orders/PATCH] notify done");
 
     const order = await getAdminOrder(id);
     return NextResponse.json({ order });
