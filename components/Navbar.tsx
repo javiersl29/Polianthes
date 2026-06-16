@@ -248,11 +248,16 @@ function NavbarInner() {
             <Link
               href={`/api/auth/google?redirect=${encodeURIComponent(pathname || "/")}`}
               aria-label="Iniciar sesión con Google"
-              className="liquid-glass h-10 sm:h-12 px-3 sm:px-4 rounded-full grid place-items-center shrink-0 hover:ring-2 hover:ring-gold/40 transition-all text-xs sm:text-sm font-medium"
+              className="liquid-glass h-10 sm:h-12 pl-2.5 sm:pl-3 pr-3 sm:pr-4 rounded-full inline-flex items-center gap-2 shrink-0 hover:ring-2 hover:ring-gold/40 transition-all text-xs sm:text-sm font-medium"
             >
-              <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4 mr-1.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 11v2.6h7.3c-.3 1.8-2.2 5.4-7.3 5.4-4.4 0-8-3.6-8-8s3.6-8 8-8c2.5 0 4.2 1.1 5.1 2L19 1C17.2-.6 14.8-1.6 12-1.6 5.1-1.6-.5 4-.5 11S5.1 23 12 23c6.9 0 11.5-4.8 11.5-11.6 0-.8-.1-1.4-.2-2H12z" />
-              </svg>
+              <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white grid place-items-center shrink-0">
+                <svg className="w-3.5 h-3.5 sm:w-4 sm:h-4" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.07 5.07 0 0 1-2.2 3.33v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.11Z" fill="#4285F4" />
+                  <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A10.99 10.99 0 0 0 12 23Z" fill="#34A853" />
+                  <path d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A10.99 10.99 0 0 0 1 12c0 1.77.42 3.45 1.18 4.94l3.66-2.84Z" fill="#FBBC05" />
+                  <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A10.99 10.99 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38Z" fill="#EA4335" />
+                </svg>
+              </span>
               <span className="hidden sm:inline">Iniciar sesión</span>
             </Link>
           )}
@@ -404,8 +409,16 @@ function NavbarInner() {
                   <Link
                     href={`/api/auth/google?redirect=${encodeURIComponent(pathname || "/")}`}
                     onClick={close}
-                    className="block mt-1 liquid-glass border border-line/40 rounded-xl px-4 py-3 text-sm font-medium text-center hover:border-gold/40 transition-colors"
+                    className="mt-1 liquid-glass border border-line/40 rounded-xl px-4 py-3 text-sm font-medium hover:border-gold/40 transition-colors flex items-center justify-center gap-2"
                   >
+                    <span className="w-5 h-5 rounded-full bg-white grid place-items-center shrink-0">
+                      <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.07 5.07 0 0 1-2.2 3.33v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.11Z" fill="#4285F4" />
+                        <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.99.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A10.99 10.99 0 0 0 12 23Z" fill="#34A853" />
+                        <path d="M5.84 14.1A6.6 6.6 0 0 1 5.5 12c0-.73.13-1.44.34-2.1V7.06H2.18A10.99 10.99 0 0 0 1 12c0 1.77.42 3.45 1.18 4.94l3.66-2.84Z" fill="#FBBC05" />
+                        <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A10.99 10.99 0 0 0 2.18 7.06l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38Z" fill="#EA4335" />
+                      </svg>
+                    </span>
                     Iniciar sesión con Google
                   </Link>
                 </motion.div>
