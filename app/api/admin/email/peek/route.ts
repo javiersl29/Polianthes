@@ -99,7 +99,7 @@ export async function GET(req: NextRequest) {
     try {
       const r = await query(
         `UPDATE "order" SET status_history = status_history || jsonb_build_array(
-            jsonb_build_object('status', $1, 'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'note', COALESCE($2, ''))
+            jsonb_build_object('status', $1::text, 'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'note', COALESCE($2, ''))
           ) WHERE id = $3`,
         ["approved", null, 13]
       );
