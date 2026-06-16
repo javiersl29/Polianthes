@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import { genderBadge } from "@/lib/visual";
 
@@ -226,16 +225,15 @@ export default function Catalog() {
                 href={`/fragancias/${it.slug}`}
                 className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
               >
-                <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute relative">
+                <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
                   {it.image_url ? (
-                    <Image
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
                       src={it.image_version != null ? `${it.image_url}?v=${it.image_version}` : it.image_url}
                       alt={it.full_name}
-                      fill
-                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
                       loading="lazy"
-                      className="object-cover transition-transform duration-500 group-hover:scale-105"
-                      quality={75}
+                      decoding="async"
+                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                     />
                   ) : (
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>

@@ -1,5 +1,4 @@
 "use client";
-import Image from "next/image";
 import { motion } from "framer-motion";
 import BlurText from "./BlurText";
 import FadingVideo from "./FadingVideo";
@@ -26,14 +25,14 @@ export default function Hero() {
             transition={{ ...easeOut, delay: 0.2 }}
             className="mb-6 sm:mb-8"
           >
-            <Image
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
               src="/brand/Logo-Blanco.png"
               alt="Polianthes — Perfumería de inspiración"
               width={560}
               height={240}
-              priority
+              decoding="async"
               fetchPriority="high"
-              quality={90}
               className="h-36 sm:h-48 md:h-56 w-auto mx-auto"
             />
           </motion.div>

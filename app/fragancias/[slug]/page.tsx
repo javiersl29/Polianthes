@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import Image from "next/image";
 import type { Metadata } from "next";
 import { getFragranceBySlug, getSimilarFragrances } from "@/lib/fragrances";
 import { genderBadge } from "@/lib/visual";
@@ -138,32 +137,30 @@ export default async function FragrancePage({ params }: Props) {
 
         <div className="mt-6 sm:mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-10">
           <div className="space-y-4">
-            <div className="aspect-[3/4] rounded-2xl sm:rounded-3xl liquid-glass overflow-hidden grid place-items-center relative">
+            <div className="aspect-[3/4] rounded-2xl sm:rounded-3xl liquid-glass overflow-hidden grid place-items-center">
               {detail.image_url ? (
-                <Image
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
                   src={detail.image_version != null ? `${detail.image_url}?v=${detail.image_version}` : detail.image_url}
                   alt={detail.full_name}
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
+                  loading="eager"
                   fetchPriority="high"
-                  quality={80}
-                  className="object-cover"
+                  decoding="async"
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <span className="font-display italic text-gold text-6xl sm:text-7xl">{detail.brand[0]}</span>
               )}
             </div>
             {detail.inspiration_image_url && (
-              <div className="aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden opacity-60 relative">
-                <Image
+              <div className="aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden opacity-60">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
                   src={detail.inspiration_image_url}
                   alt="Inspiración"
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
                   loading="lazy"
-                  quality={60}
-                  className="object-cover"
+                  decoding="async"
+                  className="w-full h-full object-cover"
                 />
               </div>
             )}
@@ -288,16 +285,15 @@ export default async function FragrancePage({ params }: Props) {
                     href={`/fragancias/${s.slug}`}
                     className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
                   >
-                    <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute relative">
+                    <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
                       {s.image_url ? (
-                        <Image
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
                           src={s.image_version != null ? `${s.image_url}?v=${s.image_version}` : s.image_url}
                           alt={s.full_name}
-                          fill
-                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
                           loading="lazy"
-                          quality={70}
-                          className="object-cover transition-transform duration-500 group-hover:scale-105"
+                          decoding="async"
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
                         <span className="font-display italic text-gold text-3xl sm:text-4xl">{s.brand[0]}</span>
