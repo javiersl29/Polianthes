@@ -98,8 +98,8 @@ export async function GET(req: NextRequest) {
   if (action === "test_status_history") {
     try {
       const r = await query(
-        `SELECT jsonb_build_object('status', $1, 'note', $2)`,
-        ["approved", "nota de prueba"]
+        `SELECT jsonb_build_object('a', 'b')`,
+        []
       );
       result.test_status_history = r.rows;
     } catch (e) {
