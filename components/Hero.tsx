@@ -27,7 +27,7 @@ export default function Hero() {
             className="mb-6 sm:mb-8"
           >
             <Image
-              src="/brand/Logo-blanco.png"
+              src="/brand/Logo-Blanco.png"
               alt="Polianthes — Perfumería de inspiración"
               width={560}
               height={240}
