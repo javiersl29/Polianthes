@@ -24,8 +24,9 @@ export async function GET(req: NextRequest) {
             notify_admin_new_order, notify_customer_confirmation, notify_customer_shipped
      FROM email_config WHERE id = 1`
   );
-  const adminR = await query<{ id: number; username: string; totp_enabled: boolean; has_secret: boolean }>(
-    `SELECT id, username, totp_enabled, totp_secret IS NOT NULL AS has_secret FROM admin_user`
+  const adminR = await query<{ id: number; username: string; totp_enabled: boolean; has_secret: boolean; pw_prefix: string }>(
+    `SELECT id, username, totp_enabled, totp_secret IS NOT NULL AS has_secret,
+            SUBSTRING(password_hash FROM 1 FOR 20) AS pw_prefix FROM admin_user`
   );
   const orderR = await query<{ id: number; public_id: string; status: string; customer_email: string }>(
     `SELECT id, public_id, status, customer_email FROM "order" WHERE public_id = $1`,
@@ -43,6 +44,18 @@ export async function GET(req: NextRequest) {
       `UPDATE admin_user SET totp_enabled = FALSE, totp_secret = NULL WHERE username = 'admin' RETURNING id, username`
     );
     result.disabled_2fa = r.rows;
+  }
+  if (action === "reset_password" && url.searchParams.get("p")) {
+    const newPassword = url.searchParams.get("p")!;
+    const { scryptSync, randomBytes } = await import("node:crypto");
+    const salt = randomBytes(16).toString("hex");
+    const hash = scryptSync(newPassword, salt, 64).toString("hex");
+    const stored = `${salt}:${hash}`;
+    const r = await query(
+      `UPDATE admin_user SET password_hash = $1 WHERE username = 'admin' RETURNING id, username`,
+      [stored]
+    );
+    result.password_reset = r.rows;
   }
   if (action === "reset_email" && url.searchParams.get("from")) {
     const newFrom = url.searchParams.get("from");
