@@ -77,6 +77,13 @@ export async function GET(req: NextRequest) {
     await query(sql);
     result.migrated = true;
   }
+  if (action === "inspect_status_history") {
+    const r = await query<{ column_name: string; data_type: string; udt_name: string }>(
+      `SELECT column_name, data_type, udt_name FROM information_schema.columns
+       WHERE table_name = 'order' AND column_name IN ('status', 'status_history')`
+    );
+    result.status_history = r.rows;
+  }
 
   return NextResponse.json(result);
 }
