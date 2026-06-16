@@ -98,8 +98,10 @@ export async function GET(req: NextRequest) {
   if (action === "test_status_history") {
     try {
       const r = await query(
-        `SELECT jsonb_build_object('a', 'b')`,
-        []
+        `UPDATE "order" SET status_history = status_history || jsonb_build_array(
+            jsonb_build_object('status', $1, 'at', to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'), 'note', COALESCE($2, ''))
+          ) WHERE id = $3`,
+        ["approved", "prueba", 13]
       );
       result.test_status_history = r.rows;
     } catch (e) {
