@@ -26,6 +26,13 @@ type Body = {
     country?: string;
   };
   coupon_code?: string;
+  promo?: {
+    slug: string;
+    type: string;
+    value: number;
+    quantity_to_take: number;
+    quantity_to_pay: number;
+  };
 };
 
 /**
@@ -148,6 +155,66 @@ export async function POST(req: NextRequest) {
         && (!c.min_subtotal_cents || subtotalCents >= c.min_subtotal_cents)) {
       couponCode = body.coupon_code!.toUpperCase();
       discountCents = c.type === "percent" ? Math.round(subtotalCents * (c.value / 100)) : Math.min(subtotalCents, c.value);
+    }
+  }
+
+  // 4) Promoción (3x2, 2x1, percent, fixed) — valida desde la DB
+  let promoApplied = false;
+  let promoSummary = "";
+  if (body.promo?.slug) {
+    const pr = (await pool.query<{
+      type: string; value: number; required_size_ml: number;
+      quantity_to_take: number; quantity_to_pay: number;
+      min_items: number; max_items: number;
+      starts_at: string | null; ends_at: string | null; active: boolean;
+      title: string;
+    }>(
+      `SELECT type, value, required_size_ml, quantity_to_take, quantity_to_pay,
+              min_items, max_items, starts_at, ends_at, active, title
+       FROM promotion
+       WHERE slug = $1`,
+      [String(body.promo.slug)]
+    )).rows[0];
+
+    if (pr && pr.active
+        && (!pr.starts_at || new Date(pr.starts_at) <= new Date())
+        && (!pr.ends_at || new Date(pr.ends_at) >= new Date())) {
+      const totalItems = orderItems.reduce((s, oi) => s + oi.qty, 0);
+
+      if (pr.type === "3x2" || pr.type === "2x1") {
+        const take = pr.quantity_to_take || (pr.type === "3x2" ? 3 : 2);
+        const pay = pr.quantity_to_pay || (pr.type === "3x2" ? 2 : 1);
+        if (totalItems >= take) {
+          // Cobrar solo los `pay` items más baratos
+          const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
+          allUnitPrices.sort((a, b) => a - b);
+          const freeCount = take - pay;
+          const freeAmount = allUnitPrices.slice(0, freeCount).reduce((s, p) => s + p, 0);
+          discountCents = freeAmount;
+          couponCode = `[${pr.type.toUpperCase()}] ${pr.title}`;
+          promoApplied = true;
+          promoSummary = `${pr.type.toUpperCase()}: lleva ${take} y paga ${pay}`;
+        }
+      } else if (pr.type === "percent") {
+        const d = Math.round(subtotalCents * (pr.value / 100));
+        discountCents = Math.max(discountCents, d);
+        couponCode = `[PROMO ${pr.value}%] ${pr.title}`;
+        promoApplied = true;
+        promoSummary = `${pr.value}% de descuento`;
+      } else if (pr.type === "fixed") {
+        discountCents = Math.max(discountCents, Math.min(subtotalCents, pr.value));
+        couponCode = `[PROMO $${(pr.value / 100).toFixed(0)}] ${pr.title}`;
+        promoApplied = true;
+        promoSummary = `$${(pr.value / 100).toFixed(0)} de descuento`;
+      } else if (pr.type === "free_shipping") {
+        if (shippingCents > 0) {
+          // Guardar como cupón representativo, pero también ajustar envío a 0
+          couponCode = `[ENVÍO GRATIS] ${pr.title}`;
+          shippingCents = 0;
+          promoApplied = true;
+          promoSummary = "Envío gratis";
+        }
+      }
     }
   }
 

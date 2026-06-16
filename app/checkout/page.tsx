@@ -1,6 +1,6 @@
 "use client";
-import { useEffect, useState, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, useCallback, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/components/CartProvider";
 import { money } from "@/lib/cart";
@@ -45,11 +45,33 @@ type BrickInit = {
 };
 
 export default function CheckoutPage() {
+  return (
+    <Suspense fallback={null}>
+      <CheckoutInner />
+    </Suspense>
+  );
+}
+
+function CheckoutInner() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const promoSlug = searchParams.get("promo");
   const { items, total, clear } = useCart();
   const [zones, setZones] = useState<Zone[]>([]);
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [promoName, setPromoName] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!promoSlug) {
+      setPromoName(null);
+      return;
+    }
+    fetch(`/api/public/promotions/${promoSlug}`)
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.promotion) setPromoName(d.promotion.title); })
+      .catch(() => {});
+  }, [promoSlug]);
   const [loading, setLoading] = useState(true);
 
   // Delivery mode
@@ -168,7 +190,14 @@ export default function CheckoutPage() {
             address_line2: addressLine2 || undefined,
             city, state, postal_code: cp
           },
-          coupon_code: appliedCoupon?.code
+          coupon_code: appliedCoupon?.code,
+          promo: searchParams.get("promo") ? {
+            slug: String(searchParams.get("promo")),
+            type: String(searchParams.get("promo_type") ?? "bundle"),
+            value: Number(searchParams.get("promo_value") ?? 0),
+            quantity_to_take: Number(searchParams.get("promo_take") ?? 3),
+            quantity_to_pay: Number(searchParams.get("promo_pay") ?? 2)
+          } : undefined
         })
       });
       const data = await r.json();
@@ -220,6 +249,19 @@ export default function CheckoutPage() {
       <div className="max-w-5xl mx-auto">
         <p className="text-sm text-ink-mute">// Checkout</p>
         <h1 className="mt-1 font-display italic text-4xl sm:text-5xl text-ink tracking-[-1px]">Finalizar compra</h1>
+
+        {promoSlug && promoName && (
+          <div className="mt-4 liquid-glass rounded-xl px-4 py-3 flex items-center gap-3 border border-gold/30 bg-gradient-to-br from-gold/15 to-amber-300/5">
+            <span className="text-2xl">🎁</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] uppercase tracking-wider text-gold/80">Promoción aplicada</p>
+              <p className="text-sm text-ink truncate">{promoName}</p>
+            </div>
+            <Link href="/#ofertas" className="text-xs text-ink-mute hover:text-gold transition-colors shrink-0">
+              Ver más
+            </Link>
+          </div>
+        )}
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-5 gap-6">
           <div className="lg:col-span-3 space-y-6">

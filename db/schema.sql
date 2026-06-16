@@ -98,6 +98,48 @@ CREATE TABLE IF NOT EXISTS shipping_zone (
 );
 CREATE INDEX IF NOT EXISTS idx_shipping_zone_prefix ON shipping_zone(postal_code_prefix) WHERE active;
 
+-- Promociones del mes (carrusel en homepage)
+CREATE TABLE IF NOT EXISTS promotion (
+  id SERIAL PRIMARY KEY,
+  slug TEXT UNIQUE NOT NULL,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  description TEXT,
+  -- Tipo de promo: 3x2, 2x1, percent, fixed, bundle
+  type TEXT NOT NULL DEFAULT 'bundle'
+    CHECK (type IN ('3x2','2x1','percent','fixed','bundle','free_shipping')),
+  -- Valor del descuento (percent 0-100 o cents)
+  value INTEGER NOT NULL DEFAULT 0,
+  -- Size ml requerido (ej 60 para "perfumes 60ml") - 0 = sin restricción
+  required_size_ml INTEGER NOT NULL DEFAULT 0,
+  -- Cantidad de productos que se llevan (3x2 = 3)
+  quantity_to_take INTEGER NOT NULL DEFAULT 3,
+  -- Cantidad que pagan (3x2 = 2)
+  quantity_to_pay INTEGER NOT NULL DEFAULT 2,
+  -- Imagen promocional
+  image_url TEXT,
+  -- Generada por IA: prompt, seed
+  image_prompt TEXT,
+  image_ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Banner secundario (gradiente, label)
+  badge_text TEXT,
+  badge_color TEXT NOT NULL DEFAULT 'gold' CHECK (badge_color IN ('gold','rose','sky','emerald','violet')),
+  -- Restricciones
+  min_items INTEGER NOT NULL DEFAULT 0,
+  max_items INTEGER NOT NULL DEFAULT 0, -- 0 = sin límite
+  -- Vigencia
+  starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  ends_at TIMESTAMPTZ,
+  -- Estado
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  -- Orden en el carrusel
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  -- Metadata
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_promotion_active ON promotion(active, sort_order) WHERE active = TRUE;
+
 -- Cupones de descuento
 CREATE TABLE IF NOT EXISTS coupon (
   id SERIAL PRIMARY KEY,
