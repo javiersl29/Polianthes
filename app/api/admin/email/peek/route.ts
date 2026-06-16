@@ -84,6 +84,17 @@ export async function GET(req: NextRequest) {
     );
     result.status_history = r.rows;
   }
+  if (action === "test_update") {
+    try {
+      const r = await query(
+        `UPDATE "order" SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING status`,
+        ["approved", 13]
+      );
+      result.test_update = r.rows;
+    } catch (e) {
+      result.test_update_error = e instanceof Error ? e.message : String(e);
+    }
+  }
 
   return NextResponse.json(result);
 }
