@@ -56,6 +56,13 @@ export async function GET(req: NextRequest) {
     );
     result.customer_columns = r.rows;
   }
+  if (action === "inspect_promotion_table") {
+    const r = await query<{ column_name: string; data_type: string }>(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'promotion' ORDER BY ordinal_position`
+    );
+    result.promotion_columns = r.rows;
+  }
 
   return NextResponse.json(result);
 }
