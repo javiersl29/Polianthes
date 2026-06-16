@@ -1,12 +1,4 @@
 "use client";
-import { useEffect, useState } from "react";
-
-type NavLink = {
-  id: number;
-  label: string;
-  href: string;
-  new_tab: boolean;
-};
 
 type FooterLink = { label: string; href: string };
 
@@ -25,15 +17,6 @@ const AYUDA_LINKS: FooterLink[] = [
 ];
 
 export default function Footer() {
-  const [customLinks, setCustomLinks] = useState<NavLink[] | null>(null);
-
-  useEffect(() => {
-    fetch("/api/public/nav?location=footer")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => { if (data?.links?.length > 0) setCustomLinks(data.links); })
-      .catch(() => {});
-  }, []);
-
   return (
     <footer className="relative mt-20 sm:mt-32 border-t border-line/60">
       {/* Glow superior */}
@@ -44,10 +27,7 @@ export default function Footer() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
           {/* Brand */}
           <div className="lg:col-span-1">
-            <div className="flex items-center gap-3">
-              <img src="/brand/Isotipo-Blanco.png" alt="" width={40} height={40} className="h-10 w-10 object-contain shrink-0" />
-              <img src="/brand/Logo-Blanco.png" alt="Polianthes" width={160} height={54} className="h-8 w-auto" />
-            </div>
+            <img src="/brand/Isotipo-Blanco.png" alt="Polianthes" width={48} height={48} className="h-12 w-12 object-contain shrink-0" />
             <p className="mt-4 text-sm text-ink-mute leading-relaxed max-w-xs">
               Perfumes de inspiración. Decodificamos las fragancias icónicas del mundo y las reinterpretamos para ti.
             </p>
@@ -108,25 +88,6 @@ export default function Footer() {
           </div>
         </div>
 
-        {/* Links dinámicos (si los hay desde admin) */}
-        {customLinks && customLinks.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-line/40">
-            <nav className="flex items-center gap-5 text-sm text-ink-mute flex-wrap">
-              {customLinks.map((l) => (
-                <a
-                  key={l.id}
-                  href={l.href}
-                  target={l.new_tab ? "_blank" : undefined}
-                  rel={l.new_tab ? "noopener noreferrer" : undefined}
-                  className="hover:text-gold transition-colors"
-                >
-                  {l.label}
-                </a>
-              ))}
-            </nav>
-          </div>
-        )}
-
         {/* Línea inferior */}
         <div className="mt-8 pt-5 border-t border-line/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-[11px] text-ink-mute/50">
           <p>Polianthes &copy; {new Date().getFullYear()} · Perfumería de inspiración</p>
@@ -146,3 +107,4 @@ export default function Footer() {
     </footer>
   );
 }
+

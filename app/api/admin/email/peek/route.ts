@@ -43,6 +43,12 @@ export async function GET(req: NextRequest) {
     await query(sql);
     result.migrated = true;
   }
+  if (action === "clean_footer_links") {
+    const r = await query(
+      `DELETE FROM nav_link WHERE location = 'footer' AND (href = '/admin' OR href LIKE '%github%') RETURNING id, label`
+    );
+    result.deleted_footer_links = r.rows;
+  }
   if (action === "inspect_customer_table") {
     const r = await query<{ column_name: string; data_type: string }>(
       `SELECT column_name, data_type FROM information_schema.columns

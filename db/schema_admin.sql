@@ -235,11 +235,3 @@ WHERE NOT EXISTS (SELECT 1 FROM nav_link LIMIT 1);
 INSERT INTO nav_link (location, label, href, sort_order)
 SELECT 'navbar', 'Catálogo', '/#catalogo', 30
 WHERE NOT EXISTS (SELECT 1 FROM nav_link LIMIT 1);
-
-INSERT INTO nav_link (location, label, href, sort_order)
-SELECT 'footer', 'Panel admin', '/admin', 0
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'footer' LIMIT 1);
-
-INSERT INTO nav_link (location, label, href, sort_order, new_tab)
-SELECT 'footer', 'Código fuente', 'https://github.com/javiersl29/Polianthes', 10, TRUE
-WHERE NOT EXISTS (SELECT 1 FROM nav_link WHERE location = 'footer' LIMIT 1);
