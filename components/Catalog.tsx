@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { genderBadge } from "@/lib/visual";
 
@@ -92,6 +93,24 @@ export default function Catalog() {
       setLoadingMore(false);
     }
   };
+
+  // Infinite scroll: cargar más al llegar al final
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!hasMore || loadingMore || loading) return;
+    const el = loadMoreRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (e.isIntersecting) onLoadMore();
+        }
+      },
+      { rootMargin: "400px" }
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [hasMore, loadingMore, loading, onLoadMore]);
 
   const visible = useMemo(
     () => (family ? items.filter((i) => i.family === family) : items),
@@ -207,14 +226,16 @@ export default function Catalog() {
                 href={`/fragancias/${it.slug}`}
                 className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
               >
-                <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
+                <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute relative">
                   {it.image_url ? (
-                    <img
-                      loading="lazy"
-                      decoding="async"
+                    <Image
                       src={it.image_version != null ? `${it.image_url}?v=${it.image_version}` : it.image_url}
                       alt={it.full_name}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      fill
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                      loading="lazy"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      quality={75}
                     />
                   ) : (
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>
@@ -262,24 +283,30 @@ export default function Catalog() {
             </p>
           )}
           {hasMore && !family && (
-            <button
-              onClick={onLoadMore}
-              disabled={loadingMore}
-              className="liquid-glass rounded-full px-6 py-2.5 text-sm text-ink/90 hover:text-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex items-center gap-2"
-              aria-label="Cargar más fragancias"
-            >
-              {loadingMore ? (
-                <>
-                  <span className="w-3.5 h-3.5 border-2 border-gold/40 border-t-gold rounded-full animate-spin" />
-                  Cargando…
-                </>
-              ) : (
-                <>
-                  Cargar más
-                  <span className="text-gold/70">({Math.min(PAGE_SIZE, total - offset)})</span>
-                </>
-              )}
-            </button>
+            <>
+              <div ref={loadMoreRef} aria-hidden="true" className="h-1" />
+              <button
+                onClick={onLoadMore}
+                disabled={loadingMore}
+                className="liquid-glass rounded-full px-6 py-2.5 text-sm text-ink/90 hover:text-gold transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[44px] flex items-center gap-2"
+                aria-label="Cargar más fragancias"
+              >
+                {loadingMore ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-gold/40 border-t-gold rounded-full animate-spin" />
+                    Cargando…
+                  </>
+                ) : (
+                  <>
+                    Cargar más
+                    <span className="text-gold/70">({Math.min(PAGE_SIZE, total - offset)})</span>
+                  </>
+                )}
+              </button>
+            </>
+          )}
+          {!hasMore && !family && total > 0 && (
+            <p className="text-[11px] text-ink-mute/60">Has visto las {total} fragancias curadas</p>
           )}
         </div>
       </div>

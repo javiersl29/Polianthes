@@ -60,6 +60,16 @@ export async function listFragrances(): Promise<FragranceListItem[]> {
   return result.rows;
 }
 
+/**
+ * Versión ligera para sitemap: solo slug + updated_at.
+ */
+export async function listActiveFragranceSlugs(): Promise<Array<{ slug: string; updated_at: Date }>> {
+  const r = await query<{ slug: string; updated_at: Date }>(
+    `SELECT slug, updated_at FROM fragrance WHERE active = TRUE ORDER BY updated_at DESC`
+  );
+  return r.rows;
+}
+
 export async function searchFragrances(
   text: string,
   note?: string | null,

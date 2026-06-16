@@ -1,14 +1,102 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
+import type { Metadata } from "next";
 import { getFragranceBySlug, getSimilarFragrances } from "@/lib/fragrances";
 import { genderBadge } from "@/lib/visual";
 import AddToCart from "@/components/AddToCart";
 import HexagonView from "@/components/HexagonView";
 import FragranceReviews from "@/components/FragranceReviews";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 600;
 
-export default async function FragrancePage({ params }: { params: { slug: string } }) {
+const SITE_URL = "https://polianthes.shop";
+
+type Props = { params: { slug: string } };
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const detail = await getFragranceBySlug(params.slug);
+  if (!detail) {
+    return { title: "Fragancia no encontrada" };
+  }
+  const title = detail.artistic_name
+    ? `${detail.artistic_name} (${detail.brand}) — Polianthes`
+    : `${detail.brand} ${detail.name} — Polianthes`;
+  const description = detail.description
+    ? detail.description.slice(0, 200)
+    : `Perfume de inspiración ${detail.brand} ${detail.name}. Familia ${detail.family ?? "olfativa"}. Disponible en 10/30/60/100ml. Envíos a todo México.`;
+  const imageUrl = detail.image_url ?? `${SITE_URL}/brand/Logo-Color.png`;
+  const canonical = `/fragancias/${detail.slug}`;
+
+  return {
+    title,
+    description,
+    keywords: [
+      detail.brand,
+      detail.name,
+      detail.family ?? "perfume",
+      detail.gender,
+      "perfume de inspiración",
+      "Polianthes",
+      ...(detail.top_notes ?? []).slice(0, 3)
+    ],
+    alternates: { canonical },
+    openGraph: {
+      type: "website",
+      locale: "es_MX",
+      url: `${SITE_URL}${canonical}`,
+      title,
+      description,
+      images: [{ url: imageUrl, alt: title }]
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [imageUrl]
+    }
+  };
+}
+
+function buildProductJsonLd(detail: NonNullable<Awaited<ReturnType<typeof getFragranceBySlug>>>) {
+  const image = detail.image_url ?? `${SITE_URL}/brand/Logo-Color.png`;
+  const offers: Array<Record<string, unknown>> = [];
+  for (const p of detail.presentations ?? []) {
+    if (p.price_cents == null) continue;
+    const price = (p.price_cents / 100).toFixed(2);
+    const ml = p.size_ml;
+    offers.push({
+      "@type": "Offer",
+      price,
+      priceCurrency: "MXN",
+      availability: "https://schema.org/InStock",
+      url: `${SITE_URL}/fragancias/${detail.slug}`,
+      sku: `${detail.display_code ?? `PLT-${detail.id}`}-${ml}`
+    });
+  }
+  return {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: detail.artistic_name ?? `${detail.brand} ${detail.name}`,
+    alternateName: detail.full_name,
+    description: detail.description ?? `Perfume de inspiración ${detail.brand} ${detail.name}.`,
+    image,
+    brand: { "@type": "Brand", name: detail.brand },
+    sku: detail.display_code ?? `PLT-${detail.id}`,
+    category: detail.family ?? "Perfume",
+    offers: offers.length > 0 ? offers : {
+      "@type": "AggregateOffer",
+      priceCurrency: "MXN",
+      lowPrice: "100",
+      highPrice: "450",
+      offerCount: 4,
+      availability: "https://schema.org/InStock",
+      url: `${SITE_URL}/fragancias/${detail.slug}`
+    }
+  };
+}
+
+export default async function FragrancePage({ params }: Props) {
   const detail = await getFragranceBySlug(params.slug);
   if (!detail) notFound();
   const similar = await getSimilarFragrances(params.slug, 5);
@@ -31,8 +119,14 @@ export default async function FragrancePage({ params }: { params: { slug: string
     nostalgico: detail.vec_nostalgico
   };
 
+  const jsonLd = buildProductJsonLd(detail);
+
   return (
     <main className="pt-24 sm:pt-28 pb-16 sm:pb-20 px-4">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <div className="max-w-5xl mx-auto">
         <Link
           href="/#catalogo"
@@ -44,20 +138,33 @@ export default async function FragrancePage({ params }: { params: { slug: string
 
         <div className="mt-6 sm:mt-8 grid grid-cols-1 md:grid-cols-2 gap-8 sm:gap-10">
           <div className="space-y-4">
-            <div className="aspect-[3/4] rounded-2xl sm:rounded-3xl liquid-glass overflow-hidden grid place-items-center">
+            <div className="aspect-[3/4] rounded-2xl sm:rounded-3xl liquid-glass overflow-hidden grid place-items-center relative">
               {detail.image_url ? (
-                <img
+                <Image
                   src={detail.image_version != null ? `${detail.image_url}?v=${detail.image_version}` : detail.image_url}
                   alt={detail.full_name}
-                  className="w-full h-full object-cover"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  priority
+                  fetchPriority="high"
+                  quality={80}
+                  className="object-cover"
                 />
               ) : (
                 <span className="font-display italic text-gold text-6xl sm:text-7xl">{detail.brand[0]}</span>
               )}
             </div>
             {detail.inspiration_image_url && (
-              <div className="aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden opacity-60">
-                <img src={detail.inspiration_image_url} alt="Inspiración" className="w-full h-full object-cover" />
+              <div className="aspect-[16/9] rounded-xl sm:rounded-2xl overflow-hidden opacity-60 relative">
+                <Image
+                  src={detail.inspiration_image_url}
+                  alt="Inspiración"
+                  fill
+                  sizes="(max-width: 768px) 100vw, 50vw"
+                  loading="lazy"
+                  quality={60}
+                  className="object-cover"
+                />
               </div>
             )}
           </div>
@@ -132,7 +239,6 @@ export default async function FragrancePage({ params }: { params: { slug: string
           </div>
         </div>
 
-        {/* Hexágonos: composición (familias) y ocasión (mood) */}
         <section className="mt-12 sm:mt-16" aria-labelledby="hex-section">
           <div className="flex items-end justify-between gap-4 mb-6">
             <div>
@@ -156,7 +262,6 @@ export default async function FragrancePage({ params }: { params: { slug: string
           </div>
         </section>
 
-        {/* 5 fragancias con mayor afinidad olfativa */}
         {similar.length > 0 && (
           <section className="mt-12 sm:mt-16" aria-labelledby="similar-section">
             <div className="flex items-end justify-between gap-4 mb-6">
@@ -183,12 +288,16 @@ export default async function FragrancePage({ params }: { params: { slug: string
                     href={`/fragancias/${s.slug}`}
                     className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
                   >
-                    <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
+                    <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute relative">
                       {s.image_url ? (
-                        <img
+                        <Image
                           src={s.image_version != null ? `${s.image_url}?v=${s.image_version}` : s.image_url}
                           alt={s.full_name}
-                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          fill
+                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                          loading="lazy"
+                          quality={70}
+                          className="object-cover transition-transform duration-500 group-hover:scale-105"
                         />
                       ) : (
                         <span className="font-display italic text-gold text-3xl sm:text-4xl">{s.brand[0]}</span>
@@ -229,7 +338,6 @@ export default async function FragrancePage({ params }: { params: { slug: string
           </section>
         )}
 
-        {/* Reseñas */}
         <FragranceReviews slug={params.slug} />
       </div>
     </main>

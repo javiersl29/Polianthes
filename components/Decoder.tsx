@@ -4,6 +4,45 @@ import { motion, AnimatePresence } from "framer-motion";
 import { HEXAGON_SETS, AxisSet, DecodeVector, defaultVector } from "@/lib/decoder";
 import FadingVideo from "./FadingVideo";
 
+const FAQ_JSON_LD = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: [
+    {
+      "@type": "Question",
+      name: "¿Qué es el decodificador de fragancias con IA?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Es una herramienta que traduce tus preferencias olfativas (familias, estado de ánimo o fragancia de referencia) en una selección personalizada de 3 a 10 perfumes. Compara tu mapa contra 146 fragancias curadas para encontrar las de mayor afinidad."
+      }
+    },
+    {
+      "@type": "Question",
+      name: "¿Las fragancias son originales o inspiradas?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Las fragancias Polianthes son interpretaciones (inspira-das) de las composiciones originales más icónicas del mundo. No estamos afiliados con las casas originales; los nombres se usan solo como referencia olfativa comparativa."
+      }
+    },
+    {
+      "@type": "Question",
+      name: "¿Cuánto tarda el envío y cuáles son las presentaciones?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Enviamos a todo México. Las presentaciones disponibles son 10 ml (travel), 30 ml (estándar), 60 ml (grande) y 100 ml (coleccionista). El tiempo de entrega depende de la zona de envío."
+      }
+    },
+    {
+      "@type": "Question",
+      name: "¿Qué métodos de pago aceptan?",
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: "Aceptamos pagos con tarjeta de crédito y débito, y Mercado Pago. Todas las transacciones se procesan de forma segura."
+      }
+    }
+  ]
+};
+
 const DECODER_VIDEO = "https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260419_065931_e3ca7b53-d32e-4ad5-81de-dc9d6fcfda6d.mp4";
 
 type Gender = "hombre" | "mujer" | "unisex";
@@ -231,6 +270,10 @@ export default function Decoder() {
 
   return (
     <section id="decodificador" className="relative py-20 sm:py-32 px-4 overflow-hidden">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(FAQ_JSON_LD) }}
+      />
       <HexBackground />
 
       <div className="relative max-w-6xl mx-auto">
