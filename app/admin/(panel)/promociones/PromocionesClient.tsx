@@ -85,6 +85,8 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   const [saving, setSaving] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
+  const [refImage, setRefImage] = useState<string>("");
+  const [imageMode, setImageMode] = useState<"ai" | "upload" | "url">("ai");
 
   async function reload() {
     const r = await fetch("/api/admin/promotions");
@@ -96,6 +98,8 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
     setEditing(empty());
     setIsNew(true);
     setImagePrompt("");
+    setRefImage("");
+    setImageMode("ai");
   }
 
   function startEdit(p: Promotion) {
@@ -105,7 +109,9 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
       ends_at: p.ends_at ? p.ends_at.slice(0, 16) : ""
     });
     setIsNew(false);
-    setImagePrompt(p.image_ai_generated && p.image_url ? "" : "");
+    setImagePrompt("");
+    setRefImage("");
+    setImageMode("ai");
   }
 
   async function save() {
@@ -183,6 +189,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         type: editing.type,
         badge_color: editing.badge_color,
         prompt: imagePrompt || undefined,
+        reference_image: refImage || undefined,
         id: !isNew ? editing.id : undefined
       };
       const r = await fetch("/api/admin/promotions/generate-image", {
@@ -192,13 +199,34 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Error");
-      setEditing((e) => ({ ...e!, image_url: data.image_url }));
+      setEditing((e) => ({ ...e!, image_url: data.image_url, image_ai_generated: true }));
       toast.success("Imagen generada con IA");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error generando imagen");
     } finally {
       setGenerating(false);
     }
+  }
+
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>, target: "image" | "reference") {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) {
+      toast.error("La imagen es muy grande (máx 8MB)");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      if (target === "image") {
+        setEditing((ed) => ({ ...ed!, image_url: result, image_ai_generated: false }));
+        toast.success("Imagen subida");
+      } else {
+        setRefImage(result);
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
   }
 
   function applyPreset(preset: typeof PROMO_PRESETS[number]) {
@@ -393,44 +421,129 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
 
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-1.5">Imagen promocional</p>
+
+                {/* Preview actual */}
                 {editing.image_url ? (
-                  <div className="rounded-xl overflow-hidden border border-line/40 mb-2">
-                    <img src={editing.image_url} alt={editing.title} className="w-full h-48 object-cover" />
+                  <div className="rounded-xl overflow-hidden border border-line/40 mb-2 relative group">
+                    <img src={editing.image_url} alt={editing.title} className="w-full h-44 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => setEditing({ ...editing, image_url: "" })}
+                      className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 text-white grid place-items-center hover:bg-rose-500 transition-colors"
+                      aria-label="Quitar imagen"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                    {editing.image_ai_generated && (
+                      <span className="absolute bottom-2 left-2 px-2 py-0.5 rounded-full text-[9px] uppercase tracking-wider bg-gold/90 text-bg font-semibold">IA</span>
+                    )}
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-line/60 h-32 grid place-items-center text-ink-mute text-xs mb-2">
-                    Sin imagen. Genera una con IA o pega una URL.
+                  <div className="rounded-xl border border-dashed border-line/60 h-28 grid place-items-center text-ink-mute text-xs mb-2">
+                    Sin imagen todavía
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <input
-                    value={editing.image_url ?? ""}
-                    onChange={(e) => setEditing({ ...editing, image_url: e.target.value })}
-                    placeholder="https://... o data:image/..."
-                    className="flex-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
-                  />
-                  <button
-                    type="button"
-                    onClick={generateImage}
-                    disabled={generating || !editing.title}
-                    className="shrink-0 rounded-full bg-gold text-bg px-3 py-2 text-xs font-medium hover:bg-gold/90 transition-colors disabled:opacity-50 flex items-center gap-1.5"
-                  >
-                    {generating ? (
-                      <>
-                        <span className="w-3 h-3 border-2 border-bg/40 border-t-bg rounded-full animate-spin" />
-                        Generando
-                      </>
-                    ) : (
-                      <>✦ Generar con IA</>
-                    )}
-                  </button>
+
+                {/* Tabs de modo */}
+                <div className="flex gap-1 mb-2.5 p-1 rounded-lg bg-black/30 border border-line/40">
+                  {([
+                    { v: "ai", l: "Generar con IA" },
+                    { v: "upload", l: "Subir imagen" },
+                    { v: "url", l: "Pegar URL" }
+                  ] as const).map((t) => (
+                    <button
+                      key={t.v}
+                      type="button"
+                      onClick={() => setImageMode(t.v)}
+                      className={`flex-1 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all ${imageMode === t.v ? "bg-gold text-bg" : "text-ink-mute hover:text-ink"}`}
+                    >
+                      {t.l}
+                    </button>
+                  ))}
                 </div>
-                <input
-                  value={imagePrompt}
-                  onChange={(e) => setImagePrompt(e.target.value)}
-                  placeholder="Prompt personalizado (opcional). Ej: 'three golden perfume bottles on marble with rose petals'"
-                  className="mt-2 w-full bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
-                />
+
+                {/* Modo IA */}
+                {imageMode === "ai" && (
+                  <div className="space-y-2">
+                    {/* Imagen de referencia opcional */}
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-ink-mute mb-1">Imagen de referencia (opcional)</p>
+                      {refImage ? (
+                        <div className="relative rounded-lg overflow-hidden border border-line/40 mb-1.5 inline-block">
+                          <img src={refImage} alt="Referencia" className="h-20 object-cover" />
+                          <button
+                            type="button"
+                            onClick={() => setRefImage("")}
+                            className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/70 text-white grid place-items-center hover:bg-rose-500"
+                          >
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                          </button>
+                        </div>
+                      ) : (
+                        <label className="flex items-center gap-2 cursor-pointer rounded-lg border border-dashed border-line/50 px-3 py-2 text-[11px] text-ink-mute hover:border-gold/40 transition-colors">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-7M16 6l-4-4-4 4M12 2v13" /></svg>
+                          Subir imagen base para que la IA la transforme
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "reference")} />
+                        </label>
+                      )}
+                    </div>
+
+                    {/* Prompt */}
+                    <input
+                      value={imagePrompt}
+                      onChange={(e) => setImagePrompt(e.target.value)}
+                      placeholder="Prompt personalizado (opcional). Ej: 'three golden perfume bottles on marble with rose petals, dark background'"
+                      className="w-full bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
+                    />
+
+                    {/* Botón generar */}
+                    <button
+                      type="button"
+                      onClick={generateImage}
+                      disabled={generating || !editing.title}
+                      className="w-full rounded-full bg-gold text-bg px-4 py-2.5 text-xs font-semibold hover:bg-gold/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {generating ? (
+                        <>
+                          <span className="w-3.5 h-3.5 border-2 border-bg/40 border-t-bg rounded-full animate-spin" />
+                          Generando con Nano Banana…
+                        </>
+                      ) : (
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2L12 3z" /></svg>
+                          {refImage ? "Generar desde referencia" : "Generar con IA"}
+                        </>
+                      )}
+                    </button>
+                    <p className="text-[10px] text-ink-mute/60 text-center">
+                      Modelo: gemini-3.1-flash-image (Nano Banana) · 16:9
+                    </p>
+                  </div>
+                )}
+
+                {/* Modo Subir */}
+                {imageMode === "upload" && (
+                  <div>
+                    <label className="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-xl border-2 border-dashed border-line/50 px-4 py-8 text-center hover:border-gold/40 transition-colors">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-gold/60"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+                      <span className="text-xs text-ink">Haz clic para subir una imagen</span>
+                      <span className="text-[10px] text-ink-mute">PNG, JPG, WebP · máx 8MB · 16:9 recomendado</span>
+                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
+                    </label>
+                  </div>
+                )}
+
+                {/* Modo URL */}
+                {imageMode === "url" && (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={editing.image_url ?? ""}
+                      onChange={(e) => setEditing({ ...editing, image_url: e.target.value })}
+                      placeholder="https://ejemplo.com/banner.jpg"
+                      className="flex-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
+                    />
+                  </div>
+                )}
               </div>
 
               <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
