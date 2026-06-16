@@ -43,6 +43,44 @@ export async function GET(req: NextRequest) {
     await query(sql);
     result.migrated = true;
   }
+  if (action === "drop_promotion") {
+    await query(`DROP TABLE IF EXISTS promotion CASCADE`);
+    result.dropped = "promotion";
+  }
+  if (action === "recreate_promotion") {
+    await query(`DROP TABLE IF EXISTS promotion CASCADE`);
+    const sql = `
+      CREATE TABLE promotion (
+        id SERIAL PRIMARY KEY,
+        slug TEXT UNIQUE NOT NULL,
+        title TEXT NOT NULL,
+        subtitle TEXT,
+        description TEXT,
+        type TEXT NOT NULL DEFAULT 'bundle'
+          CHECK (type IN ('3x2','2x1','percent','fixed','bundle','free_shipping')),
+        value INTEGER NOT NULL DEFAULT 0,
+        required_size_ml INTEGER NOT NULL DEFAULT 0,
+        quantity_to_take INTEGER NOT NULL DEFAULT 3,
+        quantity_to_pay INTEGER NOT NULL DEFAULT 2,
+        image_url TEXT,
+        image_prompt TEXT,
+        image_ai_generated BOOLEAN NOT NULL DEFAULT FALSE,
+        badge_text TEXT,
+        badge_color TEXT NOT NULL DEFAULT 'gold' CHECK (badge_color IN ('gold','rose','sky','emerald','violet')),
+        min_items INTEGER NOT NULL DEFAULT 0,
+        max_items INTEGER NOT NULL DEFAULT 0,
+        starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ends_at TIMESTAMPTZ,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX idx_promotion_active ON promotion(active, sort_order) WHERE active = TRUE;
+    `;
+    await query(sql);
+    result.recreated = "promotion";
+  }
   if (action === "clean_footer_links") {
     const r = await query(
       `DELETE FROM nav_link WHERE location = 'footer' AND (href = '/admin' OR href LIKE '%github%') RETURNING id, label`
