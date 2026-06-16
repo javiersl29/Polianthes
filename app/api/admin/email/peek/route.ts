@@ -71,6 +71,12 @@ export async function GET(req: NextRequest) {
     await query(`UPDATE email_config SET from_name = $1, updated_at = NOW() WHERE id = 1`, [name]);
     result.updated_from_name = name;
   }
+  if (action === "migrate") {
+    const fs = await import("node:fs");
+    const sql = fs.readFileSync("db/schema.sql", "utf8");
+    await query(sql);
+    result.migrated = true;
+  }
 
   return NextResponse.json(result);
 }
