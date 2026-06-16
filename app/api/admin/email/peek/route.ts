@@ -43,6 +43,13 @@ export async function GET(req: NextRequest) {
     await query(sql);
     result.migrated = true;
   }
+  if (action === "inspect_customer_table") {
+    const r = await query<{ column_name: string; data_type: string }>(
+      `SELECT column_name, data_type FROM information_schema.columns
+       WHERE table_name = 'customer' ORDER BY ordinal_position`
+    );
+    result.customer_columns = r.rows;
+  }
 
   return NextResponse.json(result);
 }
