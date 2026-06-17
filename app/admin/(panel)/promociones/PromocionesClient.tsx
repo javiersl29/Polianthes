@@ -105,8 +105,8 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   function startEdit(p: Promotion) {
     setEditing({
       ...p,
-      starts_at: p.starts_at ? p.starts_at.slice(0, 16) : "",
-      ends_at: p.ends_at ? p.ends_at.slice(0, 16) : ""
+      starts_at: p.starts_at ? new Date(p.starts_at).toISOString().slice(0, 16) : "",
+      ends_at: p.ends_at ? new Date(p.ends_at).toISOString().slice(0, 16) : ""
     });
     setIsNew(false);
     setImagePrompt("");
