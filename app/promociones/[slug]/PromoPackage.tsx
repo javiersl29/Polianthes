@@ -12,7 +12,9 @@ type Promotion = {
   description: string | null;
   type: string;
   value: number;
+  bundle_price_cents: number;
   required_size_ml: number;
+  mix_sizes: boolean;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -48,13 +50,16 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
   const router = useRouter();
   const { add, clear, items, total } = useCart();
 
-  const isQuantityPromo = promo.type === "3x2" || promo.type === "2x1";
+  const isQuantityPromo = promo.type === "3x2" || promo.type === "2x1" || promo.type === "bundle_qty";
   const take = isQuantityPromo ? promo.quantity_to_take || 3 : 1;
   const pay = isQuantityPromo ? promo.quantity_to_pay || 2 : 1;
   const requiredMl = promo.required_size_ml;
   const isPercent = promo.type === "percent";
   const isFixed = promo.type === "fixed";
   const isFreeShipping = promo.type === "free_shipping";
+  const isSecondUnit = promo.type === "second_unit";
+  const isBundleQty = promo.type === "bundle_qty";
+  const mixSizes = promo.mix_sizes;
 
   const [selected, setSelected] = useState<Fragrance[]>([]);
   const [search, setSearch] = useState("");
@@ -89,8 +94,25 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
 
   // Calcular el precio estimado
   const subtotalCents = selected.reduce((s, f) => s + (f.price_cents ?? 0), 0);
-  const discountCents = isPercent ? Math.round(subtotalCents * (promo.value / 100)) : (isFixed ? promo.value : 0);
-  const paidCents = subtotalCents - discountCents;
+  let discountCents = 0;
+  if (isPercent) {
+    discountCents = Math.round(subtotalCents * (promo.value / 100));
+  } else if (isFixed) {
+    discountCents = promo.value;
+  } else if (isBundleQty && promo.bundle_price_cents > 0) {
+    const groups = Math.floor(subtotalCents / (subtotalCents / Math.max(1, selected.length))) * 0 + Math.floor(selected.length / take);
+    // Por simplicidad: muestra el ahorro como "lo que pagas" vs "lo que pagarías sin promo"
+    const normalCost = (() => {
+      const prices = selected.map((f) => f.price_cents ?? 0).sort((a, b) => a - b);
+      return prices.slice(0, take * groups).reduce((s, p) => s + p, 0);
+    })();
+    discountCents = Math.max(0, normalCost - promo.bundle_price_cents * groups);
+  } else if (isSecondUnit && selected.length >= 2) {
+    const prices = selected.map((f) => f.price_cents ?? 0).sort((a, b) => b - a);
+    const pairs = Math.floor(selected.length / 2);
+    discountCents = prices.slice(0, pairs).reduce((s, p) => s + Math.round(p * (promo.value / 100)), 0);
+  }
+  const paidCents = Math.max(0, subtotalCents - discountCents);
   const payCount = isQuantityPromo ? pay : 1;
 
   function claim() {
@@ -126,6 +148,12 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
       params.set("promo_take", String(take));
       params.set("promo_pay", String(pay));
     }
+    if (isBundleQty) {
+      params.set("promo_bundle_price_cents", String(promo.bundle_price_cents));
+    }
+    if (isSecondUnit) {
+      params.set("promo_value", String(promo.value));
+    }
     router.push(`/checkout?${params.toString()}`);
   }
 
@@ -147,13 +175,18 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
             <p className="text-2xl sm:text-3xl font-display italic">
               {promo.type === "3x2" && `3x2 en fragancias de ${requiredMl}ml`}
               {promo.type === "2x1" && `2x1 en fragancias de ${requiredMl}ml`}
+              {promo.type === "bundle_qty" && `${take} fragancias${requiredMl ? ` de ${requiredMl}ml` : ""} por $${(promo.bundle_price_cents / 100).toLocaleString("es-MX")}`}
+              {promo.type === "second_unit" && `2da unidad a ${promo.value}%`}
               {promo.type === "percent" && `${promo.value}% de descuento`}
               {promo.type === "fixed" && `$${(promo.value / 100).toLocaleString("es-MX")} de descuento`}
               {promo.type === "bundle" && "Paquete especial"}
               {promo.type === "free_shipping" && "Envío gratis"}
             </p>
-            {requiredMl > 0 && (
+            {requiredMl > 0 && promo.type !== "bundle_qty" && (
               <p className="text-xs opacity-70 mt-1">Presentación de {requiredMl}ml</p>
+            )}
+            {isBundleQty && mixSizes && (
+              <p className="text-xs opacity-70 mt-1">Puedes mezclar tamaños</p>
             )}
           </div>
           <div className="text-right">
@@ -238,19 +271,34 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
           <div className="text-sm">
             {allSelected ? (
               <>
-                <p className="text-ink">Subtotal: <span className="text-ink-mute line-through">{money(subtotalCents)}</span></p>
-                {discountCents > 0 && (
-                  <p className="text-emerald-300 text-xs">Descuento: −{money(discountCents)}</p>
+                {isBundleQty ? (
+                  <>
+                    <p className="text-ink">Precio del paquete: <span className="font-display italic text-xl text-gold">{money(promo.bundle_price_cents)}</span></p>
+                    {subtotalCents > promo.bundle_price_cents && (
+                      <p className="text-ink-mute text-xs line-through">{money(subtotalCents)} sin promoción</p>
+                    )}
+                    {discountCents > 0 && (
+                      <p className="text-emerald-300 text-xs">Ahorras {money(discountCents)}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-ink">Subtotal: {discountCents > 0 && <span className="text-ink-mute line-through">{money(subtotalCents)}</span>}</p>
+                    {discountCents > 0 && (
+                      <p className="text-emerald-300 text-xs">Descuento: −{money(discountCents)}</p>
+                    )}
+                    {isQuantityPromo && take > pay && (
+                      <p className="text-emerald-300 text-xs">Ahorras {take - pay} fragancia{take - pay > 1 ? "s" : ""}</p>
+                    )}
+                    <p className="font-display italic text-2xl text-gold">{money(paidCents)}</p>
+                  </>
                 )}
-                {isQuantityPromo && take > pay && (
-                  <p className="text-emerald-300 text-xs">Ahorras {take - pay} fragancia{take - pay > 1 ? "s" : ""}</p>
-                )}
-                <p className="font-display italic text-2xl text-gold">{money(paidCents)}</p>
               </>
             ) : (
               <p className="text-ink-mute">
                 Elige {itemsCount - count} fragancia{itemsCount - count === 1 ? "" : "s"} más
-                {requiredMl > 0 && ` de ${requiredMl}ml`}
+                {requiredMl > 0 && promo.type !== "bundle_qty" && ` de ${requiredMl}ml`}
+                {isBundleQty && requiredMl > 0 && ` de ${requiredMl}ml`}
               </p>
             )}
           </div>

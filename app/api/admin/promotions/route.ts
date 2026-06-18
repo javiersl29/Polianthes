@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "slug y title son obligatorios" }, { status: 400 });
   }
   const type = String(body.type ?? "bundle");
-  const validTypes = ["3x2", "2x1", "percent", "fixed", "bundle", "free_shipping"];
+  const validTypes = ["3x2", "2x1", "bundle_qty", "second_unit", "percent", "fixed", "bundle", "free_shipping", "tiered"];
   if (!validTypes.includes(type)) {
     return NextResponse.json({ error: "tipo inválido" }, { status: 400 });
   }
@@ -30,10 +30,10 @@ export async function POST(req: NextRequest) {
   try {
     const r = await query(
       `INSERT INTO promotion
-        (slug, title, subtitle, description, type, value, required_size_ml,
+        (slug, title, subtitle, description, type, value, bundle_price_cents, required_size_ml, mix_sizes,
          quantity_to_take, quantity_to_pay, image_url, image_prompt, image_ai_generated,
          badge_text, badge_color, min_items, max_items, starts_at, ends_at, active, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
        RETURNING *`,
       [
         slug,
@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
         body.description ?? null,
         type,
         Number(body.value ?? 0),
+        Number(body.bundle_price_cents ?? 0),
         Number(body.required_size_ml ?? 0),
+        Boolean(body.mix_sizes ?? false),
         Number(body.quantity_to_take ?? 3),
         Number(body.quantity_to_pay ?? 2),
         body.image_url ?? null,

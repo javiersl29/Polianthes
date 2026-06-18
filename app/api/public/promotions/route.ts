@@ -13,7 +13,9 @@ export async function GET() {
     description: string | null;
     type: string;
     value: number;
+    bundle_price_cents: number;
     required_size_ml: number;
+    mix_sizes: boolean;
     quantity_to_take: number;
     quantity_to_pay: number;
     image_url: string | null;
@@ -25,8 +27,9 @@ export async function GET() {
     ends_at: string | null;
     sort_order: number;
   }>(
-    `SELECT id, slug, title, subtitle, description, type, value, required_size_ml,
-            quantity_to_take, quantity_to_pay, image_url, badge_text, badge_color,
+    `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
+            required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
+            image_url, badge_text, badge_color,
             min_items, max_items, starts_at, ends_at, sort_order
      FROM promotion
      WHERE active = TRUE

@@ -163,13 +163,14 @@ export async function POST(req: NextRequest) {
   let promoSummary = "";
   if (body.promo?.slug) {
     const pr = (await pool.query<{
-      type: string; value: number; required_size_ml: number;
+      type: string; value: number; bundle_price_cents: number; required_size_ml: number; mix_sizes: boolean;
       quantity_to_take: number; quantity_to_pay: number;
       min_items: number; max_items: number;
       starts_at: string | null; ends_at: string | null; active: boolean;
       title: string;
     }>(
-      `SELECT type, value, required_size_ml, quantity_to_take, quantity_to_pay,
+      `SELECT type, value, bundle_price_cents, required_size_ml, mix_sizes,
+              quantity_to_take, quantity_to_pay,
               min_items, max_items, starts_at, ends_at, active, title
        FROM promotion
        WHERE slug = $1`,
@@ -195,6 +196,39 @@ export async function POST(req: NextRequest) {
           promoApplied = true;
           promoSummary = `${pr.type.toUpperCase()}: lleva ${take} y paga ${pay}`;
         }
+      } else if (pr.type === "bundle_qty") {
+        // "Lleva N unidades por $X" — precio fijo por el bundle
+        const take = pr.quantity_to_take || 3;
+        if (pr.bundle_price_cents > 0 && totalItems >= take) {
+          // Cada grupo de `take` unidades cuesta bundle_price_cents
+          const groups = Math.floor(totalItems / take);
+          const normalCost = (() => {
+            // Para calcular el descuento, usamos los items más baratos como referencia
+            const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
+            allUnitPrices.sort((a, b) => a - b);
+            return allUnitPrices.slice(0, take * groups).reduce((s, p) => s + p, 0);
+          })();
+          const bundleCost = pr.bundle_price_cents * groups;
+          const bundleDiscount = Math.max(0, normalCost - bundleCost);
+          discountCents = Math.max(discountCents, bundleDiscount);
+          couponCode = `[BUNDLE ${take}×$${(pr.bundle_price_cents / 100).toFixed(0)}] ${pr.title}`;
+          promoApplied = true;
+          promoSummary = `Lleva ${take} por $${(pr.bundle_price_cents / 100).toFixed(0)}`;
+        }
+      } else if (pr.type === "second_unit") {
+        // "2da unidad a X%" — aplica a partir de 2 unidades
+        if (totalItems >= 2) {
+          const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
+          allUnitPrices.sort((a, b) => b - a); // Más caro primero
+          // La 2da unidad (y siguientes pares) recibe el descuento
+          const pairs = Math.floor(totalItems / 2);
+          const discountedPrices = allUnitPrices.slice(0, pairs);
+          const discount = discountedPrices.reduce((s, p) => s + Math.round(p * (pr.value / 100)), 0);
+          discountCents = Math.max(discountCents, discount);
+          couponCode = `[2DA ${pr.value}%] ${pr.title}`;
+          promoApplied = true;
+          promoSummary = `2da unidad a ${pr.value}%`;
+        }
       } else if (pr.type === "percent") {
         const d = Math.round(subtotalCents * (pr.value / 100));
         discountCents = Math.max(discountCents, d);
@@ -208,7 +242,6 @@ export async function POST(req: NextRequest) {
         promoSummary = `$${(pr.value / 100).toFixed(0)} de descuento`;
       } else if (pr.type === "free_shipping") {
         if (shippingCents > 0) {
-          // Guardar como cupón representativo, pero también ajustar envío a 0
           couponCode = `[ENVÍO GRATIS] ${pr.title}`;
           shippingCents = 0;
           promoApplied = true;

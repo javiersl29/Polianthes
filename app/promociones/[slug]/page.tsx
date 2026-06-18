@@ -16,7 +16,9 @@ type Promotion = {
   description: string | null;
   type: string;
   value: number;
+  bundle_price_cents: number;
   required_size_ml: number;
+  mix_sizes: boolean;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -28,8 +30,9 @@ type Promotion = {
 
 async function getPromotion(slug: string): Promise<Promotion | null> {
   const r = await query<Promotion>(
-    `SELECT id, slug, title, subtitle, description, type, value, required_size_ml,
-            quantity_to_take, quantity_to_pay, image_url, badge_text, badge_color,
+    `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
+            required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
+            image_url, badge_text, badge_color,
             min_items, max_items
      FROM promotion
      WHERE slug = $1 AND active = TRUE
@@ -40,8 +43,8 @@ async function getPromotion(slug: string): Promise<Promotion | null> {
   return r.rows[0] ?? null;
 }
 
-async function getFragrances(sizeMl: number) {
-  if (sizeMl <= 0) return [];
+async function getFragrances(sizeMl: number, mixSizes: boolean) {
+  if (sizeMl <= 0 && !mixSizes) return [];
   const r = await query<{
     id: number; slug: string; brand: string; name: string; full_name: string;
     family: string | null; display_code: string | null; artistic_name: string | null;
@@ -59,12 +62,14 @@ async function getFragrances(sizeMl: number) {
             LENGTH(f.image_data) AS image_version,
             MIN(p.price_cents) AS price_cents
      FROM fragrance f
-     INNER JOIN presentation p ON p.fragrance_id = f.id AND p.active = TRUE AND p.size_ml = $1
+     INNER JOIN presentation p ON p.fragrance_id = f.id AND p.active = TRUE
+       AND ${sizeMl > 0 ? "p.size_ml = $1" : "TRUE"}
      WHERE f.active = TRUE AND p.price_cents IS NOT NULL AND p.price_cents > 0
+       ${sizeMl > 0 ? "" : "AND p.size_ml > 0"}
      GROUP BY f.id
      ORDER BY f.brand, f.name
      LIMIT 200`,
-    [sizeMl]
+    sizeMl > 0 ? [sizeMl] : []
   );
   return r.rows;
 }
@@ -91,7 +96,7 @@ export default async function PromoPage({ params }: Props) {
   const promo = await getPromotion(params.slug);
   if (!promo) notFound();
 
-  const fragrances = await getFragrances(promo.required_size_ml);
+  const fragrances = await getFragrances(promo.required_size_ml, promo.mix_sizes);
 
   return (
     <main className="pt-24 sm:pt-28 pb-16 sm:pb-20 px-4 min-h-screen">

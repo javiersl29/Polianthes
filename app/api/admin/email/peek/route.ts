@@ -57,9 +57,11 @@ export async function GET(req: NextRequest) {
         subtitle TEXT,
         description TEXT,
         type TEXT NOT NULL DEFAULT 'bundle'
-          CHECK (type IN ('3x2','2x1','percent','fixed','bundle','free_shipping')),
+          CHECK (type IN ('3x2','2x1','bundle_qty','second_unit','percent','fixed','bundle','free_shipping','tiered')),
         value INTEGER NOT NULL DEFAULT 0,
+        bundle_price_cents INTEGER NOT NULL DEFAULT 0,
         required_size_ml INTEGER NOT NULL DEFAULT 0,
+        mix_sizes BOOLEAN NOT NULL DEFAULT FALSE,
         quantity_to_take INTEGER NOT NULL DEFAULT 3,
         quantity_to_pay INTEGER NOT NULL DEFAULT 2,
         image_url TEXT,
@@ -80,6 +82,17 @@ export async function GET(req: NextRequest) {
     `;
     await query(sql);
     result.recreated = "promotion";
+  }
+  if (action === "migrate_promotion_v2") {
+    // Drop CHECK constraint y añadir nuevos tipos + columnas nuevas
+    await query(`ALTER TABLE promotion DROP CONSTRAINT IF EXISTS promotion_type_check`);
+    await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS bundle_price_cents INTEGER NOT NULL DEFAULT 0`);
+    await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS mix_sizes BOOLEAN NOT NULL DEFAULT FALSE`);
+    await query(`
+      ALTER TABLE promotion ADD CONSTRAINT promotion_type_check
+        CHECK (type IN ('3x2','2x1','bundle_qty','second_unit','percent','fixed','bundle','free_shipping','tiered'))
+    `);
+    result.migrated_promotion_v2 = true;
   }
   if (action === "clean_footer_links") {
     const r = await query(

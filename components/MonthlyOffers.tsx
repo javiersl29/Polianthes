@@ -27,10 +27,13 @@ type Promotion = {
 const TYPE_LABELS: Record<string, string> = {
   "3x2": "3x2",
   "2x1": "2x1",
+  "bundle_qty": "Bundle",
+  "second_unit": "2da unidad",
   "percent": "% OFF",
   "fixed": "MXN OFF",
   "bundle": "Paquete",
-  "free_shipping": "Envío gratis"
+  "free_shipping": "Envío gratis",
+  "tiered": "Por niveles"
 };
 
 const COLOR_CLASSES: Record<string, { gradient: string; ring: string; text: string; border: string }> = {
@@ -41,10 +44,16 @@ const COLOR_CLASSES: Record<string, { gradient: string; ring: string; text: stri
   violet: { gradient: "from-violet-400/30 via-purple-300/15 to-transparent", ring: "ring-violet-300/50", text: "text-violet-300", border: "border-violet-300/40" }
 };
 
-function buildPromoSummary(p: Promotion): string {
+function buildPromoSummary(p: Promotion & { bundle_price_cents?: number; mix_sizes?: boolean }): string {
   switch (p.type) {
     case "3x2": return `Lleva 3 fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} y paga solo 2`;
     case "2x1": return `Lleva 2 fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} y paga solo 1`;
+    case "bundle_qty": {
+      const price = (p as any).bundle_price_cents ? `$${((p as any).bundle_price_cents / 100).toLocaleString("es-MX")}` : "$X";
+      const ml = p.required_size_ml ? ` de ${p.required_size_ml}ml` : "";
+      return `Lleva ${p.quantity_to_take} fragancias${ml} por ${price}`;
+    }
+    case "second_unit": return `2da unidad (y siguientes pares) a ${p.value}%`;
     case "percent": return `${p.value}% de descuento en fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""}`;
     case "fixed": return `$${(p.value / 100).toLocaleString("es-MX")} de descuento`;
     case "bundle": return "Paquete especial seleccionado a mano";

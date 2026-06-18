@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { slug: string } }) {
   const r = await query(
-    `SELECT id, slug, title, subtitle, description, type, value, required_size_ml,
-            quantity_to_take, quantity_to_pay, image_url, badge_text, badge_color,
+    `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
+            required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
+            image_url, badge_text, badge_color,
             min_items, max_items, starts_at, ends_at, sort_order
      FROM promotion
      WHERE slug = $1 AND active = TRUE

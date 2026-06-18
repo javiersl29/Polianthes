@@ -21,11 +21,14 @@ export default async function PromocionesPage() {
     description: string | null;
     type: string;
     value: number;
+    bundle_price_cents: number;
     required_size_ml: number;
+    mix_sizes: boolean;
     quantity_to_take: number;
     quantity_to_pay: number;
     image_url: string | null;
     image_ai_generated: boolean;
+    image_prompt: string | null;
     badge_text: string | null;
     badge_color: string;
     min_items: number;

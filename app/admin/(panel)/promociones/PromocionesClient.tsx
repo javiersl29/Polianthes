@@ -1,6 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { toast } from "sonner";
+import { motion, AnimatePresence } from "framer-motion";
 
 type Promotion = {
   id: number;
@@ -10,11 +11,14 @@ type Promotion = {
   description: string | null;
   type: string;
   value: number;
+  bundle_price_cents: number;
   required_size_ml: number;
+  mix_sizes: boolean;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
   image_ai_generated: boolean;
+  image_prompt: string | null;
   badge_text: string | null;
   badge_color: string;
   min_items: number;
@@ -27,14 +31,26 @@ type Promotion = {
   updated_at: string;
 };
 
-const TYPE_LABELS: Record<string, string> = {
-  "3x2": "3x2 (lleva 3, paga 2)",
-  "2x1": "2x1 (lleva 2, paga 1)",
-  "percent": "Descuento %",
-  "fixed": "Descuento fijo",
-  "bundle": "Paquete/Combo",
-  "free_shipping": "Envío gratis"
+type PromoType = {
+  id: string;
+  label: string;
+  short: string;
+  icon: string;
+  desc: string;
+  example: string;
+  color: string;
 };
+
+const PROMO_TYPES: PromoType[] = [
+  { id: "3x2", label: "3x2", short: "Lleva 3, paga 2", icon: "🎁", desc: "El cliente elige 3 fragancias y paga solo 2. Las más baratas son gratis.", example: "Lleva 3 perfumes de 60ml y paga solo 2", color: "from-amber-500/20 to-orange-500/10 border-amber-500/30" },
+  { id: "2x1", label: "2x1", short: "Lleva 2, paga 1", icon: "🎀", desc: "El cliente elige 2 fragancias y paga solo 1. La más barata es gratis.", example: "Lleva 2 perfumes de 30ml y paga solo 1", color: "from-pink-500/20 to-rose-500/10 border-pink-500/30" },
+  { id: "bundle_qty", label: "Bundle de cantidad", short: "N unidades por $X", icon: "📦", desc: "Pack de N fragancias a precio fijo. Ideal para sets de regalo o muestras.", example: "3 perfumes de 10ml por $290", color: "from-emerald-500/20 to-teal-500/10 border-emerald-500/30" },
+  { id: "second_unit", label: "2da unidad a X%", short: "Descuento en 2da", icon: "🏷️", desc: "La segunda unidad (y siguientes pares) tienen un % de descuento.", example: "2da unidad a 50% — lleva 2 perfumes, el segundo a mitad de precio", color: "from-violet-500/20 to-purple-500/10 border-violet-500/30" },
+  { id: "percent", label: "Descuento %", short: "X% en todo", icon: "💯", desc: "Porcentaje de descuento sobre el subtotal del carrito.", example: "20% de descuento en toda la tienda", color: "from-sky-500/20 to-blue-500/10 border-sky-500/30" },
+  { id: "fixed", label: "Descuento fijo", short: "$X de descuento", icon: "💵", desc: "Monto fijo de descuento sobre el subtotal (en pesos MXN).", example: "$100 de descuento en cualquier compra", color: "from-yellow-500/20 to-amber-500/10 border-yellow-500/30" },
+  { id: "free_shipping", label: "Envío gratis", short: "Sin costo de envío", icon: "🚚", desc: "El envío sale gratis al aplicar esta promoción.", example: "Envío gratis en pedidos seleccionados", color: "from-cyan-500/20 to-sky-500/10 border-cyan-500/30" },
+  { id: "tiered", label: "Por niveles", short: "Más llevas, más ahorras", icon: "📊", desc: "Descuento escalonado según cantidad: 2 unidades X%, 3 unidades Y%, etc.", example: "Lleva 2 y obtén 10%, lleva 3 y obtén 20%", color: "from-fuchsia-500/20 to-pink-500/10 border-fuchsia-500/30" }
+];
 
 const COLOR_OPTIONS: { value: string; label: string; cls: string }[] = [
   { value: "gold", label: "Dorado", cls: "from-gold/30 to-amber-300/20 text-gold border-gold/40" },
@@ -44,13 +60,15 @@ const COLOR_OPTIONS: { value: string; label: string; cls: string }[] = [
   { value: "violet", label: "Violeta", cls: "from-violet-400/30 to-purple-300/20 text-violet-300 border-violet-300/40" }
 ];
 
-const PROMO_PRESETS: { label: string; type: string; quantity_to_take: number; quantity_to_pay: number; value: number; required_size_ml: number }[] = [
-  { label: "3x2 en 60ml", type: "3x2", quantity_to_take: 3, quantity_to_pay: 2, value: 0, required_size_ml: 60 },
-  { label: "2x1 en 30ml", type: "2x1", quantity_to_take: 2, quantity_to_pay: 1, value: 0, required_size_ml: 30 },
-  { label: "20% de descuento", type: "percent", quantity_to_take: 0, quantity_to_pay: 0, value: 20, required_size_ml: 0 },
-  { label: "$100 de descuento", type: "fixed", quantity_to_take: 0, quantity_to_pay: 0, value: 10000, required_size_ml: 0 },
-  { label: "Envío gratis", type: "free_shipping", quantity_to_take: 0, quantity_to_pay: 0, value: 0, required_size_ml: 0 },
-  { label: "Paquete regalo", type: "bundle", quantity_to_take: 3, quantity_to_pay: 3, value: 0, required_size_ml: 0 }
+const QUICK_PRESETS: { label: string; type: string; config: Record<string, unknown> }[] = [
+  { label: "3x2 en 60ml", type: "3x2", config: { quantity_to_take: 3, quantity_to_pay: 2, required_size_ml: 60, badge_text: "3x2 60ml" } },
+  { label: "2x1 en 30ml", type: "2x1", config: { quantity_to_take: 2, quantity_to_pay: 1, required_size_ml: 30, badge_text: "2x1 30ml" } },
+  { label: "3 perfumes 10ml por $290", type: "bundle_qty", config: { quantity_to_take: 3, bundle_price_cents: 29000, required_size_ml: 10, mix_sizes: false, badge_text: "PACK $290" } },
+  { label: "Pack 5 por $450", type: "bundle_qty", config: { quantity_to_take: 5, bundle_price_cents: 45000, required_size_ml: 0, mix_sizes: true, badge_text: "PACK 5" } },
+  { label: "2da unidad a 50%", type: "second_unit", config: { value: 50, badge_text: "2DA 50%" } },
+  { label: "20% en todo", type: "percent", config: { value: 20, badge_text: "20% OFF" } },
+  { label: "$100 de descuento", type: "fixed", config: { value: 10000, badge_text: "-$100" } },
+  { label: "Envío gratis", type: "free_shipping", config: { badge_text: "ENVÍO GRATIS" } }
 ];
 
 const empty = (): Partial<Promotion> => ({
@@ -60,10 +78,13 @@ const empty = (): Partial<Promotion> => ({
   description: "",
   type: "3x2",
   value: 0,
+  bundle_price_cents: 0,
   required_size_ml: 60,
+  mix_sizes: false,
   quantity_to_take: 3,
   quantity_to_pay: 2,
   image_url: "",
+  image_ai_generated: false,
   badge_text: "",
   badge_color: "gold",
   min_items: 0,
@@ -76,6 +97,37 @@ const empty = (): Partial<Promotion> => ({
 
 function slugify(s: string) {
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function money(cents: number) {
+  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(cents / 100);
+}
+
+function buildCustomerSummary(p: Partial<Promotion>): string {
+  if (!p.type) return "Configura la promo";
+  switch (p.type) {
+    case "3x2":
+      return `Llévate ${p.quantity_to_take ?? 3} fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} y paga solo ${p.quantity_to_pay ?? 2}`;
+    case "2x1":
+      return `Llévate ${p.quantity_to_take ?? 2} fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} y paga solo ${p.quantity_to_pay ?? 1}`;
+    case "bundle_qty": {
+      const price = p.bundle_price_cents ? money(p.bundle_price_cents) : "$X";
+      const ml = p.required_size_ml ? ` de ${p.required_size_ml}ml` : (p.mix_sizes ? "" : " del mismo tamaño");
+      return `${p.quantity_to_take ?? 3} fragancias${ml} por ${price}`;
+    }
+    case "second_unit":
+      return `2da unidad (y siguientes pares) a ${p.value ?? 50}%`;
+    case "percent":
+      return `${p.value ?? 10}% de descuento en tu compra`;
+    case "fixed":
+      return `${p.value ? money(p.value) : "$X"} de descuento en tu compra`;
+    case "free_shipping":
+      return "Envío gratis al aplicar esta promoción";
+    case "tiered":
+      return "Más llevas, más ahorras";
+    default:
+      return p.subtitle || p.title || "Promoción especial";
+  }
 }
 
 export default function PromocionesClient({ initialPromotions }: { initialPromotions: Promotion[] }) {
@@ -134,7 +186,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "Error");
-        toast.success("Promoción creada");
+        toast.success("✓ Promoción creada");
         setEditing(null);
         await reload();
       } else {
@@ -145,7 +197,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error ?? "Error");
-        toast.success("Promoción actualizada");
+        toast.success("✓ Promoción actualizada");
         setEditing(null);
         await reload();
       }
@@ -175,7 +227,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
       body: JSON.stringify({ active: !p.active })
     });
     if (r.ok) {
-      toast.success(p.active ? "Desactivada" : "Activada");
+      toast.success(p.active ? "Pausada" : "Activada");
       await reload();
     }
   }
@@ -200,7 +252,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
       const data = await r.json();
       if (!r.ok) throw new Error(data.error ?? "Error");
       setEditing((e) => ({ ...e!, image_url: data.image_url, image_ai_generated: true }));
-      toast.success("Imagen generada con IA");
+      toast.success("✓ Imagen generada con IA");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error generando imagen");
     } finally {
@@ -220,7 +272,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
       const result = reader.result as string;
       if (target === "image") {
         setEditing((ed) => ({ ...ed!, image_url: result, image_ai_generated: false }));
-        toast.success("Imagen subida");
+        toast.success("✓ Imagen subida");
       } else {
         setRefImage(result);
       }
@@ -229,21 +281,36 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
     e.target.value = "";
   }
 
-  function applyPreset(preset: typeof PROMO_PRESETS[number]) {
+  function applyPreset(preset: typeof QUICK_PRESETS[number]) {
     if (!editing) return;
     setEditing({
       ...editing,
       type: preset.type,
-      value: preset.value,
-      required_size_ml: preset.required_size_ml,
-      quantity_to_take: preset.quantity_to_take,
-      quantity_to_pay: preset.quantity_to_pay,
+      ...preset.config,
       title: editing.title || preset.label,
-      badge_text: editing.badge_text || preset.label
-    });
+      badge_text: editing.badge_text || preset.config.badge_text || ""
+    } as Partial<Promotion>);
+    toast.success(`Plantilla "${preset.label}" aplicada`);
+  }
+
+  function setType(type: string) {
+    if (!editing) return;
+    const defaults: Record<string, Partial<Promotion>> = {
+      "3x2": { quantity_to_take: 3, quantity_to_pay: 2, required_size_ml: 60, value: 0, bundle_price_cents: 0, mix_sizes: false },
+      "2x1": { quantity_to_take: 2, quantity_to_pay: 1, required_size_ml: 30, value: 0, bundle_price_cents: 0, mix_sizes: false },
+      bundle_qty: { quantity_to_take: 3, bundle_price_cents: 29000, required_size_ml: 10, mix_sizes: false, value: 0, quantity_to_pay: 3 },
+      second_unit: { value: 50, quantity_to_take: 2, quantity_to_pay: 2, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
+      percent: { value: 20, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
+      fixed: { value: 10000, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
+      free_shipping: { value: 0, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
+      tiered: { value: 0, quantity_to_take: 3, quantity_to_pay: 3, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false }
+    };
+    setEditing({ ...editing, type, ...(defaults[type] || {}) });
   }
 
   const colorCls = (color: string) => COLOR_OPTIONS.find((c) => c.value === color)?.cls ?? COLOR_OPTIONS[0].cls;
+  const currentType = PROMO_TYPES.find((t) => t.id === editing?.type);
+  const customerSummary = useMemo(() => editing ? buildCustomerSummary(editing) : "", [editing]);
 
   return (
     <div className="space-y-6">
@@ -251,9 +318,8 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         <div>
           <p className="text-sm text-ink-mute">// Marketing</p>
           <h1 className="mt-1 font-display italic text-4xl sm:text-5xl text-ink tracking-[-2px]">Promociones del mes</h1>
-          <p className="mt-2 text-sm text-ink-mute max-w-xl">
-            Crea ofertas 3x2, 2x1, descuentos y paquetes. Aparecen en un carrusel en la página principal y los usuarios
-            pueden adquirirlas rápidamente eligiendo sus fragancias.
+          <p className="mt-2 text-sm text-ink-mute max-w-2xl">
+            Crea ofertas 3x2, 2x1, packs por precio fijo, descuentos y más. Aparecen en un carrusel en la página principal.
           </p>
         </div>
         <button
@@ -271,61 +337,61 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
             <p>Aún no hay promociones. Crea la primera con "+ Nueva promoción".</p>
           </div>
         )}
-        {promos.map((p) => (
-          <div
-            key={p.id}
-            className={`liquid-glass rounded-2xl overflow-hidden flex flex-col ${!p.active ? "opacity-60" : ""}`}
-          >
-            {p.image_url ? (
-              <div className="aspect-[16/9] bg-black/30 overflow-hidden">
-                <img src={p.image_url} alt={p.title} className="w-full h-full object-cover" />
-              </div>
-            ) : (
-              <div className="aspect-[16/9] bg-gradient-to-br from-gold/20 to-bg grid place-items-center text-gold/40 text-4xl">🎁</div>
-            )}
-            <div className="p-4 space-y-2 flex-1 flex flex-col">
-              <div className="flex items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <h3 className="font-display italic text-lg text-ink truncate">{p.title}</h3>
-                  {p.subtitle && <p className="text-xs text-ink-mute truncate">{p.subtitle}</p>}
+        {promos.map((p) => {
+          const t = PROMO_TYPES.find((x) => x.id === p.type);
+          return (
+            <div
+              key={p.id}
+              className={`liquid-glass rounded-2xl overflow-hidden flex flex-col ${!p.active ? "opacity-60" : ""}`}
+            >
+              {p.image_url ? (
+                <div className="aspect-[16/9] bg-black/30 overflow-hidden">
+                  <img src={p.image_url} alt={p.title} className="w-full h-full object-cover" />
                 </div>
-                <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border bg-gradient-to-br ${colorCls(p.badge_color)}`}>
-                  {p.badge_text || TYPE_LABELS[p.type] || p.type}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 text-[10px] text-ink-mute/60">
-                <span>slug: {p.slug}</span>
-                <span>·</span>
-                <span>{TYPE_LABELS[p.type] ?? p.type}</span>
-                {p.required_size_ml > 0 && <><span>·</span><span>{p.required_size_ml}ml</span></>}
-              </div>
-              <p className="text-[11px] text-ink-mute">
-                {p.active ? "Activa" : "Inactiva"} · orden {p.sort_order}
-              </p>
-              <div className="mt-auto flex items-center gap-2 pt-2">
-                <button
-                  onClick={() => startEdit(p)}
-                  className="flex-1 rounded-full liquid-glass border border-line/40 px-3 py-1.5 text-xs hover:border-gold/40"
-                >
-                  Editar
-                </button>
-                <button
-                  onClick={() => toggleActive(p)}
-                  className="rounded-full liquid-glass border border-line/40 px-3 py-1.5 text-xs hover:border-gold/40"
-                >
-                  {p.active ? "Pausar" : "Activar"}
-                </button>
-                <button
-                  onClick={() => del(p)}
-                  className="rounded-full px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-400/10"
-                  aria-label="Eliminar"
-                >
-                  Eliminar
-                </button>
+              ) : (
+                <div className={`aspect-[16/9] bg-gradient-to-br ${t?.color || "from-gold/20 to-bg"} grid place-items-center text-4xl opacity-50`}>
+                  {t?.icon || "🎁"}
+                </div>
+              )}
+              <div className="p-4 space-y-2 flex-1 flex flex-col">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-display italic text-lg text-ink truncate">{p.title}</h3>
+                    {p.subtitle && <p className="text-xs text-ink-mute truncate">{p.subtitle}</p>}
+                  </div>
+                  <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide border bg-gradient-to-br ${colorCls(p.badge_color)}`}>
+                    {p.badge_text || t?.label || p.type}
+                  </span>
+                </div>
+                <p className="text-xs text-ink/80 line-clamp-2">{p.subtitle || buildCustomerSummary(p)}</p>
+                <div className="flex items-center gap-2 text-[10px] text-ink-mute/60">
+                  <span>{t?.icon} {t?.label}</span>
+                </div>
+                <div className="mt-auto flex items-center gap-2 pt-2">
+                  <button
+                    onClick={() => startEdit(p)}
+                    className="flex-1 rounded-full liquid-glass border border-line/40 px-3 py-1.5 text-xs hover:border-gold/40"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => toggleActive(p)}
+                    className="rounded-full liquid-glass border border-line/40 px-3 py-1.5 text-xs hover:border-gold/40"
+                  >
+                    {p.active ? "Pausar" : "Activar"}
+                  </button>
+                  <button
+                    onClick={() => del(p)}
+                    className="rounded-full px-3 py-1.5 text-xs text-rose-300 hover:bg-rose-400/10"
+                    aria-label="Eliminar"
+                  >
+                    Eliminar
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Editor */}
@@ -333,7 +399,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-sm p-4 overflow-y-auto" onClick={() => !saving && !generating && setEditing(null)}>
           <div
             onClick={(e) => e.stopPropagation()}
-            className="liquid-glass-strong rounded-2xl max-w-3xl w-full p-5 sm:p-6 my-8"
+            className="liquid-glass-strong rounded-2xl max-w-4xl w-full p-5 sm:p-6 my-8"
           >
             <div className="flex items-center justify-between gap-3 mb-4">
               <h2 className="font-display italic text-2xl text-ink">
@@ -348,17 +414,47 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
               </button>
             </div>
 
-            <div className="space-y-3 max-h-[70vh] overflow-y-auto pr-1">
-              {/* Presets */}
+            <div className="space-y-5 max-h-[72vh] overflow-y-auto pr-1">
+              {/* ===== PASO 1: Tipo de promoción ===== */}
+              <div>
+                <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-2">
+                  1 · ¿Qué tipo de promoción es?
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {PROMO_TYPES.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setType(t.id)}
+                      className={`text-left rounded-xl border p-3 transition-all bg-gradient-to-br ${t.color} ${
+                        editing.type === t.id
+                          ? "ring-2 ring-gold shadow-lg"
+                          : "opacity-60 hover:opacity-100 hover:scale-[1.02]"
+                      }`}
+                    >
+                      <div className="text-2xl mb-1">{t.icon}</div>
+                      <div className="text-[12px] font-semibold text-ink leading-tight">{t.label}</div>
+                      <div className="text-[10px] text-ink-mute mt-0.5">{t.short}</div>
+                    </button>
+                  ))}
+                </div>
+                {currentType && (
+                  <p className="mt-2 text-[11px] text-ink-mute">
+                    💡 {currentType.desc} <span className="text-gold/80">Ej: {currentType.example}</span>
+                  </p>
+                )}
+              </div>
+
+              {/* ===== PASO 2: Plantillas rápidas ===== */}
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-1.5">Plantillas rápidas</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {PROMO_PRESETS.map((p) => (
+                  {QUICK_PRESETS.map((p) => (
                     <button
                       key={p.label}
                       type="button"
                       onClick={() => applyPreset(p)}
-                      className="rounded-full liquid-glass border border-line/40 px-2.5 py-1 text-[11px] hover:border-gold/40"
+                      className="rounded-full liquid-glass border border-line/40 px-2.5 py-1 text-[11px] hover:border-gold/40 hover:text-gold transition-colors"
                     >
                       {p.label}
                     </button>
@@ -366,43 +462,192 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                 </div>
               </div>
 
+              {/* ===== PASO 3: Campos contextuales según el tipo ===== */}
+              <div className="rounded-2xl border border-gold/20 bg-gold/5 p-4 space-y-3">
+                <p className="text-[11px] uppercase tracking-wider text-gold/80">
+                  2 · Reglas de la promoción
+                </p>
+
+                {/* 3x2 / 2x1: cantidad y tamaño */}
+                {(editing.type === "3x2" || editing.type === "2x1") && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <Field
+                      label={`Cantidad a llevar`}
+                      type="number"
+                      value={String(editing.quantity_to_take ?? 3)}
+                      onChange={(v) => {
+                        const take = Number(v);
+                        setEditing({ ...editing, quantity_to_take: take, quantity_to_pay: editing.type === "2x1" ? 1 : Math.max(1, take - 1) });
+                      }}
+                      help="¿Cuántas fragancias debe elegir el cliente?"
+                    />
+                    <Field
+                      label={`Cantidad a pagar`}
+                      type="number"
+                      value={String(editing.quantity_to_pay ?? 2)}
+                      onChange={(v) => setEditing({ ...editing, quantity_to_pay: Number(v) })}
+                      help="¿Cuántas paga efectivamente?"
+                    />
+                    <SizeField
+                      label="Tamaño (opcional)"
+                      value={editing.required_size_ml ?? 0}
+                      onChange={(v) => setEditing({ ...editing, required_size_ml: v })}
+                      help="0 = cualquier tamaño"
+                    />
+                  </div>
+                )}
+
+                {/* bundle_qty: N por $X */}
+                {editing.type === "bundle_qty" && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field
+                        label="Cantidad de fragancias"
+                        type="number"
+                        value={String(editing.quantity_to_take ?? 3)}
+                        onChange={(v) => setEditing({ ...editing, quantity_to_take: Number(v) })}
+                        help="¿Cuántas fragancias incluye el pack?"
+                      />
+                      <Field
+                        label="Precio del pack (MXN)"
+                        type="number"
+                        value={String((editing.bundle_price_cents ?? 0) / 100)}
+                        onChange={(v) => setEditing({ ...editing, bundle_price_cents: Math.round(Number(v) * 100) })}
+                        help="Precio fijo que paga el cliente"
+                        placeholder="290"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <SizeField
+                        label="Tamaño (opcional)"
+                        value={editing.required_size_ml ?? 0}
+                        onChange={(v) => setEditing({ ...editing, required_size_ml: v })}
+                        help="0 = cualquier tamaño"
+                      />
+                      <label className="block">
+                        <span className="text-[11px] uppercase tracking-wider text-gold/80">Variedad</span>
+                        <div className="mt-1 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setEditing({ ...editing, mix_sizes: false })}
+                            className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                              !editing.mix_sizes ? "bg-gold text-bg border-gold" : "border-line/40 text-ink-mute hover:border-gold/40"
+                            }`}
+                          >
+                            Mismo tamaño
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditing({ ...editing, mix_sizes: true })}
+                            className={`flex-1 rounded-lg border px-3 py-2 text-xs transition-colors ${
+                              editing.mix_sizes ? "bg-gold text-bg border-gold" : "border-line/40 text-ink-mute hover:border-gold/40"
+                            }`}
+                          >
+                            Mezclar tamaños
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-ink-mute mt-1">¿El cliente puede mezclar 10ml + 30ml + 60ml?</p>
+                      </label>
+                    </div>
+                    {editing.bundle_price_cents && editing.bundle_price_cents > 0 && editing.quantity_to_take && editing.quantity_to_take > 0 && (
+                      <div className="rounded-lg bg-bg/40 border border-gold/20 p-3 text-xs text-ink-mute">
+                        <strong className="text-gold">Ejemplo:</strong> {editing.quantity_to_take} fragancias cuestan normalmente ≈{" "}
+                        <span className="line-through">{money(editing.quantity_to_take * 10000)}</span> (3 × 10ml) → con la promo pagan <strong className="text-gold">{money(editing.bundle_price_cents)}</strong>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* second_unit */}
+                {editing.type === "second_unit" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field
+                      label="% de descuento en 2da"
+                      type="number"
+                      value={String(editing.value ?? 50)}
+                      onChange={(v) => setEditing({ ...editing, value: Number(v) })}
+                      help="0-100% de descuento en la 2da unidad"
+                    />
+                    <SizeField
+                      label="Tamaño (opcional)"
+                      value={editing.required_size_ml ?? 0}
+                      onChange={(v) => setEditing({ ...editing, required_size_ml: v })}
+                      help="0 = cualquier tamaño"
+                    />
+                  </div>
+                )}
+
+                {/* percent */}
+                {editing.type === "percent" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field
+                      label="% de descuento"
+                      type="number"
+                      value={String(editing.value ?? 20)}
+                      onChange={(v) => setEditing({ ...editing, value: Number(v) })}
+                      help="0-100%"
+                    />
+                    <SizeField
+                      label="Tamaño (opcional)"
+                      value={editing.required_size_ml ?? 0}
+                      onChange={(v) => setEditing({ ...editing, required_size_ml: v })}
+                      help="0 = cualquier tamaño"
+                    />
+                  </div>
+                )}
+
+                {/* fixed */}
+                {editing.type === "fixed" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <Field
+                      label="Descuento fijo (MXN)"
+                      type="number"
+                      value={String((editing.value ?? 0) / 100)}
+                      onChange={(v) => setEditing({ ...editing, value: Math.round(Number(v) * 100) })}
+                      help="Monto en pesos que se descuenta"
+                      placeholder="100"
+                    />
+                    <Field
+                      label="Compra mínima (MXN, opcional)"
+                      type="number"
+                      value={String((editing.min_items ?? 0) / 100)}
+                      onChange={(v) => setEditing({ ...editing, min_items: Math.round(Number(v) * 100) })}
+                      help="0 = sin mínimo"
+                    />
+                  </div>
+                )}
+
+                {/* free_shipping */}
+                {editing.type === "free_shipping" && (
+                  <p className="text-xs text-ink-mute">El envío se hace gratis al aplicar esta promoción.</p>
+                )}
+
+                {/* tiered */}
+                {editing.type === "tiered" && (
+                  <p className="text-xs text-ink-mute">Configura el value como un JSON con los tiers. Ej: <code className="text-gold/80">[{`{qty:2,percent:10},{qty:3,percent:20}`}]</code></p>
+                )}
+              </div>
+
+              {/* ===== PASO 4: Textos ===== */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <Field label="Título" value={editing.title ?? ""} onChange={(v) => setEditing({ ...editing, title: v })} />
-                <Field label="Slug (URL)" value={editing.slug ?? ""} onChange={(v) => setEditing({ ...editing, slug: v })} placeholder="3x2-perfumes-60ml" />
-                <Field label="Subtítulo" value={editing.subtitle ?? ""} onChange={(v) => setEditing({ ...editing, subtitle: v })} />
-                <Field label="Texto del badge" value={editing.badge_text ?? ""} onChange={(v) => setEditing({ ...editing, badge_text: v })} placeholder="3x2" />
+                <Field label="Título" value={editing.title ?? ""} onChange={(v) => setEditing({ ...editing, title: v })} placeholder="Ej: 3 perfumes de 10ml por $290" />
+                <Field label="Slug (URL)" value={editing.slug ?? ""} onChange={(v) => setEditing({ ...editing, slug: v })} placeholder="3-perfumes-10ml-290" />
+                <Field label="Subtítulo" value={editing.subtitle ?? ""} onChange={(v) => setEditing({ ...editing, subtitle: v })} placeholder="Lleévate 3 fragancias de 10ml por solo $290" />
+                <Field label="Texto del badge" value={editing.badge_text ?? ""} onChange={(v) => setEditing({ ...editing, badge_text: v })} placeholder="PACK $290" />
               </div>
 
               <div>
-                <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-1.5">Descripción</p>
+                <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-1">Descripción (opcional)</p>
                 <textarea
                   value={editing.description ?? ""}
                   onChange={(e) => setEditing({ ...editing, description: e.target.value })}
-                  rows={3}
+                  rows={2}
                   className="w-full bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold resize-y"
-                  placeholder="Lleva 3 perfumes de 60ml y paga solo 2. Elige tus 3 fragancias favoritas."
+                  placeholder="Elige 3 fragancias de 10ml y paga solo $290. Perfectas para probar nuevos aromas."
                 />
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <SelectField label="Tipo" value={editing.type ?? "bundle"} onChange={(v) => setEditing({ ...editing, type: v })} options={Object.entries(TYPE_LABELS).map(([v, l]) => ({ value: v, label: l }))} />
-                <Field label="Tamaño requerido (ml)" type="number" value={String(editing.required_size_ml ?? 0)} onChange={(v) => setEditing({ ...editing, required_size_ml: Number(v) })} />
-                <Field label="Lleva" type="number" value={String(editing.quantity_to_take ?? 3)} onChange={(v) => setEditing({ ...editing, quantity_to_take: Number(v) })} />
-                <Field label="Paga" type="number" value={String(editing.quantity_to_pay ?? 2)} onChange={(v) => setEditing({ ...editing, quantity_to_pay: Number(v) })} />
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <Field label="Descuento % (opcional)" type="number" value={String(editing.value ?? 0)} onChange={(v) => setEditing({ ...editing, value: Number(v) })} />
-                <Field label="Mínimo items" type="number" value={String(editing.min_items ?? 0)} onChange={(v) => setEditing({ ...editing, min_items: Number(v) })} />
-                <Field label="Máximo items (0=sin)" type="number" value={String(editing.max_items ?? 0)} onChange={(v) => setEditing({ ...editing, max_items: Number(v) })} />
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <Field label="Orden" type="number" value={String(editing.sort_order ?? 0)} onChange={(v) => setEditing({ ...editing, sort_order: Number(v) })} />
-                <Field label="Inicio" type="datetime-local" value={editing.starts_at ?? ""} onChange={(v) => setEditing({ ...editing, starts_at: v })} />
-                <Field label="Fin (opcional)" type="datetime-local" value={editing.ends_at ?? ""} onChange={(v) => setEditing({ ...editing, ends_at: v })} />
-              </div>
-
+              {/* ===== PASO 5: Color y vigencia ===== */}
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-1.5">Color del badge</p>
                 <div className="flex flex-wrap gap-2">
@@ -419,18 +664,23 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Field label="Orden" type="number" value={String(editing.sort_order ?? 0)} onChange={(v) => setEditing({ ...editing, sort_order: Number(v) })} />
+                <Field label="Inicio" type="datetime-local" value={editing.starts_at ?? ""} onChange={(v) => setEditing({ ...editing, starts_at: v })} />
+                <Field label="Fin (opcional)" type="datetime-local" value={editing.ends_at ?? ""} onChange={(v) => setEditing({ ...editing, ends_at: v })} />
+                <Field label="Mín. items" type="number" value={String(editing.min_items ?? 0)} onChange={(v) => setEditing({ ...editing, min_items: Number(v) })} />
+              </div>
+
+              {/* ===== PASO 6: Imagen ===== */}
               <div>
                 <p className="text-[11px] uppercase tracking-wider text-gold/80 mb-1.5">Imagen promocional</p>
-
-                {/* Preview actual */}
                 {editing.image_url ? (
                   <div className="rounded-xl overflow-hidden border border-line/40 mb-2 relative group">
                     <img src={editing.image_url} alt={editing.title} className="w-full h-44 object-cover" />
                     <button
                       type="button"
-                      onClick={() => setEditing({ ...editing, image_url: "" })}
+                      onClick={() => setEditing({ ...editing, image_url: "", image_ai_generated: false })}
                       className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/70 text-white grid place-items-center hover:bg-rose-500 transition-colors"
-                      aria-label="Quitar imagen"
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
                     </button>
@@ -444,7 +694,6 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                   </div>
                 )}
 
-                {/* Tabs de modo */}
                 <div className="flex gap-1 mb-2.5 p-1 rounded-lg bg-black/30 border border-line/40">
                   {([
                     { v: "ai", l: "Generar con IA" },
@@ -462,10 +711,8 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                   ))}
                 </div>
 
-                {/* Modo IA */}
                 {imageMode === "ai" && (
                   <div className="space-y-2">
-                    {/* Imagen de referencia opcional */}
                     <div>
                       <p className="text-[10px] uppercase tracking-wider text-ink-mute mb-1">Imagen de referencia (opcional)</p>
                       {refImage ? (
@@ -487,16 +734,12 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                         </label>
                       )}
                     </div>
-
-                    {/* Prompt */}
                     <input
                       value={imagePrompt}
                       onChange={(e) => setImagePrompt(e.target.value)}
                       placeholder="Prompt personalizado (opcional). Ej: 'three golden perfume bottles on marble with rose petals, dark background'"
                       className="w-full bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
                     />
-
-                    {/* Botón generar */}
                     <button
                       type="button"
                       onClick={generateImage}
@@ -521,29 +764,37 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                   </div>
                 )}
 
-                {/* Modo Subir */}
                 {imageMode === "upload" && (
-                  <div>
-                    <label className="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-xl border-2 border-dashed border-line/50 px-4 py-8 text-center hover:border-gold/40 transition-colors">
-                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-gold/60"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
-                      <span className="text-xs text-ink">Haz clic para subir una imagen</span>
-                      <span className="text-[10px] text-ink-mute">PNG, JPG, WebP · máx 8MB · 16:9 recomendado</span>
-                      <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
-                    </label>
-                  </div>
+                  <label className="flex flex-col items-center justify-center gap-2 cursor-pointer rounded-xl border-2 border-dashed border-line/50 px-4 py-8 text-center hover:border-gold/40 transition-colors">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-gold/60"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" /></svg>
+                    <span className="text-xs text-ink">Haz clic para subir una imagen</span>
+                    <span className="text-[10px] text-ink-mute">PNG, JPG, WebP · máx 8MB · 16:9 recomendado</span>
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => handleFileUpload(e, "image")} />
+                  </label>
                 )}
 
-                {/* Modo URL */}
                 {imageMode === "url" && (
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={editing.image_url ?? ""}
-                      onChange={(e) => setEditing({ ...editing, image_url: e.target.value })}
-                      placeholder="https://ejemplo.com/banner.jpg"
-                      className="flex-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
-                    />
-                  </div>
+                  <input
+                    value={editing.image_url ?? ""}
+                    onChange={(e) => setEditing({ ...editing, image_url: e.target.value, image_ai_generated: false })}
+                    placeholder="https://ejemplo.com/banner.jpg"
+                    className="w-full bg-black/40 border border-line rounded-lg px-3 py-2 text-xs text-white outline-none focus:border-gold"
+                  />
                 )}
+              </div>
+
+              {/* ===== Preview en vivo ===== */}
+              <div className="rounded-2xl border border-gold/30 bg-gradient-to-br from-gold/10 to-bg-elev p-4">
+                <p className="text-[10px] uppercase tracking-wider text-gold/80 mb-2">Vista previa (lo que verá el cliente)</p>
+                <div className="flex items-center gap-3">
+                  <span className="text-3xl">{currentType?.icon || "🎁"}</span>
+                  <div>
+                    <p className="font-display italic text-lg text-ink leading-tight">
+                      {editing.title || "Sin título"}
+                    </p>
+                    <p className="text-xs text-ink-mute mt-0.5">{customerSummary}</p>
+                  </div>
+                </div>
               </div>
 
               <label className="flex items-center gap-2 text-sm text-ink cursor-pointer">
@@ -570,7 +821,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                 disabled={saving || generating || !editing.title}
                 className="rounded-full bg-gold text-bg px-5 py-2 text-sm font-medium hover:bg-gold/90 transition-colors disabled:opacity-50"
               >
-                {saving ? "Guardando…" : isNew ? "Crear" : "Guardar"}
+                {saving ? "Guardando…" : isNew ? "Crear promoción" : "Guardar cambios"}
               </button>
             </div>
           </div>
@@ -580,7 +831,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   );
 }
 
-function Field({ label, value, onChange, type = "text", placeholder }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string }) {
+function Field({ label, value, onChange, type = "text", placeholder, help }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; help?: string }) {
   return (
     <label className="block">
       <span className="text-[11px] uppercase tracking-wider text-gold/80">{label}</span>
@@ -591,23 +842,27 @@ function Field({ label, value, onChange, type = "text", placeholder }: { label: 
         placeholder={placeholder}
         className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
       />
+      {help && <p className="text-[10px] text-ink-mute mt-0.5">{help}</p>}
     </label>
   );
 }
 
-function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
+function SizeField({ label, value, onChange, help }: { label: string; value: number; onChange: (v: number) => void; help?: string }) {
   return (
     <label className="block">
       <span className="text-[11px] uppercase tracking-wider text-gold/80">{label}</span>
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(e) => onChange(Number(e.target.value))}
         className="w-full mt-1 bg-black/40 border border-line rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-gold"
       >
-        {options.map((o) => (
-          <option key={o.value} value={o.value} className="bg-bg-elev text-ink">{o.label}</option>
-        ))}
+        <option value="0">Cualquier tamaño</option>
+        <option value="10">10ml (Travel)</option>
+        <option value="30">30ml (Standard)</option>
+        <option value="60">60ml (Large)</option>
+        <option value="100">100ml (Premium)</option>
       </select>
+      {help && <p className="text-[10px] text-ink-mute mt-0.5">{help}</p>}
     </label>
   );
 }

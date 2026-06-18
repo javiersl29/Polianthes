@@ -14,7 +14,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const values: unknown[] = [];
   let i = 1;
   const allowed = [
-    "title", "subtitle", "description", "type", "value", "required_size_ml",
+    "title", "subtitle", "description", "type", "value", "bundle_price_cents", "required_size_ml", "mix_sizes",
     "quantity_to_take", "quantity_to_pay", "image_url", "image_prompt", "image_ai_generated",
     "badge_text", "badge_color", "min_items", "max_items", "starts_at", "ends_at", "active", "sort_order"
   ];
