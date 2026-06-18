@@ -32,8 +32,8 @@ export async function POST(req: NextRequest) {
       `INSERT INTO promotion
         (slug, title, subtitle, description, type, value, bundle_price_cents, required_size_ml, mix_sizes,
          quantity_to_take, quantity_to_pay, image_url, image_prompt, image_ai_generated,
-         badge_text, badge_color, min_items, max_items, starts_at, ends_at, active, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+         badge_text, badge_color, min_items, max_items, min_subtotal_cents, starts_at, ends_at, active, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
        RETURNING *`,
       [
         slug,
@@ -54,6 +54,7 @@ export async function POST(req: NextRequest) {
         body.badge_color ?? "gold",
         Number(body.min_items ?? 0),
         Number(body.max_items ?? 0),
+        Number(body.min_subtotal_cents ?? 0),
         body.starts_at ?? new Date().toISOString(),
         body.ends_at ?? null,
         body.active !== false,

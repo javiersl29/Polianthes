@@ -56,7 +56,7 @@ function CheckoutInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const promoSlug = searchParams.get("promo");
-  const { items, total, clear } = useCart();
+  const { items, total, clear, promo, setPromo } = useCart();
   const [zones, setZones] = useState<Zone[]>([]);
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -132,8 +132,11 @@ function CheckoutInner() {
           ? 0
           : detectedZone.cost_cents)
         : 0);
-  const discountCents = appliedCoupon?.discount_cents ?? 0;
-  const grandTotal = Math.max(0, total.total_cents - discountCents + shippingCents);
+  // Usar el descuento del promo que ya viene en cart total, o el cupón si lo hay
+  const promoDiscountCents = total.discount_cents;
+  const couponDiscountCents = appliedCoupon?.discount_cents ?? 0;
+  const totalDiscount = Math.max(promoDiscountCents, couponDiscountCents);
+  const grandTotal = Math.max(0, total.total_cents - totalDiscount + shippingCents);
 
   const selectedPickup = pickups.find((p) => p.id === selectedPickupId);
 
@@ -191,13 +194,20 @@ function CheckoutInner() {
             city, state, postal_code: cp
           },
           coupon_code: appliedCoupon?.code,
-          promo: searchParams.get("promo") ? {
+          promo: promo ? {
+            slug: promo.slug,
+            type: promo.type,
+            value: promo.value ?? 0,
+            quantity_to_take: promo.quantity_to_take ?? 3,
+            quantity_to_pay: promo.quantity_to_take ? Math.max(1, promo.quantity_to_take - 1) : 1,
+            bundle_price_cents: promo.bundle_price_cents ?? 0
+          } : (searchParams.get("promo") ? {
             slug: String(searchParams.get("promo")),
             type: String(searchParams.get("promo_type") ?? "bundle"),
             value: Number(searchParams.get("promo_value") ?? 0),
             quantity_to_take: Number(searchParams.get("promo_take") ?? 3),
             quantity_to_pay: Number(searchParams.get("promo_pay") ?? 2)
-          } : undefined
+          } : undefined)
         })
       });
       const data = await r.json();
@@ -213,6 +223,7 @@ function CheckoutInner() {
 
   const handlePaid = useCallback((result: { status: string; payment_id: number; public_id: string }) => {
     clear();
+    setPromo(null);
     if (result.status === "approved") {
       router.push(`/checkout/ok?order=${result.public_id}&payment_id=${result.payment_id}`);
     } else if (result.status === "pending") {
@@ -220,7 +231,7 @@ function CheckoutInner() {
     } else {
       router.push(`/checkout/failed?order=${result.public_id}`);
     }
-  }, [clear, router]);
+  }, [clear, router, setPromo]);
 
   if (loading) {
     return (
@@ -385,7 +396,7 @@ function CheckoutInner() {
               </ul>
               <div className="mt-4 pt-3 border-t border-line space-y-1 text-sm">
                 <Row label={`Subtotal (${total.units}u)`} value={money(total.total_cents)} />
-                {discountCents > 0 && <Row label="Descuento" value={`−${money(discountCents)}`} accent="emerald" />}
+                {totalDiscount > 0 && <Row label="Descuento" value={`−${money(totalDiscount)}`} accent="emerald" />}
                 <Row label={deliveryMode === "pickup" ? "Recogida en sitio" : "Envío"} value={deliveryMode === "pickup" ? "Gratis" : (shippingCents === 0 ? "Gratis" : money(shippingCents))} />
                 <div className="pt-2 mt-2 border-t border-line flex justify-between font-medium">
                   <span className="text-ink">Total</span>

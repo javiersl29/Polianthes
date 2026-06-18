@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS promotion (
   -- Restricciones
   min_items INTEGER NOT NULL DEFAULT 0,
   max_items INTEGER NOT NULL DEFAULT 0, -- 0 = sin límite
+  -- Pedido mínimo para que la promo aplique (en centavos, 0 = sin mínimo)
+  min_subtotal_cents INTEGER NOT NULL DEFAULT 0,
   -- Vigencia
   starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   ends_at TIMESTAMPTZ,

@@ -22,6 +22,7 @@ type Promotion = {
   badge_color: string;
   min_items: number;
   max_items: number;
+  min_subtotal_cents: number;
 };
 
 type Fragrance = {
@@ -48,7 +49,7 @@ function money(cents: number | null) {
 
 export default function PromoPackage({ promo, fragrances }: { promo: Promotion; fragrances: Fragrance[] }) {
   const router = useRouter();
-  const { add, clear, items, total } = useCart();
+  const { add, clear, setPromo, items, total } = useCart();
 
   const isQuantityPromo = promo.type === "3x2" || promo.type === "2x1" || promo.type === "bundle_qty";
   const take = isQuantityPromo ? promo.quantity_to_take || 3 : 1;
@@ -137,6 +138,17 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
         unit_price_cents: f.price_cents ?? 0
       });
     }
+
+    // Guardar la promo en el cart para que el total refleje el descuento
+    setPromo({
+      slug: promo.slug,
+      type: promo.type as any,
+      title: promo.title,
+      quantity_to_take: promo.quantity_to_take,
+      bundle_price_cents: promo.bundle_price_cents,
+      value: promo.value,
+      mix_sizes: promo.mix_sizes
+    });
 
     // Pasar la promo al checkout via query string
     const params = new URLSearchParams();

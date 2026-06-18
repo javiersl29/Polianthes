@@ -26,6 +26,7 @@ type Promotion = {
   badge_color: string;
   min_items: number;
   max_items: number;
+  min_subtotal_cents: number;
 };
 
 async function getPromotion(slug: string): Promise<Promotion | null> {
@@ -33,7 +34,7 @@ async function getPromotion(slug: string): Promise<Promotion | null> {
     `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
             required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
             image_url, badge_text, badge_color,
-            min_items, max_items
+            min_items, max_items, min_subtotal_cents
      FROM promotion
      WHERE slug = $1 AND active = TRUE
        AND (starts_at IS NULL OR starts_at <= NOW())

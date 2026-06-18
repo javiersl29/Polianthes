@@ -23,6 +23,7 @@ export async function GET() {
     badge_color: string;
     min_items: number;
     max_items: number;
+    min_subtotal_cents: number;
     starts_at: string;
     ends_at: string | null;
     sort_order: number;
@@ -30,7 +31,7 @@ export async function GET() {
     `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
             required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
             image_url, badge_text, badge_color,
-            min_items, max_items, starts_at, ends_at, sort_order
+            min_items, max_items, min_subtotal_cents, starts_at, ends_at, sort_order
      FROM promotion
      WHERE active = TRUE
        AND (starts_at IS NULL OR starts_at <= NOW())

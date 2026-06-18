@@ -4,7 +4,8 @@ import { useCart } from "@/components/CartProvider";
 import { money } from "@/lib/cart";
 
 export default function CartPage() {
-  const { items, setQty, remove, clear, total } = useCart();
+  const { items, setQty, remove, clear, total, promo, setPromo } = useCart();
+  const hasDiscount = total.discount_cents > 0;
 
   if (items.length === 0) {
     return (
@@ -101,9 +102,41 @@ export default function CartPage() {
           <div className="space-y-4">
             <div className="liquid-glass rounded-2xl p-5 sticky top-24">
               <h2 className="font-display italic text-2xl text-ink mb-3">Resumen</h2>
+
+              {promo && (
+                <div className="rounded-xl bg-gold/10 border border-gold/30 p-3 mb-4 flex items-center gap-2">
+                  <span className="text-lg">🎁</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-gold font-semibold truncate">{promo.title}</p>
+                    {hasDiscount && <p className="text-[10px] text-ink-mute">−{money(total.discount_cents)}</p>}
+                  </div>
+                  <button
+                    onClick={() => setPromo(null)}
+                    className="text-ink-mute hover:text-rose-300 p-1"
+                    aria-label="Quitar promoción"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                  </button>
+                </div>
+              )}
+
               <div className="space-y-1.5 text-sm">
+                {hasDiscount && (
+                  <div className="flex justify-between">
+                    <span className="text-ink-mute">Subtotal</span>
+                    <span className="text-ink-mute line-through">{money(total.subtotal_cents)}</span>
+                  </div>
+                )}
+                {hasDiscount && (
+                  <div className="flex justify-between">
+                    <span className="text-emerald-300">Descuento</span>
+                    <span className="text-emerald-300">−{money(total.discount_cents)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
-                  <span className="text-ink-mute">Subtotal ({total.units}u)</span>
+                  <span className="text-ink-mute">
+                    {hasDiscount ? "Total" : `Subtotal (${total.units}u)`}
+                  </span>
                   <span className="text-ink">{money(total.total_cents)}</span>
                 </div>
                 <div className="flex justify-between">
@@ -113,10 +146,12 @@ export default function CartPage() {
               </div>
               <div className="mt-4 pt-3 border-t border-line flex justify-between text-base font-medium">
                 <span className="text-ink">Total estimado</span>
-                <span className="text-gold">{money(total.total_cents)}</span>
+                <span className={hasDiscount ? "text-gold font-display italic text-2xl" : "text-gold"}>
+                  {money(total.total_cents)}
+                </span>
               </div>
               <Link
-                href="/checkout"
+                href={promo ? `/checkout?promo=${promo.slug}` : "/checkout"}
                 className="block mt-5 text-center rounded-full bg-gold text-bg px-5 py-3 text-sm font-medium hover:bg-gold/90"
               >
                 Finalizar compra

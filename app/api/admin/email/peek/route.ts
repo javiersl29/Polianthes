@@ -88,6 +88,7 @@ export async function GET(req: NextRequest) {
     await query(`ALTER TABLE promotion DROP CONSTRAINT IF EXISTS promotion_type_check`);
     await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS bundle_price_cents INTEGER NOT NULL DEFAULT 0`);
     await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS mix_sizes BOOLEAN NOT NULL DEFAULT FALSE`);
+    await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS min_subtotal_cents INTEGER NOT NULL DEFAULT 0`);
     await query(`
       ALTER TABLE promotion ADD CONSTRAINT promotion_type_check
         CHECK (type IN ('3x2','2x1','bundle_qty','second_unit','percent','fixed','bundle','free_shipping','tiered'))

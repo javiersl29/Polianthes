@@ -17,7 +17,22 @@ export type CartItem = {
   image_version: number | null;
 };
 
+export type CartPromo = {
+  slug: string;
+  type: "bundle_qty" | "3x2" | "2x1" | "percent" | "fixed" | "free_shipping" | "second_unit" | "bundle" | "tiered";
+  title: string;
+  /** Cantidad de unidades que incluye el bundle (ej 3 para "3 por $X") */
+  quantity_to_take?: number;
+  /** Precio fijo del bundle en centavos */
+  bundle_price_cents?: number;
+  /** % de descuento */
+  value?: number;
+  /** Si true, se permite mezclar tamaños en bundle_qty */
+  mix_sizes?: boolean;
+};
+
 const CART_KEY = "polianthes_cart_v1";
+const CART_PROMO_KEY = "polianthes_cart_promo_v1";
 
 export function loadCart(): CartItem[] {
   if (typeof window === "undefined") return [];
@@ -32,6 +47,17 @@ export function loadCart(): CartItem[] {
   }
 }
 
+export function loadCartPromo(): CartPromo | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(CART_PROMO_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw) as CartPromo;
+  } catch {
+    return null;
+  }
+}
+
 export function saveCart(items: CartItem[]): void {
   if (typeof window === "undefined") return;
   try {
@@ -43,11 +69,27 @@ export function saveCart(items: CartItem[]): void {
   }
 }
 
+export function saveCartPromo(promo: CartPromo | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (promo) {
+      window.localStorage.setItem(CART_PROMO_KEY, JSON.stringify(promo));
+    } else {
+      window.localStorage.removeItem(CART_PROMO_KEY);
+    }
+    window.dispatchEvent(new CustomEvent("polianthes:cart-promo", { detail: promo }));
+  } catch {
+    /* noop */
+  }
+}
+
 export function clearCartStorage(): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.removeItem(CART_KEY);
+    window.localStorage.removeItem(CART_PROMO_KEY);
     window.dispatchEvent(new CustomEvent("polianthes:cart", { detail: [] }));
+    window.dispatchEvent(new CustomEvent("polianthes:cart-promo", { detail: null }));
   } catch { /* noop */ }
 }
 
@@ -62,21 +104,100 @@ function isValidItem(x: unknown): x is CartItem {
   );
 }
 
-/**
- * Suma todos los items y devuelve { items, total_cents, units }.
- */
-export function cartTotal(items: CartItem[]): {
+export type CartTotals = {
   total_cents: number;
   units: number;
   distinct: number;
-} {
-  let total = 0;
+  subtotal_cents: number;
+  discount_cents: number;
+  promo: CartPromo | null;
+};
+
+/**
+ * Suma todos los items y aplica promo activa si existe.
+ * Para bundle_qty: si hay N+ unidades y el promo aplica, cobra bundle_price_cents por grupo.
+ */
+export function cartTotal(items: CartItem[], promo: CartPromo | null = null): CartTotals {
+  let subtotal = 0;
   let units = 0;
   for (const it of items) {
-    total += it.unit_price_cents * it.qty;
+    subtotal += it.unit_price_cents * it.qty;
     units += it.qty;
   }
-  return { total_cents: total, units, distinct: items.length };
+
+  let total = subtotal;
+  let discount = 0;
+
+  if (promo && units > 0) {
+    if (promo.type === "bundle_qty" && promo.bundle_price_cents && promo.quantity_to_take) {
+      const take = promo.quantity_to_take;
+      const groups = Math.floor(units / take);
+      if (groups > 0) {
+        // Cobrar `groups * bundle_price_cents` por los grupos, y el resto a precio normal
+        const itemsInBundles = take * groups;
+        const normalUnits = units - itemsInBundles;
+        // Para las unidades dentro del bundle, asumimos precio promedio (no podemos saber exacto sin la promo en server)
+        // Mostramos el bundle price como total
+        const remaining = items.slice().sort((a, b) => b.unit_price_cents - a.unit_price_cents).slice(0, normalUnits);
+        const remainingTotal = remaining.reduce((s, it) => s + it.unit_price_cents * it.qty, 0);
+        total = promo.bundle_price_cents * groups + remainingTotal;
+        discount = Math.max(0, subtotal - total);
+      }
+    } else if (promo.type === "percent" && promo.value) {
+      discount = Math.round(subtotal * (promo.value / 100));
+      total = Math.max(0, subtotal - discount);
+    } else if (promo.type === "fixed" && promo.value) {
+      discount = Math.min(subtotal, promo.value);
+      total = Math.max(0, subtotal - discount);
+    } else if (promo.type === "second_unit" && promo.value != null) {
+      // 2da unidad a X% — ordenamos por precio desc, cada par recibe descuento en el más barato
+      const allPrices: number[] = [];
+      for (const it of items) {
+        for (let i = 0; i < it.qty; i++) allPrices.push(it.unit_price_cents);
+      }
+      allPrices.sort((a, b) => b - a);
+      const pairs = Math.floor(units / 2);
+      discount = allPrices.slice(0, pairs).reduce((s, p) => s + Math.round(p * ((promo.value ?? 0) / 100)), 0);
+      total = Math.max(0, subtotal - discount);
+    } else if (promo.type === "3x2" && promo.quantity_to_take && promo.quantity_to_take > 1) {
+      const take = promo.quantity_to_take;
+      const pay = Math.max(1, take - 1);
+      const groups = Math.floor(units / take);
+      if (groups > 0) {
+        const allPrices: number[] = [];
+        for (const it of items) {
+          for (let i = 0; i < it.qty; i++) allPrices.push(it.unit_price_cents);
+        }
+        allPrices.sort((a, b) => a - b); // más baratos primero
+        const freeAmount = allPrices.slice(0, take - pay).reduce((s, p) => s + p, 0) * groups;
+        discount = freeAmount;
+        total = Math.max(0, subtotal - discount);
+      }
+    } else if (promo.type === "2x1" && promo.quantity_to_take && promo.quantity_to_take > 1) {
+      const take = promo.quantity_to_take;
+      const pay = Math.max(1, take - 1);
+      const groups = Math.floor(units / take);
+      if (groups > 0) {
+        const allPrices: number[] = [];
+        for (const it of items) {
+          for (let i = 0; i < it.qty; i++) allPrices.push(it.unit_price_cents);
+        }
+        allPrices.sort((a, b) => a - b);
+        const freeAmount = allPrices.slice(0, take - pay).reduce((s, p) => s + p, 0) * groups;
+        discount = freeAmount;
+        total = Math.max(0, subtotal - discount);
+      }
+    }
+  }
+
+  return {
+    total_cents: total,
+    subtotal_cents: subtotal,
+    discount_cents: discount,
+    units,
+    distinct: items.length,
+    promo
+  };
 }
 
 /**

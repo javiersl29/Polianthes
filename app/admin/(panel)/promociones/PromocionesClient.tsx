@@ -23,6 +23,7 @@ type Promotion = {
   badge_color: string;
   min_items: number;
   max_items: number;
+  min_subtotal_cents: number;
   starts_at: string;
   ends_at: string | null;
   active: boolean;
@@ -89,6 +90,7 @@ const empty = (): Partial<Promotion> => ({
   badge_color: "gold",
   min_items: 0,
   max_items: 0,
+  min_subtotal_cents: 0,
   starts_at: new Date().toISOString().slice(0, 16),
   ends_at: "",
   active: true,
@@ -579,19 +581,29 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
 
                 {/* percent */}
                 {editing.type === "percent" && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <Field
+                        label="% de descuento"
+                        type="number"
+                        value={String(editing.value ?? 20)}
+                        onChange={(v) => setEditing({ ...editing, value: Number(v) })}
+                        help="0-100%"
+                      />
+                      <SizeField
+                        label="Tamaño (opcional)"
+                        value={editing.required_size_ml ?? 0}
+                        onChange={(v) => setEditing({ ...editing, required_size_ml: v })}
+                        help="0 = cualquier tamaño"
+                      />
+                    </div>
                     <Field
-                      label="% de descuento"
+                      label="Pedido mínimo para aplicar (MXN)"
                       type="number"
-                      value={String(editing.value ?? 20)}
-                      onChange={(v) => setEditing({ ...editing, value: Number(v) })}
-                      help="0-100%"
-                    />
-                    <SizeField
-                      label="Tamaño (opcional)"
-                      value={editing.required_size_ml ?? 0}
-                      onChange={(v) => setEditing({ ...editing, required_size_ml: v })}
-                      help="0 = cualquier tamaño"
+                      value={String((editing.min_subtotal_cents ?? 0) / 100)}
+                      onChange={(v) => setEditing({ ...editing, min_subtotal_cents: Math.round(Number(v) * 100) })}
+                      help="El cliente debe tener este subtotal mínimo en el carrito para que la promo se aplique. 0 = sin mínimo."
+                      placeholder="0"
                     />
                   </div>
                 )}
@@ -670,6 +682,18 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                 <Field label="Fin (opcional)" type="datetime-local" value={editing.ends_at ?? ""} onChange={(v) => setEditing({ ...editing, ends_at: v })} />
                 <Field label="Mín. items" type="number" value={String(editing.min_items ?? 0)} onChange={(v) => setEditing({ ...editing, min_items: Number(v) })} />
               </div>
+
+              {/* Pedido mínimo (para tipos que apliquen descuentos sobre subtotal) */}
+              {(editing.type === "percent" || editing.type === "fixed" || editing.type === "second_unit" || editing.type === "free_shipping") && (
+                <Field
+                  label="Pedido mínimo para aplicar (MXN)"
+                  type="number"
+                  value={String((editing.min_subtotal_cents ?? 0) / 100)}
+                  onChange={(v) => setEditing({ ...editing, min_subtotal_cents: Math.round(Number(v) * 100) })}
+                  help="El cliente debe tener este subtotal mínimo en el carrito. 0 = sin mínimo."
+                  placeholder="0"
+                />
+              )}
 
               {/* ===== PASO 6: Imagen ===== */}
               <div>

@@ -165,13 +165,13 @@ export async function POST(req: NextRequest) {
     const pr = (await pool.query<{
       type: string; value: number; bundle_price_cents: number; required_size_ml: number; mix_sizes: boolean;
       quantity_to_take: number; quantity_to_pay: number;
-      min_items: number; max_items: number;
+      min_items: number; max_items: number; min_subtotal_cents: number;
       starts_at: string | null; ends_at: string | null; active: boolean;
       title: string;
     }>(
       `SELECT type, value, bundle_price_cents, required_size_ml, mix_sizes,
               quantity_to_take, quantity_to_pay,
-              min_items, max_items, starts_at, ends_at, active, title
+              min_items, max_items, min_subtotal_cents, starts_at, ends_at, active, title
        FROM promotion
        WHERE slug = $1`,
       [String(body.promo.slug)]
@@ -181,8 +181,11 @@ export async function POST(req: NextRequest) {
         && (!pr.starts_at || new Date(pr.starts_at) <= new Date())
         && (!pr.ends_at || new Date(pr.ends_at) >= new Date())) {
       const totalItems = orderItems.reduce((s, oi) => s + oi.qty, 0);
+      const meetsMinSubtotal = !pr.min_subtotal_cents || pr.min_subtotal_cents === 0 || subtotalCents >= pr.min_subtotal_cents;
 
-      if (pr.type === "3x2" || pr.type === "2x1") {
+      if (!meetsMinSubtotal) {
+        // Pedido mínimo no alcanzado, no aplicar
+      } else if (pr.type === "3x2" || pr.type === "2x1") {
         const take = pr.quantity_to_take || (pr.type === "3x2" ? 3 : 2);
         const pay = pr.quantity_to_pay || (pr.type === "3x2" ? 2 : 1);
         if (totalItems >= take) {
@@ -203,7 +206,6 @@ export async function POST(req: NextRequest) {
           // Cada grupo de `take` unidades cuesta bundle_price_cents
           const groups = Math.floor(totalItems / take);
           const normalCost = (() => {
-            // Para calcular el descuento, usamos los items más baratos como referencia
             const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
             allUnitPrices.sort((a, b) => a - b);
             return allUnitPrices.slice(0, take * groups).reduce((s, p) => s + p, 0);
@@ -216,11 +218,9 @@ export async function POST(req: NextRequest) {
           promoSummary = `Lleva ${take} por $${(pr.bundle_price_cents / 100).toFixed(0)}`;
         }
       } else if (pr.type === "second_unit") {
-        // "2da unidad a X%" — aplica a partir de 2 unidades
         if (totalItems >= 2) {
           const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
-          allUnitPrices.sort((a, b) => b - a); // Más caro primero
-          // La 2da unidad (y siguientes pares) recibe el descuento
+          allUnitPrices.sort((a, b) => b - a);
           const pairs = Math.floor(totalItems / 2);
           const discountedPrices = allUnitPrices.slice(0, pairs);
           const discount = discountedPrices.reduce((s, p) => s + Math.round(p * (pr.value / 100)), 0);

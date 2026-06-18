@@ -11,7 +11,9 @@ type Promotion = {
   description: string | null;
   type: string;
   value: number;
+  bundle_price_cents: number;
   required_size_ml: number;
+  mix_sizes: boolean;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -19,6 +21,7 @@ type Promotion = {
   badge_color: string;
   min_items: number;
   max_items: number;
+  min_subtotal_cents: number;
   starts_at: string;
   ends_at: string | null;
   sort_order: number;
@@ -44,17 +47,20 @@ const COLOR_CLASSES: Record<string, { gradient: string; ring: string; text: stri
   violet: { gradient: "from-violet-400/30 via-purple-300/15 to-transparent", ring: "ring-violet-300/50", text: "text-violet-300", border: "border-violet-300/40" }
 };
 
-function buildPromoSummary(p: Promotion & { bundle_price_cents?: number; mix_sizes?: boolean }): string {
+function buildPromoSummary(p: Promotion): string {
   switch (p.type) {
     case "3x2": return `Lleva 3 fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} y paga solo 2`;
     case "2x1": return `Lleva 2 fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} y paga solo 1`;
     case "bundle_qty": {
-      const price = (p as any).bundle_price_cents ? `$${((p as any).bundle_price_cents / 100).toLocaleString("es-MX")}` : "$X";
+      const price = p.bundle_price_cents ? `$${(p.bundle_price_cents / 100).toLocaleString("es-MX")}` : "$X";
       const ml = p.required_size_ml ? ` de ${p.required_size_ml}ml` : "";
       return `Lleva ${p.quantity_to_take} fragancias${ml} por ${price}`;
     }
     case "second_unit": return `2da unidad (y siguientes pares) a ${p.value}%`;
-    case "percent": return `${p.value}% de descuento en fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""}`;
+    case "percent": {
+      const minTxt = p.min_subtotal_cents > 0 ? ` en compras +$${(p.min_subtotal_cents / 100).toLocaleString("es-MX")}` : "";
+      return `${p.value}% de descuento${minTxt}`;
+    }
     case "fixed": return `$${(p.value / 100).toLocaleString("es-MX")} de descuento`;
     case "bundle": return "Paquete especial seleccionado a mano";
     case "free_shipping": return "Envío gratis sin mínimo de compra";

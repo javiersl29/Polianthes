@@ -5,7 +5,9 @@ import { useCart } from "@/components/CartProvider";
 import { money } from "@/lib/cart";
 
 export default function CartDrawer() {
-  const { items, isOpen, close, setQty, remove, total } = useCart();
+  const { items, promo, isOpen, close, setQty, remove, total, clear, setPromo } = useCart();
+  const hasDiscount = total.discount_cents > 0;
+  const removePromo = () => setPromo(null);
 
   return (
     <AnimatePresence>
@@ -109,9 +111,47 @@ export default function CartDrawer() {
 
             {items.length > 0 && (
               <footer className="p-4 sm:p-5 border-t border-line space-y-3">
+                {promo && (
+                  <div className="rounded-xl bg-gold/10 border border-gold/30 p-2.5 flex items-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gold shrink-0">
+                      <path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4" />
+                      <path d="M4 6v12c0 1.1.9 2 2 2h14v-4" />
+                      <path d="M18 12a2 2 0 0 0 0 4h4v-4h-4Z" />
+                    </svg>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[11px] text-gold font-semibold truncate">{promo.title}</p>
+                      {hasDiscount && (
+                        <p className="text-[10px] text-ink-mute">−{money(total.discount_cents)}</p>
+                      )}
+                    </div>
+                    <button
+                      onClick={removePromo}
+                      className="text-ink-mute hover:text-rose-300 p-0.5"
+                      aria-label="Quitar promoción"
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                    </button>
+                  </div>
+                )}
+
+                {hasDiscount && (
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-ink-mute">Subtotal</span>
+                      <span className="text-ink-mute line-through">{money(total.subtotal_cents)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-emerald-300">Descuento</span>
+                      <span className="text-emerald-300">−{money(total.discount_cents)}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-ink-mute">Subtotal ({total.units}u)</span>
-                  <span className="text-gold font-medium">{money(total.total_cents)}</span>
+                  <span className="text-ink-mute">{hasDiscount ? "Total" : `Subtotal (${total.units}u)`}</span>
+                  <span className={`${hasDiscount ? "text-gold font-display italic text-2xl" : "text-gold font-medium"}`}>
+                    {money(total.total_cents)}
+                  </span>
                 </div>
                 <p className="text-[11px] text-ink-mute">
                   Envío e impuestos se calculan en el checkout.
@@ -125,7 +165,7 @@ export default function CartDrawer() {
                     Ver carrito
                   </Link>
                   <Link
-                    href="/checkout"
+                    href={promo ? `/checkout?promo=${promo.slug}` : "/checkout"}
                     onClick={close}
                     className="text-center rounded-full bg-gold text-bg px-4 py-2.5 text-sm font-medium hover:bg-gold/90"
                   >

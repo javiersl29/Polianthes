@@ -33,6 +33,7 @@ export default async function PromocionesPage() {
     badge_color: string;
     min_items: number;
     max_items: number;
+    min_subtotal_cents: number;
     starts_at: string;
     ends_at: string | null;
     active: boolean;

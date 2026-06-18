@@ -19,7 +19,9 @@ type Promotion = {
   description: string | null;
   type: string;
   value: number;
+  bundle_price_cents: number;
   required_size_ml: number;
+  mix_sizes: boolean;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -27,6 +29,7 @@ type Promotion = {
   badge_color: string;
   min_items: number;
   max_items: number;
+  min_subtotal_cents: number;
   starts_at: string;
   ends_at: string | null;
   sort_order: number;
