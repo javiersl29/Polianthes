@@ -191,6 +191,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         toast.success("✓ Promoción creada");
         setEditing(null);
         await reload();
+        await revalidatePromoPages();
       } else {
         const r = await fetch(`/api/admin/promotions/${editing.id}`, {
           method: "PATCH",
@@ -202,6 +203,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         toast.success("✓ Promoción actualizada");
         setEditing(null);
         await reload();
+        await revalidatePromoPages();
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Error");
@@ -302,12 +304,22 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
       "2x1": { quantity_to_take: 2, quantity_to_pay: 1, required_size_ml: 30, value: 0, bundle_price_cents: 0, mix_sizes: false },
       bundle_qty: { quantity_to_take: 3, bundle_price_cents: 29000, required_size_ml: 10, mix_sizes: false, value: 0, quantity_to_pay: 3 },
       second_unit: { value: 50, quantity_to_take: 2, quantity_to_pay: 2, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
-      percent: { value: 20, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
-      fixed: { value: 10000, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
-      free_shipping: { value: 0, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
+      percent: { value: 20, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0 },
+      fixed: { value: 10000, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0 },
+      free_shipping: { value: 0, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0 },
       tiered: { value: 0, quantity_to_take: 3, quantity_to_pay: 3, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false }
     };
     setEditing({ ...editing, type, ...(defaults[type] || {}) });
+  }
+
+  async function revalidatePromoPages() {
+    try {
+      await fetch("/api/revalidate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paths: ["/", "/carrito", "/checkout"] })
+      });
+    } catch { /* noop */ }
   }
 
   const colorCls = (color: string) => COLOR_OPTIONS.find((c) => c.value === color)?.cls ?? COLOR_OPTIONS[0].cls;
@@ -441,9 +453,24 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                   ))}
                 </div>
                 {currentType && (
-                  <p className="mt-2 text-[11px] text-ink-mute">
-                    💡 {currentType.desc} <span className="text-gold/80">Ej: {currentType.example}</span>
-                  </p>
+                  <div className="mt-2 space-y-1">
+                    <p className="text-[11px] text-ink-mute">
+                      💡 {currentType.desc}
+                    </p>
+                    <p className="text-[11px] text-gold/80">
+                      Ej: {currentType.example}
+                    </p>
+                    {editing.type === "3x2" && (
+                      <p className="text-[11px] text-rose-300/80">
+                        ⚠️ 3x2 significa "lleva 3, paga 2" — no es un precio fijo. Si quieres un pack por $X, usa "Bundle de cantidad".
+                      </p>
+                    )}
+                    {editing.type === "bundle_qty" && (
+                      <p className="text-[11px] text-emerald-300/80">
+                        ✓ "Bundle de cantidad" es ideal para packs a precio fijo como "3 fragancias por $290".
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
 
