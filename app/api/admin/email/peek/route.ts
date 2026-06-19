@@ -115,6 +115,14 @@ export async function GET(req: NextRequest) {
     );
     result.promotion_columns = r.rows;
   }
+  if (action === "list_promos") {
+    const r = await query(
+      `SELECT id, slug, title, type, value, bundle_price_cents, required_size_ml, mix_sizes,
+              quantity_to_take, quantity_to_pay, min_subtotal_cents, active, sort_order
+       FROM promotion ORDER BY sort_order ASC`
+    );
+    result.promos = r.rows;
+  }
 
   return NextResponse.json(result);
 }
