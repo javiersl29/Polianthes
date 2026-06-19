@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { query } from "@/lib/db";
 import PromoPackage from "./PromoPackage";
+import PromoDiscount from "./PromoDiscount";
 
 export const dynamic = "force-dynamic";
 
@@ -97,7 +98,9 @@ export default async function PromoPage({ params }: Props) {
   const promo = await getPromotion(params.slug);
   if (!promo) notFound();
 
-  const fragrances = await getFragrances(promo.required_size_ml, promo.mix_sizes);
+  // Promos que NO requieren fragancias específicas (descuentos sobre el carrito)
+  const isCartWidePromo = ["percent", "fixed", "free_shipping"].includes(promo.type);
+  const fragrances = isCartWidePromo ? [] : await getFragrances(promo.required_size_ml, promo.mix_sizes);
 
   return (
     <main className="pt-24 sm:pt-28 pb-16 sm:pb-20 px-4 min-h-screen">
@@ -116,11 +119,22 @@ export default async function PromoPage({ params }: Props) {
             </h1>
             {promo.subtitle && <p className="mt-3 text-lg text-ink-mute">{promo.subtitle}</p>}
             {promo.description && <p className="mt-4 text-sm text-ink/80 max-w-2xl mx-auto">{promo.description}</p>}
+            {isCartWidePromo && (
+              <p className="mt-4 inline-flex items-center gap-2 rounded-full bg-gold/10 border border-gold/30 px-4 py-1.5 text-xs text-gold">
+                <span>Aplica automáticamente al pagar</span>
+                <span>·</span>
+                <span>No requiere selección de fragancias</span>
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Selector de fragancias */}
-        <PromoPackage promo={promo} fragrances={fragrances} />
+        {/* Selector de fragancias (solo para promos que lo requieren) */}
+        {isCartWidePromo ? (
+          <PromoDiscount promo={promo} />
+        ) : (
+          <PromoPackage promo={promo} fragrances={fragrances} />
+        )}
       </div>
     </main>
   );
