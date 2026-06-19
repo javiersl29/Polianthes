@@ -123,6 +123,28 @@ export async function GET(req: NextRequest) {
     );
     result.promos = r.rows;
   }
+  if (action === "fix_kit_discovery") {
+    // Corrige el "Kit Discovery" que está mal configurado como 3x2
+    // pero realmente debería ser bundle_qty (3 por $290)
+    const r = await query(
+      `UPDATE promotion SET
+        type = 'bundle_qty',
+        value = 0,
+        bundle_price_cents = 29000,
+        quantity_to_take = 3,
+        quantity_to_pay = 3,
+        required_size_ml = 10,
+        mix_sizes = FALSE,
+        title = 'Kit Discovery · 3 fragancias de 10ml por $290',
+        slug = 'kit-discovery-3-10ml-290',
+        subtitle = 'Arma tu kit discovery con 3 fragancias de 10ml por solo $290',
+        badge_text = 'KIT $290',
+        updated_at = NOW()
+      WHERE slug = '3x2-perfumes-60ml' AND title = 'Kit Discovery'
+      RETURNING *`
+    );
+    result.fixed = r.rows;
+  }
 
   return NextResponse.json(result);
 }
