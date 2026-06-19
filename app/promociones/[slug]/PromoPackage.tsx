@@ -332,79 +332,131 @@ export default function PromoPackage({ promo, fragrances, fragrancesBySize = [] 
         </div>
       </div>
 
-      {/* Para bundle_mix: secciones separadas por tamaño */}
+      {/* Para bundle_mix: grid unificado con todas las fragancias mezcladas */}
       {isBundleMix && promo.mix_config ? (
-        <div className="space-y-6">
-          {promo.mix_config.map((rule) => {
-            const list = fragrancesBySize.find((g) => g.size_ml === rule.size_ml)?.fragrances ?? [];
-            const selectedHere = selectedBySize[rule.size_ml] ?? [];
-            return (
-              <div key={rule.size_ml}>
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] uppercase tracking-wider text-gold/80">Tamaño</span>
-                  <span className="rounded-full bg-gold/15 border border-gold/30 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
-                    {rule.size_ml}ml
-                  </span>
-                  <span className="text-xs text-ink-mute">
-                    Elige {rule.qty} {rule.qty > 1 ? "fragancia(s)" : "fragancia"} de este tamaño
-                  </span>
-                  <span className="ml-auto text-xs font-medium text-ink">
-                    {selectedHere.length}/{rule.qty}
-                  </span>
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {list.length === 0 ? (
-                    <div className="col-span-full liquid-glass rounded-2xl p-6 text-center text-ink-mute text-xs">
-                      No hay fragancias de {rule.size_ml}ml disponibles.
+        <>
+          {/* Progreso por tamaño */}
+          <div className="flex flex-wrap items-center gap-2 mb-1">
+            <span className="text-[10px] uppercase tracking-wider text-gold/80 mr-1">Progreso:</span>
+            {promo.mix_config.map((rule) => {
+              const sel = selectedBySize[rule.size_ml]?.length ?? 0;
+              const done = sel >= rule.qty;
+              return (
+                <span
+                  key={rule.size_ml}
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-semibold border ${
+                    done
+                      ? "bg-emerald-400/20 text-emerald-300 border-emerald-400/40"
+                      : "bg-black/30 text-ink-mute border-line/40"
+                  }`}
+                >
+                  {sel}/{rule.qty} de {rule.size_ml}ml {done && "✓"}
+                </span>
+              );
+            })}
+          </div>
+
+          {/* Buscador */}
+          <div className="liquid-glass rounded-xl flex items-center gap-2 px-4 py-3 min-h-[48px]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-ink-mute shrink-0"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar fragancias…"
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-ink-mute min-w-0"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="text-ink-mute hover:text-gold p-1" aria-label="Limpiar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            )}
+          </div>
+
+          {/* Grid unificado de TODAS las fragancias */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {(() => {
+              // Aplanar todas las fragancias de todos los tamaños del mix
+              const allFragrances: Array<Fragrance & { _size_ml: number }> = [];
+              for (const g of fragrancesBySize) {
+                for (const f of g.fragrances) {
+                  allFragrances.push({ ...f, _size_ml: g.size_ml });
+                }
+              }
+              const filtered = search.trim()
+                ? allFragrances.filter((f) =>
+                    `${f.full_name} ${f.brand} ${f.family ?? ""}`.toLowerCase().includes(search.toLowerCase())
+                  )
+                : allFragrances;
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="col-span-full liquid-glass rounded-2xl p-8 text-center text-ink-mute">
+                    <p>No hay fragancias disponibles para este pack.</p>
+                  </div>
+                );
+              }
+
+              return filtered.map((f) => {
+                const rule = promo.mix_config!.find((r) => r.size_ml === f._size_ml);
+                if (!rule) return null;
+                const sel = selectedBySize[f._size_ml] ?? [];
+                const isSel = sel.find((p) => p.id === f.id);
+                const sizeComplete = sel.length >= rule.qty;
+                const disabled = !isSel && sizeComplete;
+
+                return (
+                  <button
+                    key={`${f._size_ml}-${f.id}`}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => toggle({ ...f, size_ml: f._size_ml } as any)}
+                    className={`liquid-glass rounded-2xl p-3 text-left transition-all relative ${
+                      isSel
+                        ? "ring-2 ring-gold scale-[0.98]"
+                        : disabled
+                          ? "opacity-40 cursor-not-allowed"
+                          : "hover:scale-[1.02]"
+                    }`}
+                  >
+                    {isSel && (
+                      <span className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-gold text-bg grid place-items-center text-xs font-bold">
+                        {sel.findIndex((p) => p.id === f.id) + 1}
+                      </span>
+                    )}
+                    {/* Badge de tamaño */}
+                    <span className="absolute top-2 left-2 z-10 rounded-full bg-black/70 text-ink text-[9px] font-semibold px-2 py-0.5 backdrop-blur-sm">
+                      {f._size_ml}ml
+                    </span>
+                    <div className="aspect-[3/4] rounded-xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
+                      {f.image_url ? (
+                        <img
+                          src={f.image_version != null ? `${f.image_url}?v=${f.image_version}` : f.image_url}
+                          alt={f.full_name}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="font-display italic text-gold text-3xl">{f.brand[0]}</span>
+                      )}
                     </div>
-                  ) : (
-                    list.map((f) => {
-                      const isSel = selectedHere.find((p) => p.id === f.id);
-                      return (
-                        <button
-                          key={`${rule.size_ml}-${f.id}`}
-                          type="button"
-                          onClick={() => toggle({ ...f, size_ml: rule.size_ml } as any)}
-                          className={`liquid-glass rounded-2xl p-3 text-left transition-all relative ${isSel ? "ring-2 ring-gold scale-[0.98]" : "hover:scale-[1.02]"}`}
-                        >
-                          {isSel && (
-                            <span className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-gold text-bg grid place-items-center text-xs font-bold">
-                              {selectedHere.findIndex((p) => p.id === f.id) + 1}
-                            </span>
-                          )}
-                          <div className="aspect-[3/4] rounded-xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
-                            {f.image_url ? (
-                              <img
-                                src={f.image_version != null ? `${f.image_url}?v=${f.image_version}` : f.image_url}
-                                alt={f.full_name}
-                                loading="lazy"
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <span className="font-display italic text-gold text-3xl">{f.brand[0]}</span>
-                            )}
-                          </div>
-                          <p className="mt-2 text-[10px] text-gold/80 uppercase tracking-wider truncate">
-                            {f.display_code ?? `PLT-${String(f.id).padStart(3, "0")}`}
-                          </p>
-                          <p className="text-sm font-medium text-ink leading-tight line-clamp-2">
-                            {f.artistic_name ?? f.name}
-                          </p>
-                          <p className="text-[10px] text-ink-mute truncate">
-                            {f.brand} {f.family && `· ${f.family}`}
-                          </p>
-                          {f.price_cents !== null && (
-                            <p className="text-[11px] text-gold mt-1">{money(f.price_cents)}</p>
-                          )}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                    <p className="mt-2 text-[10px] text-gold/80 uppercase tracking-wider truncate">
+                      {f.display_code ?? `PLT-${String(f.id).padStart(3, "0")}`}
+                    </p>
+                    <p className="text-sm font-medium text-ink leading-tight line-clamp-2">
+                      {f.artistic_name ?? f.name}
+                    </p>
+                    <p className="text-[10px] text-ink-mute truncate">
+                      {f.brand} {f.family && `· ${f.family}`}
+                    </p>
+                    {f.price_cents !== null && (
+                      <p className="text-[11px] text-gold mt-1">{money(f.price_cents)}</p>
+                    )}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+        </>
       ) : (
         <>
           {/* Buscador */}
