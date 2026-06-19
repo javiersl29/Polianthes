@@ -84,6 +84,73 @@ async function getFragrances(sizeMl: number, mixSizes: boolean) {
   return r.rows;
 }
 
+/**
+ * Devuelve TODAS las fragancias con TODAS sus presentaciones activas.
+ * Cada elemento del array `presentations` representa una opción seleccionable
+ * con su propio size_ml y price_cents.
+ */
+type FragranceWithPresentations = {
+  id: number; slug: string; brand: string; name: string; full_name: string;
+  family: string | null; display_code: string | null; artistic_name: string | null;
+  inspired_by_name: string | null; inspired_by_brand: string | null;
+  image_url: string | null; image_version: number | null; gender: string;
+  presentations: Array<{ size_ml: number; price_cents: number }>;
+};
+
+async function getFragrancesWithPresentations(
+  sizesFilter?: number[]
+): Promise<FragranceWithPresentations[]> {
+  const r = await query<{
+    id: number; slug: string; brand: string; name: string; full_name: string;
+    family: string | null; display_code: string | null; artistic_name: string | null;
+    inspired_by_name: string | null; inspired_by_brand: string | null;
+    image_url: string | null; image_version: number | null; gender: string;
+    size_ml: number; price_cents: number;
+  }>(
+    `SELECT f.id, f.slug, f.brand, f.name, f.full_name, f.family, f.display_code, f.artistic_name,
+            f.inspired_by_name, f.inspired_by_brand, f.gender,
+            CASE
+              WHEN f.image_data IS NOT NULL THEN '/api/image/' || f.slug
+              WHEN f.image_url IS NULL OR f.image_url LIKE '/fragancias/%' THEN NULL
+              ELSE f.image_url
+            END AS image_url,
+            LENGTH(f.image_data) AS image_version,
+            p.size_ml, p.price_cents
+     FROM fragrance f
+     INNER JOIN presentation p ON p.fragrance_id = f.id AND p.active = TRUE
+       AND p.price_cents IS NOT NULL AND p.price_cents > 0
+       ${sizesFilter && sizesFilter.length > 0 ? "AND p.size_ml = ANY($1::int[])" : ""}
+     WHERE f.active = TRUE
+     ORDER BY f.brand, f.name, p.size_ml`,
+    sizesFilter && sizesFilter.length > 0 ? [sizesFilter] : []
+  );
+
+  // Agrupar presentaciones por fragancia
+  const map = new Map<number, FragranceWithPresentations>();
+  for (const row of r.rows) {
+    if (!map.has(row.id)) {
+      map.set(row.id, {
+        id: row.id,
+        slug: row.slug,
+        brand: row.brand,
+        name: row.name,
+        full_name: row.full_name,
+        family: row.family,
+        display_code: row.display_code,
+        artistic_name: row.artistic_name,
+        inspired_by_name: row.inspired_by_name,
+        inspired_by_brand: row.inspired_by_brand,
+        image_url: row.image_url,
+        image_version: row.image_version,
+        gender: row.gender,
+        presentations: []
+      });
+    }
+    map.get(row.id)!.presentations.push({ size_ml: row.size_ml, price_cents: row.price_cents });
+  }
+  return Array.from(map.values());
+}
+
 export async function generateMetadata({ params }: Props) {
   const p = await getPromotion(params.slug);
   if (!p) return { title: "Promoción no encontrada" };
@@ -110,21 +177,20 @@ export default async function PromoPage({ params }: Props) {
   const isCartWidePromo = ["percent", "fixed", "free_shipping"].includes(promo.type);
 
   // Para bundle_mix, cargar fragancias por cada tamaño
-  type FragranceBySize = { size_ml: number; fragrances: any[] };
+  // Para bundle_mix, cargar fragancias con sus presentaciones filtradas por los tamaños del mix
+  // Para otros promos (3x2, 2x1, bundle_qty), filtrar por required_size_ml si está definido
   let fragrances: any[] = [];
-  let fragrancesBySize: FragranceBySize[] = [];
 
   if (!isCartWidePromo) {
+    let sizesFilter: number[] | undefined = undefined;
     if (promo.type === "bundle_mix" && promo.mix_config && promo.mix_config.length > 0) {
-      fragrancesBySize = await Promise.all(
-        promo.mix_config.map(async (rule) => ({
-          size_ml: rule.size_ml,
-          fragrances: await getFragrances(rule.size_ml, false)
-        }))
-      );
-    } else {
-      fragrances = await getFragrances(promo.required_size_ml, promo.mix_sizes);
+      sizesFilter = Array.from(new Set(promo.mix_config.map((r) => r.size_ml)));
+    } else if (promo.required_size_ml > 0) {
+      sizesFilter = [promo.required_size_ml];
+    } else if (promo.mix_sizes) {
+      sizesFilter = undefined; // todos los tamaños
     }
+    fragrances = await getFragrancesWithPresentations(sizesFilter);
   }
 
   return (
@@ -158,11 +224,7 @@ export default async function PromoPage({ params }: Props) {
         {isCartWidePromo ? (
           <PromoDiscount promo={promo} />
         ) : (
-          <PromoPackage
-            promo={promo}
-            fragrances={fragrances}
-            fragrancesBySize={fragrancesBySize}
-          />
+          <PromoPackage promo={promo} fragrances={fragrances} />
         )}
       </div>
     </main>
