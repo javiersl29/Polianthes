@@ -22,18 +22,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "slug y title son obligatorios" }, { status: 400 });
   }
   const type = String(body.type ?? "bundle");
-  const validTypes = ["3x2", "2x1", "bundle_qty", "second_unit", "percent", "fixed", "bundle", "free_shipping", "tiered"];
+  const validTypes = ["3x2", "2x1", "bundle_qty", "bundle_mix", "second_unit", "percent", "fixed", "bundle", "free_shipping", "tiered"];
   if (!validTypes.includes(type)) {
     return NextResponse.json({ error: "tipo inválido" }, { status: 400 });
+  }
+
+  // mix_config debe ser JSON válido o null
+  let mixConfig: string | null = null;
+  if (body.mix_config !== undefined && body.mix_config !== null) {
+    if (Array.isArray(body.mix_config) && body.mix_config.length > 0) {
+      mixConfig = JSON.stringify(body.mix_config);
+    } else if (typeof body.mix_config === "string") {
+      mixConfig = body.mix_config;
+    }
   }
 
   try {
     const r = await query(
       `INSERT INTO promotion
-        (slug, title, subtitle, description, type, value, bundle_price_cents, required_size_ml, mix_sizes,
+        (slug, title, subtitle, description, type, value, bundle_price_cents, required_size_ml, mix_sizes, mix_config,
          quantity_to_take, quantity_to_pay, image_url, image_prompt, image_ai_generated,
          badge_text, badge_color, min_items, max_items, min_subtotal_cents, starts_at, ends_at, active, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING *`,
       [
         slug,
@@ -45,6 +55,7 @@ export async function POST(req: NextRequest) {
         Number(body.bundle_price_cents ?? 0),
         Number(body.required_size_ml ?? 0),
         Boolean(body.mix_sizes ?? false),
+        mixConfig,
         Number(body.quantity_to_take ?? 3),
         Number(body.quantity_to_pay ?? 2),
         body.image_url ?? null,

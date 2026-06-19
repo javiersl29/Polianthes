@@ -15,6 +15,7 @@ type Promotion = {
   bundle_price_cents: number;
   required_size_ml: number;
   mix_sizes: boolean;
+  mix_config: Array<{ size_ml: number; qty: number }> | null;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -42,16 +43,20 @@ type Fragrance = {
   price_cents: number | null;
 };
 
+type FragranceBySize = { size_ml: number; fragrances: Fragrance[] };
+
 function money(cents: number | null) {
   if (cents == null) return "—";
   return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN" }).format(cents / 100);
 }
 
-export default function PromoPackage({ promo, fragrances }: { promo: Promotion; fragrances: Fragrance[] }) {
+export default function PromoPackage({ promo, fragrances, fragrancesBySize = [] }: { promo: Promotion; fragrances: Fragrance[]; fragrancesBySize?: FragranceBySize[] }) {
   const router = useRouter();
   const { add, clear, setPromo, items, total } = useCart();
 
   const isQuantityPromo = promo.type === "3x2" || promo.type === "2x1" || promo.type === "bundle_qty";
+  const isBundleMix = promo.type === "bundle_mix";
+  const isBundleQty = promo.type === "bundle_qty";
   const take = isQuantityPromo ? promo.quantity_to_take || 3 : 1;
   const pay = isQuantityPromo ? promo.quantity_to_pay || 2 : 1;
   const requiredMl = promo.required_size_ml;
@@ -59,10 +64,12 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
   const isFixed = promo.type === "fixed";
   const isFreeShipping = promo.type === "free_shipping";
   const isSecondUnit = promo.type === "second_unit";
-  const isBundleQty = promo.type === "bundle_qty";
   const mixSizes = promo.mix_sizes;
 
-  const [selected, setSelected] = useState<Fragrance[]>([]);
+  // Para bundle_mix, mantener selección agrupada por tamaño
+  // selectedBySize: { [size_ml]: Fragrance[] }
+  const [selectedBySize, setSelectedBySize] = useState<Record<number, Fragrance[]>>({});
+  const [selected, setSelected] = useState<Fragrance[]>([]); // Para promos no-mix
   const [search, setSearch] = useState("");
 
   const filtered = useMemo(() => {
@@ -74,6 +81,27 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
   }, [fragrances, search]);
 
   function toggle(f: Fragrance) {
+    if (isBundleMix && promo.mix_config) {
+      // Buscar qué regla aplica a este fragrance (basado en su size_ml en presentation)
+      // Para el cliente, agrupamos por tamaño usando mix_config
+      const rule = promo.mix_config.find((r) => r.size_ml === (f as any).size_ml);
+      if (!rule) {
+        toast.error("Este tamaño no aplica para esta promo");
+        return;
+      }
+      setSelectedBySize((prev) => {
+        const list = prev[rule.size_ml] || [];
+        if (list.find((p) => p.id === f.id)) {
+          return { ...prev, [rule.size_ml]: list.filter((p) => p.id !== f.id) };
+        }
+        if (list.length >= rule.qty) {
+          toast.error(`Solo puedes elegir ${rule.qty} fragancias de ${rule.size_ml}ml`);
+          return prev;
+        }
+        return { ...prev, [rule.size_ml]: [...list, f] };
+      });
+      return;
+    }
     setSelected((prev) => {
       if (prev.find((p) => p.id === f.id)) {
         return prev.filter((p) => p.id !== f.id);
@@ -89,54 +117,125 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
     });
   }
 
-  const count = selected.length;
+  // Para bundle_mix: contar selecciones y verificar que esté completo
+  const mixProgress = isBundleMix && promo.mix_config ? promo.mix_config.map((r) => ({
+    size_ml: r.size_ml,
+    qty: r.qty,
+    selected: (selectedBySize[r.size_ml] || []).length
+  })) : [];
+  const allMixSelected = isBundleMix ? mixProgress.every((p) => p.selected >= p.qty) : false;
+  const totalSelectedCount = Object.values(selectedBySize).reduce((s, list) => s + list.length, 0);
+  const count = isBundleMix ? totalSelectedCount : selected.length;
   const itemsCount = isQuantityPromo ? take : 1;
-  const allSelected = count === itemsCount;
+  const allSelected = isBundleMix ? allMixSelected : (count === itemsCount);
 
   // Calcular el precio estimado
-  const subtotalCents = selected.reduce((s, f) => s + (f.price_cents ?? 0), 0);
+  let subtotalCents = 0;
   let discountCents = 0;
-  if (isPercent) {
-    discountCents = Math.round(subtotalCents * (promo.value / 100));
-  } else if (isFixed) {
-    discountCents = promo.value;
-  } else if (isBundleQty && promo.bundle_price_cents > 0) {
-    const groups = Math.floor(subtotalCents / (subtotalCents / Math.max(1, selected.length))) * 0 + Math.floor(selected.length / take);
-    // Por simplicidad: muestra el ahorro como "lo que pagas" vs "lo que pagarías sin promo"
-    const normalCost = (() => {
-      const prices = selected.map((f) => f.price_cents ?? 0).sort((a, b) => a - b);
-      return prices.slice(0, take * groups).reduce((s, p) => s + p, 0);
-    })();
-    discountCents = Math.max(0, normalCost - promo.bundle_price_cents * groups);
-  } else if (isSecondUnit && selected.length >= 2) {
-    const prices = selected.map((f) => f.price_cents ?? 0).sort((a, b) => b - a);
-    const pairs = Math.floor(selected.length / 2);
-    discountCents = prices.slice(0, pairs).reduce((s, p) => s + Math.round(p * (promo.value / 100)), 0);
+  let paidCents = 0;
+
+  if (isBundleMix && promo.mix_config) {
+    // Subtotal = suma de cada fragancia en su size correspondiente
+    for (const sizeKey of Object.keys(selectedBySize)) {
+      for (const f of selectedBySize[Number(sizeKey)]) {
+        subtotalCents += f.price_cents ?? 0;
+      }
+    }
+    // Cuántos bundles se pueden formar (mínimo de grupos por cada regla)
+    let minGroups = Infinity;
+    for (const rule of promo.mix_config) {
+      const matched = selectedBySize[rule.size_ml]?.length ?? 0;
+      minGroups = Math.min(minGroups, Math.floor(matched / rule.qty));
+    }
+    if (minGroups === Infinity) minGroups = 0;
+    if (promo.bundle_price_cents > 0 && minGroups >= 1) {
+      // Descuento = (suma del bundle) - (precio del bundle × grupos)
+      const bundleNormalCost = (() => {
+        let total = 0;
+        for (const rule of promo.mix_config) {
+          const prices = (selectedBySize[rule.size_ml] ?? [])
+            .map((f) => f.price_cents ?? 0)
+            .sort((a, b) => a - b)
+            .slice(0, rule.qty * minGroups);
+          total += prices.reduce((s, p) => s + p, 0);
+        }
+        return total;
+      })();
+      discountCents = Math.max(0, bundleNormalCost - promo.bundle_price_cents * minGroups);
+    }
+    paidCents = Math.max(0, subtotalCents - discountCents);
+  } else {
+    subtotalCents = selected.reduce((s, f) => s + (f.price_cents ?? 0), 0);
+    if (isPercent) {
+      discountCents = Math.round(subtotalCents * (promo.value / 100));
+    } else if (isFixed) {
+      discountCents = promo.value;
+    } else if (isBundleQty && promo.bundle_price_cents > 0) {
+      const groups = Math.floor(selected.length / take);
+      const normalCost = (() => {
+        const prices = selected.map((f) => f.price_cents ?? 0).sort((a, b) => a - b);
+        return prices.slice(0, take * groups).reduce((s, p) => s + p, 0);
+      })();
+      discountCents = Math.max(0, normalCost - promo.bundle_price_cents * groups);
+    } else if (isSecondUnit && selected.length >= 2) {
+      const prices = selected.map((f) => f.price_cents ?? 0).sort((a, b) => b - a);
+      const pairs = Math.floor(selected.length / 2);
+      discountCents = prices.slice(0, pairs).reduce((s, p) => s + Math.round(p * (promo.value / 100)), 0);
+    }
+    paidCents = Math.max(0, subtotalCents - discountCents);
   }
-  const paidCents = Math.max(0, subtotalCents - discountCents);
   const payCount = isQuantityPromo ? pay : 1;
 
   function claim() {
     if (!allSelected) {
-      toast.error(`Elige ${itemsCount} fragancia${itemsCount > 1 ? "s" : ""} para continuar`);
+      if (isBundleMix && promo.mix_config) {
+        const missing = promo.mix_config
+          .filter((r) => (selectedBySize[r.size_ml]?.length ?? 0) < r.qty)
+          .map((r) => `${r.qty - (selectedBySize[r.size_ml]?.length ?? 0)}× de ${r.size_ml}ml`)
+          .join(", ");
+        toast.error(`Faltan: ${missing}`);
+      } else {
+        toast.error(`Elige ${itemsCount} fragancia${itemsCount > 1 ? "s" : ""} para continuar`);
+      }
       return;
     }
     // Limpiar carrito y agregar las fragancias con la promo aplicada
     clear();
 
-    for (const f of selected) {
-      add({
-        slug: f.slug,
-        brand: f.brand,
-        name: f.name,
-        artistic_name: f.artistic_name ?? null,
-        full_name: f.full_name,
-        image_url: f.image_url,
-        image_version: f.image_version,
-        size_ml: requiredMl || 0,
-        qty: 1,
-        unit_price_cents: f.price_cents ?? 0
-      });
+    if (isBundleMix && promo.mix_config) {
+      // Agregar cada fragancia con su size_ml
+      for (const sizeKey of Object.keys(selectedBySize)) {
+        const sizeMl = Number(sizeKey);
+        for (const f of selectedBySize[sizeMl]) {
+          add({
+            slug: f.slug,
+            brand: f.brand,
+            name: f.name,
+            artistic_name: f.artistic_name ?? null,
+            full_name: f.full_name,
+            image_url: f.image_url,
+            image_version: f.image_version,
+            size_ml: sizeMl,
+            qty: 1,
+            unit_price_cents: f.price_cents ?? 0
+          });
+        }
+      }
+    } else {
+      for (const f of selected) {
+        add({
+          slug: f.slug,
+          brand: f.brand,
+          name: f.name,
+          artistic_name: f.artistic_name ?? null,
+          full_name: f.full_name,
+          image_url: f.image_url,
+          image_version: f.image_version,
+          size_ml: requiredMl || 0,
+          qty: 1,
+          unit_price_cents: f.price_cents ?? 0
+        });
+      }
     }
 
     // Guardar la promo en el cart para que el total refleje el descuento
@@ -147,7 +246,8 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
       quantity_to_take: promo.quantity_to_take,
       bundle_price_cents: promo.bundle_price_cents,
       value: promo.value,
-      mix_sizes: promo.mix_sizes
+      mix_sizes: promo.mix_sizes,
+      mix_config: promo.mix_config ?? undefined
     });
 
     // Pasar la promo al checkout via query string
@@ -160,7 +260,7 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
       params.set("promo_take", String(take));
       params.set("promo_pay", String(pay));
     }
-    if (isBundleQty) {
+    if (isBundleQty || isBundleMix) {
       params.set("promo_bundle_price_cents", String(promo.bundle_price_cents));
     }
     if (isSecondUnit) {
@@ -188,13 +288,21 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
               {promo.type === "3x2" && `3x2 en fragancias de ${requiredMl}ml`}
               {promo.type === "2x1" && `2x1 en fragancias de ${requiredMl}ml`}
               {promo.type === "bundle_qty" && `${take} fragancias${requiredMl ? ` de ${requiredMl}ml` : ""} por $${(promo.bundle_price_cents / 100).toLocaleString("es-MX")}`}
+              {promo.type === "bundle_mix" && promo.mix_config && (
+                <>{(promo.mix_config || []).map((r, i) => (
+                  <span key={i}>
+                    {i > 0 && " + "}
+                    {r.qty}×{r.size_ml}ml
+                  </span>
+                ))} por ${(promo.bundle_price_cents / 100).toLocaleString("es-MX")}</>
+              )}
               {promo.type === "second_unit" && `2da unidad a ${promo.value}%`}
               {promo.type === "percent" && `${promo.value}% de descuento`}
               {promo.type === "fixed" && `$${(promo.value / 100).toLocaleString("es-MX")} de descuento`}
               {promo.type === "bundle" && "Paquete especial"}
               {promo.type === "free_shipping" && "Envío gratis"}
             </p>
-            {requiredMl > 0 && promo.type !== "bundle_qty" && (
+            {requiredMl > 0 && promo.type !== "bundle_qty" && promo.type !== "bundle_mix" && (
               <p className="text-xs opacity-70 mt-1">Presentación de {requiredMl}ml</p>
             )}
             {isBundleQty && mixSizes && (
@@ -203,79 +311,170 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
           </div>
           <div className="text-right">
             <p className="text-[11px] uppercase tracking-wider opacity-70">Tu selección</p>
-            <p className="text-2xl font-display italic">
-              {count}<span className="opacity-50">/{itemsCount}</span>
-            </p>
+            {isBundleMix && promo.mix_config ? (
+              <div className="text-base font-display italic leading-tight">
+                {promo.mix_config.map((r, i) => {
+                  const sel = selectedBySize[r.size_ml]?.length ?? 0;
+                  const done = sel >= r.qty;
+                  return (
+                    <div key={i} className={done ? "text-emerald-300" : ""}>
+                      {sel}/{r.qty} de {r.size_ml}ml
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-2xl font-display italic">
+                {count}<span className="opacity-50">/{itemsCount}</span>
+              </p>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Buscador */}
-      <div className="liquid-glass rounded-xl flex items-center gap-2 px-4 py-3 min-h-[48px]">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-ink-mute shrink-0"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={`Buscar fragancias de ${requiredMl}ml…`}
-          className="flex-1 bg-transparent outline-none text-sm placeholder:text-ink-mute min-w-0"
-        />
-        {search && (
-          <button onClick={() => setSearch("")} className="text-ink-mute hover:text-gold p-1" aria-label="Limpiar">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
-          </button>
-        )}
-      </div>
-
-      {/* Grid de fragancias */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-        {filtered.length === 0 ? (
-          <div className="col-span-full liquid-glass rounded-2xl p-8 text-center text-ink-mute">
-            <p>No hay fragancias de {requiredMl}ml disponibles para esta promo.</p>
-          </div>
-        ) : (
-          filtered.map((f) => {
-            const isSelected = selected.find((p) => p.id === f.id);
+      {/* Para bundle_mix: secciones separadas por tamaño */}
+      {isBundleMix && promo.mix_config ? (
+        <div className="space-y-6">
+          {promo.mix_config.map((rule) => {
+            const list = fragrancesBySize.find((g) => g.size_ml === rule.size_ml)?.fragrances ?? [];
+            const selectedHere = selectedBySize[rule.size_ml] ?? [];
             return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => toggle(f)}
-                className={`liquid-glass rounded-2xl p-3 text-left transition-all relative ${isSelected ? "ring-2 ring-gold scale-[0.98]" : "hover:scale-[1.02]"}`}
-              >
-                {isSelected && (
-                  <span className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-gold text-bg grid place-items-center text-xs font-bold">
-                    {selected.findIndex((p) => p.id === f.id) + 1}
+              <div key={rule.size_ml}>
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] uppercase tracking-wider text-gold/80">Tamaño</span>
+                  <span className="rounded-full bg-gold/15 border border-gold/30 px-2.5 py-0.5 text-[11px] font-semibold text-gold">
+                    {rule.size_ml}ml
                   </span>
-                )}
-                <div className="aspect-[3/4] rounded-xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
-                  {f.image_url ? (
-                    <img
-                      src={f.image_version != null ? `${f.image_url}?v=${f.image_version}` : f.image_url}
-                      alt={f.full_name}
-                      loading="lazy"
-                      className="w-full h-full object-cover"
-                    />
+                  <span className="text-xs text-ink-mute">
+                    Elige {rule.qty} {rule.qty > 1 ? "fragancia(s)" : "fragancia"} de este tamaño
+                  </span>
+                  <span className="ml-auto text-xs font-medium text-ink">
+                    {selectedHere.length}/{rule.qty}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                  {list.length === 0 ? (
+                    <div className="col-span-full liquid-glass rounded-2xl p-6 text-center text-ink-mute text-xs">
+                      No hay fragancias de {rule.size_ml}ml disponibles.
+                    </div>
                   ) : (
-                    <span className="font-display italic text-gold text-3xl">{f.brand[0]}</span>
+                    list.map((f) => {
+                      const isSel = selectedHere.find((p) => p.id === f.id);
+                      return (
+                        <button
+                          key={`${rule.size_ml}-${f.id}`}
+                          type="button"
+                          onClick={() => toggle({ ...f, size_ml: rule.size_ml } as any)}
+                          className={`liquid-glass rounded-2xl p-3 text-left transition-all relative ${isSel ? "ring-2 ring-gold scale-[0.98]" : "hover:scale-[1.02]"}`}
+                        >
+                          {isSel && (
+                            <span className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-gold text-bg grid place-items-center text-xs font-bold">
+                              {selectedHere.findIndex((p) => p.id === f.id) + 1}
+                            </span>
+                          )}
+                          <div className="aspect-[3/4] rounded-xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
+                            {f.image_url ? (
+                              <img
+                                src={f.image_version != null ? `${f.image_url}?v=${f.image_version}` : f.image_url}
+                                alt={f.full_name}
+                                loading="lazy"
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="font-display italic text-gold text-3xl">{f.brand[0]}</span>
+                            )}
+                          </div>
+                          <p className="mt-2 text-[10px] text-gold/80 uppercase tracking-wider truncate">
+                            {f.display_code ?? `PLT-${String(f.id).padStart(3, "0")}`}
+                          </p>
+                          <p className="text-sm font-medium text-ink leading-tight line-clamp-2">
+                            {f.artistic_name ?? f.name}
+                          </p>
+                          <p className="text-[10px] text-ink-mute truncate">
+                            {f.brand} {f.family && `· ${f.family}`}
+                          </p>
+                          {f.price_cents !== null && (
+                            <p className="text-[11px] text-gold mt-1">{money(f.price_cents)}</p>
+                          )}
+                        </button>
+                      );
+                    })
                   )}
                 </div>
-                <p className="mt-2 text-[10px] text-gold/80 uppercase tracking-wider truncate">
-                  {f.display_code ?? `PLT-${String(f.id).padStart(3, "0")}`}
-                </p>
-                <p className="text-sm font-medium text-ink leading-tight line-clamp-2">
-                  {f.artistic_name ?? f.name}
-                </p>
-                <p className="text-[10px] text-ink-mute truncate">
-                  {f.brand} {f.family && `· ${f.family}`}
-                </p>
-                {f.price_cents !== null && (
-                  <p className="text-[11px] text-gold mt-1">{money(f.price_cents)}</p>
-                )}
-              </button>
+              </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      ) : (
+        <>
+          {/* Buscador */}
+          <div className="liquid-glass rounded-xl flex items-center gap-2 px-4 py-3 min-h-[48px]">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="text-ink-mute shrink-0"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></svg>
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={`Buscar fragancias de ${requiredMl}ml…`}
+              className="flex-1 bg-transparent outline-none text-sm placeholder:text-ink-mute min-w-0"
+            />
+            {search && (
+              <button onClick={() => setSearch("")} className="text-ink-mute hover:text-gold p-1" aria-label="Limpiar">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12" /></svg>
+              </button>
+            )}
+          </div>
+
+          {/* Grid de fragancias */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+            {filtered.length === 0 ? (
+              <div className="col-span-full liquid-glass rounded-2xl p-8 text-center text-ink-mute">
+                <p>No hay fragancias de {requiredMl}ml disponibles para esta promo.</p>
+              </div>
+            ) : (
+              filtered.map((f) => {
+                const isSelected = selected.find((p) => p.id === f.id);
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => toggle(f)}
+                    className={`liquid-glass rounded-2xl p-3 text-left transition-all relative ${isSelected ? "ring-2 ring-gold scale-[0.98]" : "hover:scale-[1.02]"}`}
+                  >
+                    {isSelected && (
+                      <span className="absolute top-2 right-2 z-10 w-6 h-6 rounded-full bg-gold text-bg grid place-items-center text-xs font-bold">
+                        {selected.findIndex((p) => p.id === f.id) + 1}
+                      </span>
+                    )}
+                    <div className="aspect-[3/4] rounded-xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
+                      {f.image_url ? (
+                        <img
+                          src={f.image_version != null ? `${f.image_url}?v=${f.image_version}` : f.image_url}
+                          alt={f.full_name}
+                          loading="lazy"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="font-display italic text-gold text-3xl">{f.brand[0]}</span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-[10px] text-gold/80 uppercase tracking-wider truncate">
+                      {f.display_code ?? `PLT-${String(f.id).padStart(3, "0")}`}
+                    </p>
+                    <p className="text-sm font-medium text-ink leading-tight line-clamp-2">
+                      {f.artistic_name ?? f.name}
+                    </p>
+                    <p className="text-[10px] text-ink-mute truncate">
+                      {f.brand} {f.family && `· ${f.family}`}
+                    </p>
+                    {f.price_cents !== null && (
+                      <p className="text-[11px] text-gold mt-1">{money(f.price_cents)}</p>
+                    )}
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </>
+      )}
 
       {/* Resumen + CTA */}
       <div className="sticky bottom-4 mt-6">
@@ -283,7 +482,7 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
           <div className="text-sm">
             {allSelected ? (
               <>
-                {isBundleQty ? (
+                {isBundleQty || isBundleMix ? (
                   <>
                     <p className="text-ink">Precio del paquete: <span className="font-display italic text-xl text-gold">{money(promo.bundle_price_cents)}</span></p>
                     {subtotalCents > promo.bundle_price_cents && (
@@ -308,9 +507,13 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
               </>
             ) : (
               <p className="text-ink-mute">
-                Elige {itemsCount - count} fragancia{itemsCount - count === 1 ? "" : "s"} más
-                {requiredMl > 0 && promo.type !== "bundle_qty" && ` de ${requiredMl}ml`}
-                {isBundleQty && requiredMl > 0 && ` de ${requiredMl}ml`}
+                {isBundleMix && promo.mix_config
+                  ? "Completa la selección de todos los tamaños"
+                  : <>Elige {itemsCount - count} fragancia{itemsCount - count === 1 ? "" : "s"} más
+                      {requiredMl > 0 && promo.type !== "bundle_qty" && promo.type !== "bundle_mix" && ` de ${requiredMl}ml`}
+                      {isBundleQty && requiredMl > 0 && ` de ${requiredMl}ml`}
+                    </>
+                }
               </p>
             )}
           </div>
@@ -322,7 +525,9 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
             {allSelected ? (
               <>Continuar al pago <span>→</span></>
             ) : (
-              <>Elige {itemsCount} fragancia{itemsCount > 1 ? "s" : ""}</>
+              isBundleMix
+                ? <>Completa la selección</>
+                : <>Elige {itemsCount} fragancia{itemsCount > 1 ? "s" : ""}</>
             )}
           </button>
         </div>

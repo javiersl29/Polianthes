@@ -24,6 +24,7 @@ export default async function PromocionesPage() {
     bundle_price_cents: number;
     required_size_ml: number;
     mix_sizes: boolean;
+    mix_config: any;
     quantity_to_take: number;
     quantity_to_pay: number;
     image_url: string | null;
@@ -42,5 +43,11 @@ export default async function PromocionesPage() {
     updated_at: string;
   }>(`SELECT * FROM promotion ORDER BY sort_order ASC, created_at DESC`);
 
-  return <PromocionesClient initialPromotions={r.rows} />;
+  // Parsear mix_config (JSONB → array) para evitar que llegue como string al client component
+  const promos = r.rows.map((p) => ({
+    ...p,
+    mix_config: p.mix_config ?? null
+  }));
+
+  return <PromocionesClient initialPromotions={promos} />;
 }

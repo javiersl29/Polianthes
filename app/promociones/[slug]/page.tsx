@@ -20,6 +20,7 @@ type Promotion = {
   bundle_price_cents: number;
   required_size_ml: number;
   mix_sizes: boolean;
+  mix_config: Array<{ size_ml: number; qty: number }> | null;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -31,9 +32,9 @@ type Promotion = {
 };
 
 async function getPromotion(slug: string): Promise<Promotion | null> {
-  const r = await query<Promotion>(
+  const r = await query<Promotion & { mix_config_raw: any }>(
     `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
-            required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
+            required_size_ml, mix_sizes, mix_config, quantity_to_take, quantity_to_pay,
             image_url, badge_text, badge_color,
             min_items, max_items, min_subtotal_cents
      FROM promotion
@@ -42,7 +43,14 @@ async function getPromotion(slug: string): Promise<Promotion | null> {
        AND (ends_at IS NULL OR ends_at >= NOW())`,
     [slug]
   );
-  return r.rows[0] ?? null;
+  if (!r.rows[0]) return null;
+  const p = r.rows[0];
+  // Parsear mix_config de JSONB string a array
+  if (p.mix_config && typeof p.mix_config === "string") {
+    try { p.mix_config = JSON.parse(p.mix_config); } catch { p.mix_config = null; }
+  }
+  if (!Array.isArray(p.mix_config)) p.mix_config = null;
+  return p;
 }
 
 async function getFragrances(sizeMl: number, mixSizes: boolean) {
@@ -100,7 +108,24 @@ export default async function PromoPage({ params }: Props) {
 
   // Promos que NO requieren fragancias específicas (descuentos sobre el carrito)
   const isCartWidePromo = ["percent", "fixed", "free_shipping"].includes(promo.type);
-  const fragrances = isCartWidePromo ? [] : await getFragrances(promo.required_size_ml, promo.mix_sizes);
+
+  // Para bundle_mix, cargar fragancias por cada tamaño
+  type FragranceBySize = { size_ml: number; fragrances: any[] };
+  let fragrances: any[] = [];
+  let fragrancesBySize: FragranceBySize[] = [];
+
+  if (!isCartWidePromo) {
+    if (promo.type === "bundle_mix" && promo.mix_config && promo.mix_config.length > 0) {
+      fragrancesBySize = await Promise.all(
+        promo.mix_config.map(async (rule) => ({
+          size_ml: rule.size_ml,
+          fragrances: await getFragrances(rule.size_ml, false)
+        }))
+      );
+    } else {
+      fragrances = await getFragrances(promo.required_size_ml, promo.mix_sizes);
+    }
+  }
 
   return (
     <main className="pt-24 sm:pt-28 pb-16 sm:pb-20 px-4 min-h-screen">
@@ -133,7 +158,11 @@ export default async function PromoPage({ params }: Props) {
         {isCartWidePromo ? (
           <PromoDiscount promo={promo} />
         ) : (
-          <PromoPackage promo={promo} fragrances={fragrances} />
+          <PromoPackage
+            promo={promo}
+            fragrances={fragrances}
+            fragrancesBySize={fragrancesBySize}
+          />
         )}
       </div>
     </main>

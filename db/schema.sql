@@ -108,22 +108,26 @@ CREATE TABLE IF NOT EXISTS promotion (
   -- Tipo de promo:
   --   3x2, 2x1          → lleva N paga M (mismo tamaño)
   --   bundle_qty        → lleva N unidades por $X (pueden ser tamaños mezclados)
+  --   bundle_mix        → N unidades de tamaño A + M de tamaño B por $X (mixto)
   --   second_unit       → 2da unidad a X% (descuento en la 2da)
   --   percent           → X% de descuento sobre el total
   --   fixed             → $X de descuento fijo
   --   free_shipping     → envío gratis
   --   tiered            → tier por cantidad (1=$A, 2=$B, 3=$C)
   type TEXT NOT NULL DEFAULT 'bundle'
-    CHECK (type IN ('3x2','2x1','bundle_qty','second_unit','percent','fixed','bundle','free_shipping','tiered')),
+    CHECK (type IN ('3x2','2x1','bundle_qty','bundle_mix','second_unit','percent','fixed','bundle','free_shipping','tiered')),
   -- Valor del descuento (percent 0-100, fixed en cents, o % 2da unidad)
   value INTEGER NOT NULL DEFAULT 0,
-  -- Precio fijo del bundle en centavos (para bundle_qty: "3 por $290")
+  -- Precio fijo del bundle en centavos (para bundle_qty/bundle_mix: "3 por $290")
   bundle_price_cents INTEGER NOT NULL DEFAULT 0,
   -- Size ml requerido (ej 60 para "perfumes 60ml"). 0 = cualquier tamaño
   required_size_ml INTEGER NOT NULL DEFAULT 0,
   -- Si se permiten tamaños mezclados (para bundle_qty)
   -- 0 = mismo tamaño, 1 = cualquier tamaño
   mix_sizes BOOLEAN NOT NULL DEFAULT FALSE,
+  -- Configuración del bundle mixto (JSONB). Array de {size_ml, qty}
+  -- Ej: [{"size_ml": 30, "qty": 2}, {"size_ml": 10, "qty": 1}] para "2 de 30ml + 1 de 10ml"
+  mix_config JSONB,
   -- Cantidad de productos que se llevan (3x2 = 3, bundle_qty = 3, tiered = max tier)
   quantity_to_take INTEGER NOT NULL DEFAULT 3,
   -- Cantidad que pagan (3x2 = 2)

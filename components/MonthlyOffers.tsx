@@ -31,6 +31,7 @@ const TYPE_LABELS: Record<string, string> = {
   "3x2": "3x2",
   "2x1": "2x1",
   "bundle_qty": "Bundle",
+  "bundle_mix": "Mix",
   "second_unit": "2da unidad",
   "percent": "% OFF",
   "fixed": "MXN OFF",
@@ -55,6 +56,10 @@ function buildPromoSummary(p: Promotion): string {
       const price = p.bundle_price_cents ? `$${(p.bundle_price_cents / 100).toLocaleString("es-MX")}` : "$X";
       const ml = p.required_size_ml ? ` de ${p.required_size_ml}ml` : "";
       return `Lleva ${p.quantity_to_take} fragancias${ml} por ${price}`;
+    }
+    case "bundle_mix": {
+      const price = p.bundle_price_cents ? `$${(p.bundle_price_cents / 100).toLocaleString("es-MX")}` : "$X";
+      return `Pack mixto a precio especial ${price}`;
     }
     case "second_unit": return `2da unidad (y siguientes pares) a ${p.value}%`;
     case "percent": {

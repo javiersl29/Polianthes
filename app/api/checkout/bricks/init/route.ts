@@ -163,13 +163,13 @@ export async function POST(req: NextRequest) {
   let promoSummary = "";
   if (body.promo?.slug) {
     const pr = (await pool.query<{
-      type: string; value: number; bundle_price_cents: number; required_size_ml: number; mix_sizes: boolean;
+      type: string; value: number; bundle_price_cents: number; required_size_ml: number; mix_sizes: boolean; mix_config: any;
       quantity_to_take: number; quantity_to_pay: number;
       min_items: number; max_items: number; min_subtotal_cents: number;
       starts_at: string | null; ends_at: string | null; active: boolean;
       title: string;
     }>(
-      `SELECT type, value, bundle_price_cents, required_size_ml, mix_sizes,
+      `SELECT type, value, bundle_price_cents, required_size_ml, mix_sizes, mix_config,
               quantity_to_take, quantity_to_pay,
               min_items, max_items, min_subtotal_cents, starts_at, ends_at, active, title
        FROM promotion
@@ -216,6 +216,49 @@ export async function POST(req: NextRequest) {
           couponCode = `[BUNDLE ${take}×$${(pr.bundle_price_cents / 100).toFixed(0)}] ${pr.title}`;
           promoApplied = true;
           promoSummary = `Lleva ${take} por $${(pr.bundle_price_cents / 100).toFixed(0)}`;
+        }
+      } else if (pr.type === "bundle_mix") {
+        // "N de tamaño A + M de tamaño B por $X" — bundle con mix de tamaños
+        // mix_config es JSONB array: [{size_ml, qty}, ...]
+        let mixConfig: Array<{ size_ml: number; qty: number }> = [];
+        if (pr.mix_config && Array.isArray(pr.mix_config)) {
+          mixConfig = pr.mix_config;
+        } else if (typeof pr.mix_config === "string") {
+          try { mixConfig = JSON.parse(pr.mix_config); } catch { /* ignore */ }
+        }
+        if (mixConfig.length > 0 && pr.bundle_price_cents > 0) {
+          // Contar cuántos bundles se pueden armar: el mínimo de grupos por cada size
+          let minGroups = Infinity;
+          let bundleCanBeFormed = true;
+          for (const rule of mixConfig) {
+            const matched = orderItems
+              .filter((oi) => Number(oi.size_ml) === Number(rule.size_ml))
+              .reduce((s, oi) => s + oi.qty, 0);
+            const groupsForSize = Math.floor(matched / rule.qty);
+            if (groupsForSize < 1) {
+              bundleCanBeFormed = false;
+            }
+            minGroups = Math.min(minGroups, groupsForSize);
+          }
+          if (bundleCanBeFormed && minGroups >= 1 && minGroups !== Infinity) {
+            // Costo normal de los items en el bundle (los más baratos por tamaño)
+            let normalCost = 0;
+            for (const rule of mixConfig) {
+              const pricesForSize = orderItems
+                .filter((oi) => Number(oi.size_ml) === Number(rule.size_ml))
+                .flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents))
+                .sort((a, b) => a - b)
+                .slice(0, rule.qty * minGroups);
+              normalCost += pricesForSize.reduce((s, p) => s + p, 0);
+            }
+            const bundleCost = pr.bundle_price_cents * minGroups;
+            const bundleDiscount = Math.max(0, normalCost - bundleCost);
+            discountCents = Math.max(discountCents, bundleDiscount);
+            const desc = mixConfig.map((r) => `${r.qty}×${r.size_ml}ml`).join("+");
+            couponCode = `[MIX ${desc}] ${pr.title}`;
+            promoApplied = true;
+            promoSummary = `Lleva ${desc} por $${(pr.bundle_price_cents / 100).toFixed(0)}`;
+          }
         }
       } else if (pr.type === "second_unit") {
         if (totalItems >= 2) {

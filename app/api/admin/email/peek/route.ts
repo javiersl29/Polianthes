@@ -91,9 +91,14 @@ export async function GET(req: NextRequest) {
     await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS min_subtotal_cents INTEGER NOT NULL DEFAULT 0`);
     await query(`
       ALTER TABLE promotion ADD CONSTRAINT promotion_type_check
-        CHECK (type IN ('3x2','2x1','bundle_qty','second_unit','percent','fixed','bundle','free_shipping','tiered'))
+        CHECK (type IN ('3x2','2x1','bundle_qty','bundle_mix','second_unit','percent','fixed','bundle','free_shipping','tiered'))
     `);
     result.migrated_promotion_v2 = true;
+  }
+  if (action === "migrate_promotion_v3") {
+    // Añade columna mix_config para bundle_mix
+    await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS mix_config JSONB`);
+    result.migrated_promotion_v3 = true;
   }
   if (action === "clean_footer_links") {
     const r = await query(

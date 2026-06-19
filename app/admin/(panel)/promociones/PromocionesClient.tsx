@@ -3,6 +3,8 @@ import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 
+type MixRule = { size_ml: number; qty: number };
+
 type Promotion = {
   id: number;
   slug: string;
@@ -14,6 +16,7 @@ type Promotion = {
   bundle_price_cents: number;
   required_size_ml: number;
   mix_sizes: boolean;
+  mix_config: MixRule[] | null;
   quantity_to_take: number;
   quantity_to_pay: number;
   image_url: string | null;
@@ -46,6 +49,7 @@ const PROMO_TYPES: PromoType[] = [
   { id: "3x2", label: "3x2", short: "Lleva 3, paga 2", icon: "🎁", desc: "El cliente elige 3 fragancias y paga solo 2. Las más baratas son gratis.", example: "Lleva 3 perfumes de 60ml y paga solo 2", color: "from-amber-500/20 to-orange-500/10 border-amber-500/30" },
   { id: "2x1", label: "2x1", short: "Lleva 2, paga 1", icon: "🎀", desc: "El cliente elige 2 fragancias y paga solo 1. La más barata es gratis.", example: "Lleva 2 perfumes de 30ml y paga solo 1", color: "from-pink-500/20 to-rose-500/10 border-pink-500/30" },
   { id: "bundle_qty", label: "Bundle de cantidad", short: "N unidades por $X", icon: "📦", desc: "Pack de N fragancias a precio fijo. Ideal para sets de regalo o muestras.", example: "3 perfumes de 10ml por $290", color: "from-emerald-500/20 to-teal-500/10 border-emerald-500/30" },
+  { id: "bundle_mix", label: "Bundle mixto", short: "N×A + M×B por $X", icon: "🧩", desc: "Combina fragancias de distintos tamaños a precio fijo. Ej: 2 de 30ml + 1 de 10ml por $X.", example: "2 fragancias de 30ml + 1 de 10ml por $60", color: "from-indigo-500/20 to-blue-500/10 border-indigo-500/30" },
   { id: "second_unit", label: "2da unidad a X%", short: "Descuento en 2da", icon: "🏷️", desc: "La segunda unidad (y siguientes pares) tienen un % de descuento.", example: "2da unidad a 50% — lleva 2 perfumes, el segundo a mitad de precio", color: "from-violet-500/20 to-purple-500/10 border-violet-500/30" },
   { id: "percent", label: "Descuento %", short: "X% en todo", icon: "💯", desc: "Porcentaje de descuento sobre el subtotal del carrito.", example: "20% de descuento en toda la tienda", color: "from-sky-500/20 to-blue-500/10 border-sky-500/30" },
   { id: "fixed", label: "Descuento fijo", short: "$X de descuento", icon: "💵", desc: "Monto fijo de descuento sobre el subtotal (en pesos MXN).", example: "$100 de descuento en cualquier compra", color: "from-yellow-500/20 to-amber-500/10 border-yellow-500/30" },
@@ -66,6 +70,7 @@ const QUICK_PRESETS: { label: string; type: string; config: Record<string, unkno
   { label: "2x1 en 30ml", type: "2x1", config: { quantity_to_take: 2, quantity_to_pay: 1, required_size_ml: 30, badge_text: "2x1 30ml" } },
   { label: "3 perfumes 10ml por $290", type: "bundle_qty", config: { quantity_to_take: 3, bundle_price_cents: 29000, required_size_ml: 10, mix_sizes: false, badge_text: "PACK $290" } },
   { label: "Pack 5 por $450", type: "bundle_qty", config: { quantity_to_take: 5, bundle_price_cents: 45000, required_size_ml: 0, mix_sizes: true, badge_text: "PACK 5" } },
+  { label: "2×30ml + 1×10ml = $60", type: "bundle_mix", config: { bundle_price_cents: 6000, mix_config: [{ size_ml: 30, qty: 2 }, { size_ml: 10, qty: 1 }], badge_text: "MIX $60" } },
   { label: "2da unidad a 50%", type: "second_unit", config: { value: 50, badge_text: "2DA 50%" } },
   { label: "20% en todo", type: "percent", config: { value: 20, badge_text: "20% OFF" } },
   { label: "$100 de descuento", type: "fixed", config: { value: 10000, badge_text: "-$100" } },
@@ -82,6 +87,7 @@ const empty = (): Partial<Promotion> => ({
   bundle_price_cents: 0,
   required_size_ml: 60,
   mix_sizes: false,
+  mix_config: null,
   quantity_to_take: 3,
   quantity_to_pay: 2,
   image_url: "",
@@ -145,7 +151,14 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   async function reload() {
     const r = await fetch("/api/admin/promotions");
     const data = await r.json();
-    setPromos(data.promotions ?? []);
+    // Parsear mix_config de string JSON a array
+    const parsed = (data.promotions ?? []).map((p: Promotion) => {
+      if (p.mix_config && typeof p.mix_config === "string") {
+        try { p.mix_config = JSON.parse(p.mix_config); } catch { p.mix_config = null; }
+      }
+      return p;
+    });
+    setPromos(parsed);
   }
 
   function startNew() {
@@ -157,8 +170,17 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   }
 
   function startEdit(p: Promotion) {
+    let mixConfig: MixRule[] | null = null;
+    if (p.mix_config) {
+      if (typeof p.mix_config === "string") {
+        try { mixConfig = JSON.parse(p.mix_config); } catch { mixConfig = null; }
+      } else if (Array.isArray(p.mix_config)) {
+        mixConfig = p.mix_config;
+      }
+    }
     setEditing({
       ...p,
+      mix_config: mixConfig,
       starts_at: p.starts_at ? new Date(p.starts_at).toISOString().slice(0, 16) : "",
       ends_at: p.ends_at ? new Date(p.ends_at).toISOString().slice(0, 16) : ""
     });
@@ -173,6 +195,14 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
     setSaving(true);
     try {
       const body: Record<string, unknown> = { ...editing };
+      if (body.mix_config !== undefined) {
+        // Serializar mix_config a JSON string para enviarlo al API
+        if (body.mix_config === null || (Array.isArray(body.mix_config) && body.mix_config.length === 0)) {
+          body.mix_config = null;
+        } else {
+          body.mix_config = JSON.stringify(body.mix_config);
+        }
+      }
       if (body.starts_at && typeof body.starts_at === "string") {
         body.starts_at = new Date(body.starts_at).toISOString();
       } else body.starts_at = undefined;
@@ -300,14 +330,15 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   function setType(type: string) {
     if (!editing) return;
     const defaults: Record<string, Partial<Promotion>> = {
-      "3x2": { quantity_to_take: 3, quantity_to_pay: 2, required_size_ml: 60, value: 0, bundle_price_cents: 0, mix_sizes: false },
-      "2x1": { quantity_to_take: 2, quantity_to_pay: 1, required_size_ml: 30, value: 0, bundle_price_cents: 0, mix_sizes: false },
-      bundle_qty: { quantity_to_take: 3, bundle_price_cents: 29000, required_size_ml: 10, mix_sizes: false, value: 0, quantity_to_pay: 3 },
-      second_unit: { value: 50, quantity_to_take: 2, quantity_to_pay: 2, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false },
-      percent: { value: 20, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0 },
-      fixed: { value: 10000, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0 },
-      free_shipping: { value: 0, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0 },
-      tiered: { value: 0, quantity_to_take: 3, quantity_to_pay: 3, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false }
+      "3x2": { quantity_to_take: 3, quantity_to_pay: 2, required_size_ml: 60, value: 0, bundle_price_cents: 0, mix_sizes: false, mix_config: null },
+      "2x1": { quantity_to_take: 2, quantity_to_pay: 1, required_size_ml: 30, value: 0, bundle_price_cents: 0, mix_sizes: false, mix_config: null },
+      bundle_qty: { quantity_to_take: 3, bundle_price_cents: 29000, required_size_ml: 10, mix_sizes: false, value: 0, quantity_to_pay: 3, mix_config: null },
+      bundle_mix: { quantity_to_take: 3, bundle_price_cents: 6000, required_size_ml: 0, mix_sizes: false, value: 0, quantity_to_pay: 3, mix_config: [{ size_ml: 30, qty: 2 }, { size_ml: 10, qty: 1 }] },
+      second_unit: { value: 50, quantity_to_take: 2, quantity_to_pay: 2, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, mix_config: null },
+      percent: { value: 20, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0, mix_config: null },
+      fixed: { value: 10000, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0, mix_config: null },
+      free_shipping: { value: 0, quantity_to_take: 0, quantity_to_pay: 0, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, min_subtotal_cents: 0, mix_config: null },
+      tiered: { value: 0, quantity_to_take: 3, quantity_to_pay: 3, required_size_ml: 0, bundle_price_cents: 0, mix_sizes: false, mix_config: null }
     };
     setEditing({ ...editing, type, ...(defaults[type] || {}) });
   }
@@ -524,6 +555,100 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
                       help="0 = cualquier tamaño"
                     />
                   </div>
+                )}
+
+                {/* bundle_mix: N×A + M×B por $X */}
+                {editing.type === "bundle_mix" && (
+                  <>
+                    <Field
+                      label="Precio del pack (MXN)"
+                      type="number"
+                      value={String((editing.bundle_price_cents ?? 0) / 100)}
+                      onChange={(v) => setEditing({ ...editing, bundle_price_cents: Math.round(Number(v) * 100) })}
+                      help="Precio fijo que paga el cliente por el bundle completo"
+                      placeholder="60"
+                    />
+                    <div className="rounded-lg bg-black/30 border border-line/40 p-3 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[11px] uppercase tracking-wider text-gold/80">Composición del bundle</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const cfg = editing.mix_config ?? [];
+                            setEditing({ ...editing, mix_config: [...cfg, { size_ml: 30, qty: 1 }] });
+                          }}
+                          className="rounded-full border border-gold/40 px-2.5 py-1 text-[10px] text-gold hover:bg-gold/10"
+                        >
+                          + Agregar tamaño
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-ink-mute">
+                        Define cuántos perfumes de cada tamaño debe elegir el cliente.
+                      </p>
+                      <div className="space-y-1.5">
+                        {(editing.mix_config ?? []).map((rule, idx) => (
+                          <div key={idx} className="flex items-center gap-2 rounded-lg bg-bg/40 border border-line/30 p-2">
+                            <span className="text-[10px] text-ink-mute w-6">{idx + 1}.</span>
+                            <span className="text-[10px] text-ink-mute">Lleva</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={rule.qty}
+                              onChange={(e) => {
+                                const cfg = [...(editing.mix_config ?? [])];
+                                cfg[idx] = { ...cfg[idx], qty: Math.max(1, Number(e.target.value)) };
+                                setEditing({ ...editing, mix_config: cfg });
+                              }}
+                              className="w-14 bg-black/40 border border-line rounded px-2 py-1 text-xs text-white text-center"
+                            />
+                            <span className="text-[10px] text-ink-mute">de</span>
+                            <select
+                              value={rule.size_ml}
+                              onChange={(e) => {
+                                const cfg = [...(editing.mix_config ?? [])];
+                                cfg[idx] = { ...cfg[idx], size_ml: Number(e.target.value) };
+                                setEditing({ ...editing, mix_config: cfg });
+                              }}
+                              className="bg-black/40 border border-line rounded px-2 py-1 text-xs text-white"
+                            >
+                              <option value="10">10ml (Travel)</option>
+                              <option value="30">30ml (Standard)</option>
+                              <option value="60">60ml (Large)</option>
+                              <option value="100">100ml (Premium)</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const cfg = (editing.mix_config ?? []).filter((_, i) => i !== idx);
+                                setEditing({ ...editing, mix_config: cfg.length > 0 ? cfg : null });
+                              }}
+                              className="ml-auto text-rose-300/80 hover:text-rose-300 p-1"
+                              aria-label="Quitar regla"
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                            </button>
+                          </div>
+                        ))}
+                        {(editing.mix_config ?? []).length === 0 && (
+                          <p className="text-[11px] text-ink-mute text-center py-2">
+                            Agrega al menos una regla de tamaño.
+                          </p>
+                        )}
+                      </div>
+                      {editing.mix_config && editing.mix_config.length > 0 && (editing.bundle_price_cents ?? 0) > 0 && (
+                        <div className="rounded-lg bg-bg/40 border border-gold/20 p-3 text-xs text-ink-mute">
+                          <strong className="text-gold">Bundle:</strong>{" "}
+                          {editing.mix_config.map((r, i) => (
+                            <span key={i}>
+                              {i > 0 && " + "}
+                              {r.qty}× de {r.size_ml}ml
+                            </span>
+                          ))}{" "}
+                          por <strong className="text-gold">{money(editing.bundle_price_cents ?? 0)}</strong>
+                        </div>
+                      )}
+                    </div>
+                  </>
                 )}
 
                 {/* bundle_qty: N por $X */}

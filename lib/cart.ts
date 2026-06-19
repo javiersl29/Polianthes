@@ -19,7 +19,7 @@ export type CartItem = {
 
 export type CartPromo = {
   slug: string;
-  type: "bundle_qty" | "3x2" | "2x1" | "percent" | "fixed" | "free_shipping" | "second_unit" | "bundle" | "tiered";
+  type: "bundle_qty" | "bundle_mix" | "3x2" | "2x1" | "percent" | "fixed" | "free_shipping" | "second_unit" | "bundle" | "tiered";
   title: string;
   /** Cantidad de unidades que incluye el bundle (ej 3 para "3 por $X") */
   quantity_to_take?: number;
@@ -29,6 +29,8 @@ export type CartPromo = {
   value?: number;
   /** Si true, se permite mezclar tamaños en bundle_qty */
   mix_sizes?: boolean;
+  /** Configuración de bundle mixto: array de {size_ml, qty} */
+  mix_config?: Array<{ size_ml: number; qty: number }>;
 };
 
 const CART_KEY = "polianthes_cart_v1";
@@ -133,14 +135,34 @@ export function cartTotal(items: CartItem[], promo: CartPromo | null = null): Ca
       const take = promo.quantity_to_take;
       const groups = Math.floor(units / take);
       if (groups > 0) {
-        // Cobrar `groups * bundle_price_cents` por los grupos, y el resto a precio normal
         const itemsInBundles = take * groups;
         const normalUnits = units - itemsInBundles;
-        // Para las unidades dentro del bundle, asumimos precio promedio (no podemos saber exacto sin la promo en server)
-        // Mostramos el bundle price como total
         const remaining = items.slice().sort((a, b) => b.unit_price_cents - a.unit_price_cents).slice(0, normalUnits);
         const remainingTotal = remaining.reduce((s, it) => s + it.unit_price_cents * it.qty, 0);
         total = promo.bundle_price_cents * groups + remainingTotal;
+        discount = Math.max(0, subtotal - total);
+      }
+    } else if (promo.type === "bundle_mix" && promo.bundle_price_cents && promo.mix_config && promo.mix_config.length > 0) {
+      // Calcular cuántos bundles se pueden formar (mínimo de grupos por cada regla)
+      let minGroups = Infinity;
+      for (const rule of promo.mix_config) {
+        const matched = items
+          .filter((it) => it.size_ml === rule.size_ml)
+          .reduce((s, it) => s + it.qty, 0);
+        minGroups = Math.min(minGroups, Math.floor(matched / rule.qty));
+      }
+      if (minGroups >= 1 && minGroups !== Infinity) {
+        // Calcular costo normal de los items en el bundle
+        let bundleNormalCost = 0;
+        for (const rule of promo.mix_config) {
+          const prices = items
+            .filter((it) => it.size_ml === rule.size_ml)
+            .flatMap((it) => Array(it.qty).fill(it.unit_price_cents))
+            .sort((a, b) => a - b)
+            .slice(0, rule.qty * minGroups);
+          bundleNormalCost += prices.reduce((s, p) => s + p, 0);
+        }
+        total = promo.bundle_price_cents * minGroups;
         discount = Math.max(0, subtotal - total);
       }
     } else if (promo.type === "percent" && promo.value) {
