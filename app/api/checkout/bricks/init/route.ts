@@ -4,6 +4,7 @@ import { getPaymentProvider } from "@/lib/admin-data";
 import { parseMXN } from "@/lib/money";
 import { getCurrentCustomer, markCustomerAffiliated, incrementCustomerStats } from "@/lib/customer-auth";
 import { calculatePromo } from "@/lib/promo-calc";
+import { calculateShipping } from "@/lib/shipping";
 
 export const dynamic = "force-dynamic";
 
@@ -122,28 +123,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 2) Calcular envío
-  const zone = (await pool.query<{ name: string; cost_cents: number; free_from_cents: number | null; kind: string; pickup_address: string | null; pickup_city: string | null; pickup_state: string | null; pickup_postal_code: string | null }>(
-    `SELECT name, cost_cents, free_from_cents, kind,
-            pickup_address, pickup_city, pickup_state, pickup_postal_code
-     FROM shipping_zone WHERE id = $1 AND active = TRUE`,
-    [Number(body.shipping.zone_id)]
-  )).rows[0];
-  if (!zone) return NextResponse.json({ error: "Zona de envío no válida" }, { status: 400 });
-
-  let shippingCents = 0;
-  if (zone.kind !== "pickup" && !isPickup) {
-    shippingCents = zone.cost_cents;
-    if (zone.free_from_cents && subtotalCents >= zone.free_from_cents) shippingCents = 0;
-  }
-  const shipName = zone.name;
-  const shipLine = isPickup ? (zone.pickup_address ?? "Recogida en sitio") : body.shipping.address_line;
-  const shipLine2 = isPickup ? null : (body.shipping.address_line2 ?? null);
-  const shipCity = isPickup ? (zone.pickup_city ?? "") : body.shipping.city;
-  const shipState = isPickup ? (zone.pickup_state ?? "") : body.shipping.state;
-  const shipCP = isPickup ? (zone.pickup_postal_code ?? "") : body.shipping.postal_code;
-
-  // 3) Cupón
+  // 2) Cupón
   let discountCents = 0;
   let couponCode: string | null = null;
   if (body.coupon_code) {
@@ -159,9 +139,10 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4) Promoción — usa calculatePromo de lib/promo-calc (misma lógica que el carrito client-side)
+  // 3) Promoción — usa calculatePromo de lib/promo-calc (misma lógica que el carrito client-side)
   let promoApplied = false;
   let promoSummary = "";
+  let promoType: string | null = null;
   if (body.promo?.slug) {
     const pr = (await pool.query<{
       type: string; value: number; bundle_price_cents: number; required_size_ml: number; mix_sizes: boolean; mix_config: any;
@@ -181,6 +162,8 @@ export async function POST(req: NextRequest) {
     if (pr && pr.active
         && (!pr.starts_at || new Date(pr.starts_at) <= new Date())
         && (!pr.ends_at || new Date(pr.ends_at) >= new Date())) {
+
+      promoType = pr.type;
 
       // Parsear mix_config
       let mixConfig: Array<{ size_ml: number; qty: number }> | null = null;
@@ -212,16 +195,48 @@ export async function POST(req: NextRequest) {
         promoApplied = true;
         promoSummary = promoResult.summary;
 
-        // Construir couponCode descriptivo
+        // Construir couponCode descriptivo (no toca shippingCents: ya lo aplicó calculateShipping)
         if (pr.type === "free_shipping") {
           couponCode = `[ENVÍO GRATIS] ${pr.title}`;
-          shippingCents = 0;
         } else {
           couponCode = `[PROMO] ${pr.title}`;
         }
+      } else {
+        promoSummary = promoResult.reason ?? "Promoción no aplicable";
       }
+    } else {
+      promoSummary = "Promoción no vigente";
     }
   }
+
+  // 4) Calcular envío (centralizado en lib/shipping.ts) — DESPUÉS de cupón/promo
+  const isFreeShippingPromo = promoType === "free_shipping";
+  const shippingResult = await calculateShipping({
+    deliveryMode: isPickup ? "pickup" : "shipping",
+    postalCode: body.shipping.postal_code ?? null,
+    subtotalPreCents: subtotalCents,
+    subtotalPostCents: subtotalCents - discountCents,
+    shippingAddress: {
+      address_line: body.shipping.address_line,
+      address_line2: body.shipping.address_line2 ?? null,
+      city: body.shipping.city,
+      state: body.shipping.state,
+      postal_code: body.shipping.postal_code
+    },
+    hasFreeShippingPromo: isFreeShippingPromo,
+    explicitZoneId: body.shipping.zone_id ?? null
+  });
+  // Validar que la zona explícita del cliente existe (no aceptar ids inventados)
+  if (body.shipping.zone_id && !shippingResult.zone_id) {
+    return NextResponse.json({ error: "Zona de envío no válida" }, { status: 400 });
+  }
+  const shippingCents = shippingResult.shipping_cents;
+  const shipName = shippingResult.zone_name;
+  const shipLine = shippingResult.address.line;
+  const shipLine2 = shippingResult.address.line2;
+  const shipCity = shippingResult.address.city;
+  const shipState = shippingResult.address.state;
+  const shipCP = shippingResult.address.postal_code;
 
   const totalCents = Math.max(0, subtotalCents - discountCents + shippingCents);
 

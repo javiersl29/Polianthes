@@ -1,9 +1,10 @@
 "use client";
-import { useEffect, useState, useCallback, Suspense } from "react";
+import { useEffect, useState, useCallback, Suspense, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useCart } from "@/components/CartProvider";
-import { money } from "@/lib/cart";
+import { money, type CartItem } from "@/lib/cart";
+import { calculateShippingSync } from "@/lib/shipping-client";
 import { toast } from "sonner";
 import PaymentBrick from "@/components/PaymentBrick";
 
@@ -26,6 +27,18 @@ type Pickup = {
   pickup_schedule: string | null;
   phone: string | null;
   email: string | null;
+};
+
+type ShippingConfigFE = {
+  default_cost_cents: number;
+  default_free_from_cents: number | null;
+  default_estimated_days: string | null;
+  override_enabled: boolean;
+  override_cost_cents: number | null;
+  override_free_from_cents: number | null;
+  override_estimated_days: string | null;
+  override_label: string | null;
+  active: boolean;
 };
 
 type Provider = {
@@ -60,6 +73,7 @@ function CheckoutInner() {
   const [zones, setZones] = useState<Zone[]>([]);
   const [pickups, setPickups] = useState<Pickup[]>([]);
   const [providers, setProviders] = useState<Provider[]>([]);
+  const [shippingConfig, setShippingConfig] = useState<ShippingConfigFE | null>(null);
   const [promoName, setPromoName] = useState<string | null>(null);
 
   useEffect(() => {
@@ -104,6 +118,7 @@ function CheckoutInner() {
     ]).then(([z, p, c]) => {
       setZones(z.zones ?? []);
       setPickups(z.pickups ?? []);
+      setShippingConfig(z.config ?? null);
       setProviders(p.providers ?? []);
       if (c.customer) {
         setName(c.customer.name ?? "");
@@ -121,17 +136,27 @@ function CheckoutInner() {
     }).catch(() => setLoading(false));
   }, []);
 
-  const detectedZone = deliveryMode === "shipping"
-    ? zones.find((z) => cp.startsWith(z.postal_code_prefix))
-    : undefined;
-  const selectedZoneId = deliveryMode === "pickup" ? selectedPickupId : detectedZone?.id;
-  const shippingCents = deliveryMode === "pickup"
-    ? 0
-    : (detectedZone
-        ? (detectedZone.free_from_cents && total.total_cents >= detectedZone.free_from_cents
-          ? 0
-          : detectedZone.cost_cents)
-        : 0);
+  // Subtotal pre-promo (precio catálogo, sin descuentos aplicados).
+  // Se usa para evaluar free_from_cents y min_subtotal_cents de promos/envío.
+  const subtotalPreCents = total.subtotal_cents;
+
+  // Cálculo de envío coherente con server: usa lib/shipping-client.ts (puro, sin DB)
+  // Si la zona no matchea CP, fallback al default de shipping_config.
+  const isFreeShippingPromo = promo?.type === "free_shipping";
+  const explicitZoneId = deliveryMode === "pickup" ? selectedPickupId : undefined;
+  const shippingResult = calculateShippingSync({
+    deliveryMode,
+    postalCode: cp,
+    subtotalPreCents,
+    subtotalPostCents: total.total_cents,
+    explicitZoneId,
+    hasFreeShippingPromo: isFreeShippingPromo,
+    zones: zones as any,
+    config: shippingConfig as any
+  });
+  const shippingCents = shippingResult.shipping_cents;
+  const selectedZoneId = shippingResult.zone_id;
+
   // total.total_cents YA incluye el descuento del promo (calculado por cartTotal → calculatePromo)
   // Solo aplicamos cupón adicional si existe
   const promoDiscountCents = total.discount_cents;
@@ -167,7 +192,9 @@ function CheckoutInner() {
       if (!addressLine.trim()) return "Dirección requerida";
       if (!city.trim()) return "Ciudad requerida";
       if (!state.trim()) return "Estado requerido";
-      if (!detectedZone) return `No hay zona de envío para el CP ${cp}. Revisa /admin/envio.`;
+      if (!shippingResult.zone_id && !shippingConfig?.override_enabled && !shippingConfig?.active) {
+        return `No hay zona de envío para el CP ${cp}. Revisa /admin/envio.`;
+      }
     } else {
       if (!selectedPickupId) return "Selecciona un sitio de entrega";
     }
@@ -304,13 +331,18 @@ function CheckoutInner() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <Input label="Código postal" value={cp} onChange={(v) => { setCp(v); setAppliedCoupon(null); setCouponStatus("idle"); }} placeholder="01000" required />
                       <div className="self-end">
-                        {detectedZone ? (
-                          <p className="text-xs text-emerald-300 mt-2">✓ Zona: <strong>{detectedZone.name}</strong>
-                            {detectedZone.estimated_days && ` · ${detectedZone.estimated_days}`}
+                        {shippingResult.zone_id ? (
+                          <p className="text-xs text-emerald-300 mt-2">✓ Zona: <strong>{shippingResult.zone_name}</strong>
+                            {shippingResult.estimated_days && ` · ${shippingResult.estimated_days}`}
+                            {shippingCents === 0 && <span className="ml-1 text-gold">(envío gratis)</span>}
+                          </p>
+                        ) : shippingConfig && (shippingConfig.override_enabled || shippingConfig.default_cost_cents > 0 || shippingConfig.default_free_from_cents) ? (
+                          <p className="text-xs text-emerald-300 mt-2">✓ <strong>{shippingResult.zone_name}</strong>
+                            {shippingResult.estimated_days && ` · ${shippingResult.estimated_days}`}
                             {shippingCents === 0 && <span className="ml-1 text-gold">(envío gratis)</span>}
                           </p>
                         ) : cp.length >= 4 ? (
-                          <p className="text-xs text-rose-300 mt-2">No hay zona para este CP</p>
+                          <p className="text-xs text-rose-300 mt-2">No hay zona para este CP. Configura una en /admin/envio.</p>
                         ) : null}
                       </div>
                       <Input label="Calle y número" value={addressLine} onChange={setAddressLine} placeholder="Av. Reforma 100" required className="sm:col-span-2" />

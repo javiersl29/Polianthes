@@ -98,6 +98,32 @@ CREATE TABLE IF NOT EXISTS shipping_zone (
 );
 CREATE INDEX IF NOT EXISTS idx_shipping_zone_prefix ON shipping_zone(postal_code_prefix) WHERE active;
 
+-- Configuración global de envío (single-row, override/ fallback)
+CREATE TABLE IF NOT EXISTS shipping_config (
+  id INTEGER PRIMARY KEY DEFAULT 1,
+  -- Costo flat por defecto cuando no hay match de zona por CP
+  default_cost_cents INTEGER NOT NULL DEFAULT 0,
+  -- Envío gratis si subtotal pre-promo >= N (NULL = nunca gratis por defecto)
+  default_free_from_cents INTEGER,
+  -- Tiempo estimado cuando aplica la regla por defecto
+  default_estimated_days TEXT,
+  -- Override global: si está activo, ignora zonas y cobra siempre este costo
+  override_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  override_cost_cents INTEGER,
+  override_free_from_cents INTEGER,
+  override_estimated_days TEXT,
+  -- Mensaje mostrado al cliente en checkout cuando aplica override
+  override_label TEXT,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT single_row_shipping_config CHECK (id = 1)
+);
+
+-- Sembrar fila única
+INSERT INTO shipping_config (id, default_cost_cents, override_enabled, active)
+VALUES (1, 0, FALSE, TRUE)
+ON CONFLICT (id) DO NOTHING;
+
 -- Promociones del mes (carrusel en homepage)
 CREATE TABLE IF NOT EXISTS promotion (
   id SERIAL PRIMARY KEY,
@@ -170,20 +196,6 @@ CREATE TABLE IF NOT EXISTS coupon (
   usage_count INTEGER NOT NULL DEFAULT 0,
   active BOOLEAN NOT NULL DEFAULT TRUE,
   description TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- Promociones automáticas
-CREATE TABLE IF NOT EXISTS promotion (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK (kind IN ('bxgy','percent_category','free_shipping_over','fixed_off_over')),
-  config_json JSONB NOT NULL DEFAULT '{}'::jsonb,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  stackable BOOLEAN NOT NULL DEFAULT FALSE,
-  starts_at TIMESTAMPTZ,
-  ends_at TIMESTAMPTZ,
-  priority INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

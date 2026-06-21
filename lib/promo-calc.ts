@@ -26,6 +26,8 @@ export type PromoItem = {
 export type PromoResult = {
   /** La promo aplica (se cumplen los requisitos) */
   valid: boolean;
+  /** Razón por la que no aplica (si valid=false) */
+  reason?: string;
   /** Subtotal de todos los items */
   subtotal_cents: number;
   /** Descuento aplicado */

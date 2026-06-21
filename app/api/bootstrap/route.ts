@@ -150,6 +150,29 @@ export async function POST(req: NextRequest) {
      ON CONFLICT (id) DO NOTHING`
   );
 
+  // Migración idempotente: tabla shipping_config para override + default
+  await pool.query(
+    `CREATE TABLE IF NOT EXISTS shipping_config (
+       id INTEGER PRIMARY KEY DEFAULT 1,
+       default_cost_cents INTEGER NOT NULL DEFAULT 0,
+       default_free_from_cents INTEGER,
+       default_estimated_days TEXT,
+       override_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+       override_cost_cents INTEGER,
+       override_free_from_cents INTEGER,
+       override_estimated_days TEXT,
+       override_label TEXT,
+       active BOOLEAN NOT NULL DEFAULT TRUE,
+       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+       CONSTRAINT single_row_shipping_config CHECK (id = 1)
+     )`
+  );
+  await pool.query(
+    `INSERT INTO shipping_config (id, default_cost_cents, override_enabled, active)
+     VALUES (1, 0, FALSE, TRUE)
+     ON CONFLICT (id) DO NOTHING`
+  );
+
   // Seed brand_bottle_image (idempotente, una sola fila)
   await pool.query(
     `INSERT INTO brand_bottle_image (id, mime_type) VALUES (1, 'image/jpeg')

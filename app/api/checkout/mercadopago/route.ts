@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPool } from "@/lib/db";
 import { getPaymentProvider } from "@/lib/admin-data";
+import { calculateShipping } from "@/lib/shipping";
 
 export const dynamic = "force-dynamic";
 
@@ -140,39 +141,32 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // 3) Calcular envío desde la zona. Si kind=pickup, shipping_cents=0
-  // y los datos de envío se sustituyen por la dirección del sitio pickup.
+  // 3) Calcular envío (centralizado en lib/shipping.ts)
   const isPickup = body.shipping.kind === "pickup";
-  const zone = (await pool.query<{
-    name: string; cost_cents: number; free_from_cents: number | null;
-    kind: string;
-    pickup_address: string | null; pickup_city: string | null;
-    pickup_state: string | null; pickup_postal_code: string | null;
-  }>(
-    `SELECT name, cost_cents, free_from_cents, kind,
-            pickup_address, pickup_city, pickup_state, pickup_postal_code
-     FROM shipping_zone WHERE id = $1 AND active = TRUE`,
-    [Number(body.shipping.zone_id)]
-  )).rows[0];
-  if (!zone) {
+  const shippingResult = await calculateShipping({
+    deliveryMode: isPickup ? "pickup" : "shipping",
+    postalCode: body.shipping.postal_code ?? null,
+    subtotalPreCents: subtotalCents,
+    subtotalPostCents: subtotalCents,
+    shippingAddress: {
+      address_line: body.shipping.address_line,
+      address_line2: body.shipping.address_line2 ?? null,
+      city: body.shipping.city,
+      state: body.shipping.state,
+      postal_code: body.shipping.postal_code
+    },
+    explicitZoneId: body.shipping.zone_id ?? null
+  });
+  if (body.shipping.zone_id && !shippingResult.zone_id) {
     return NextResponse.json({ error: "Zona de envío no válida" }, { status: 400 });
   }
-  let shippingCents = 0;
-  if (zone.kind !== "pickup") {
-    shippingCents = zone.cost_cents;
-    if (zone.free_from_cents && subtotalCents >= zone.free_from_cents) {
-      shippingCents = 0;
-    }
-  }
-  // Para pickup, sobreescribir los datos de "envío" con la dirección del sitio
-  const shipName = zone.name;
-  const shipLine = isPickup
-    ? (zone.pickup_address ?? "Recogida en sitio")
-    : body.shipping.address_line;
-  const shipLine2 = isPickup ? null : (body.shipping.address_line2 ?? null);
-  const shipCity = isPickup ? (zone.pickup_city ?? "") : body.shipping.city;
-  const shipState = isPickup ? (zone.pickup_state ?? "") : body.shipping.state;
-  const shipCP = isPickup ? (zone.pickup_postal_code ?? "") : body.shipping.postal_code;
+  const shippingCents = shippingResult.shipping_cents;
+  const shipName = shippingResult.zone_name;
+  const shipLine = shippingResult.address.line;
+  const shipLine2 = shippingResult.address.line2;
+  const shipCity = shippingResult.address.city;
+  const shipState = shippingResult.address.state;
+  const shipCP = shippingResult.address.postal_code;
   if (!shipLine) {
     return NextResponse.json({ error: "Dirección de envío requerida" }, { status: 400 });
   }
@@ -258,7 +252,7 @@ export async function POST(req: NextRequest) {
   if (shippingCents > 0) {
     items_mp.push({
       id: "shipping",
-      title: `Envío · ${zone.name}`,
+      title: `Envío · ${shipName}`,
       category_id: "shipping",
       quantity: 1,
       currency_id: "MXN",

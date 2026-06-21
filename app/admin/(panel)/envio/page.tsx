@@ -2,8 +2,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { formatMXN } from "@/lib/money";
+import ShippingGeneralConfig from "./ShippingGeneralConfig";
 
 type Kind = "shipping" | "pickup";
+
+type Tab = Kind | "general";
 
 type Zone = {
   id: number;
@@ -87,7 +90,7 @@ export default function AdminShippingPage() {
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Editing | null>(null);
   const [saving, setSaving] = useState(false);
-  const [tab, setTab] = useState<Kind>("shipping");
+  const [tab, setTab] = useState<Tab>("shipping");
 
   async function load() {
     setLoading(true);
@@ -194,15 +197,30 @@ export default function AdminShippingPage() {
         >
           🏬 Entrega física ({zones.filter((z) => z.kind === "pickup").length})
         </button>
-        <div className="flex-1" />
         <button
-          onClick={() => setEditing({ ...EMPTY, kind: tab })}
-          className="rounded-full bg-gold text-bg px-4 py-2 text-xs font-medium hover:bg-gold/90"
+          onClick={() => setTab("general")}
+          className={`rounded-full px-4 py-2 text-xs font-medium transition-colors ${
+            tab === "general" ? "bg-ink text-bg" : "liquid-glass text-ink/80 hover:text-gold"
+          }`}
         >
-          + Nuevo {tab === "shipping" ? "zona" : "sitio"}
+          ⚙️ Configuración general
         </button>
+        <div className="flex-1" />
+        {tab !== "general" && (
+          <button
+            onClick={() => setEditing({ ...EMPTY, kind: tab })}
+            className="rounded-full bg-gold text-bg px-4 py-2 text-xs font-medium hover:bg-gold/90"
+          >
+            + Nuevo {tab === "shipping" ? "zona" : "sitio"}
+          </button>
+        )}
       </div>
 
+      {/* Tab "General": configuración global (override + default) */}
+      {tab === "general" ? (
+        <ShippingGeneralConfig />
+      ) : (
+      <>
       {/* Listado */}
       {loading ? (
         <p className="mt-6 text-sm text-ink-mute">Cargando…</p>
@@ -274,12 +292,14 @@ export default function AdminShippingPage() {
                   onClick={() => remove(z.id, z.name)}
                   className="rounded-full px-3 py-1 text-xs text-rose-300 border border-rose-300/30 hover:bg-rose-400/10 transition-colors"
                 >
-                  Eliminar
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
+                   Eliminar
+                 </button>
+               </div>
+             </div>
+           ))}
+         </div>
+       )}
+      </>
       )}
 
       {/* Modal edición */}

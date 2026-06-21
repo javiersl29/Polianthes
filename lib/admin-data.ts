@@ -576,3 +576,62 @@ export async function logRecommendation(opts: {
     /* no bloquear */
   }
 }
+
+// ──────────────────────────────────────────────────────────────
+// Configuración global de envío (single-row, id=1)
+// ──────────────────────────────────────────────────────────────
+
+export type ShippingConfig = {
+  id: 1;
+  default_cost_cents: number;
+  default_free_from_cents: number | null;
+  default_estimated_days: string | null;
+  override_enabled: boolean;
+  override_cost_cents: number | null;
+  override_free_from_cents: number | null;
+  override_estimated_days: string | null;
+  override_label: string | null;
+  active: boolean;
+  updated_at: string;
+};
+
+export async function getShippingConfig(): Promise<ShippingConfig> {
+  const r = await query<ShippingConfig>(`SELECT * FROM shipping_config WHERE id = 1`);
+  if (r.rows[0]) return r.rows[0];
+  // Si por alguna razón no existe (migración pendiente), sembrar y devolver
+  await query(
+    `INSERT INTO shipping_config (id, default_cost_cents, override_enabled, active)
+     VALUES (1, 0, FALSE, TRUE)
+     ON CONFLICT (id) DO NOTHING`
+  );
+  const r2 = await query<ShippingConfig>(`SELECT * FROM shipping_config WHERE id = 1`);
+  return r2.rows[0];
+}
+
+export async function upsertShippingConfig(c: Partial<ShippingConfig>): Promise<void> {
+  await query(
+    `UPDATE shipping_config SET
+       default_cost_cents = $1,
+       default_free_from_cents = $2,
+       default_estimated_days = $3,
+       override_enabled = $4,
+       override_cost_cents = $5,
+       override_free_from_cents = $6,
+       override_estimated_days = $7,
+       override_label = $8,
+       active = $9,
+       updated_at = NOW()
+     WHERE id = 1`,
+    [
+      c.default_cost_cents ?? 0,
+      c.default_free_from_cents ?? null,
+      c.default_estimated_days ?? null,
+      c.override_enabled ?? false,
+      c.override_cost_cents ?? null,
+      c.override_free_from_cents ?? null,
+      c.override_estimated_days ?? null,
+      c.override_label ?? null,
+      c.active ?? true
+    ]
+  );
+}
