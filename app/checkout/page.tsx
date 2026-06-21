@@ -132,11 +132,11 @@ function CheckoutInner() {
           ? 0
           : detectedZone.cost_cents)
         : 0);
-  // Usar el descuento del promo que ya viene en cart total, o el cupón si lo hay
+  // total.total_cents YA incluye el descuento del promo (calculado por cartTotal → calculatePromo)
+  // Solo aplicamos cupón adicional si existe
   const promoDiscountCents = total.discount_cents;
   const couponDiscountCents = appliedCoupon?.discount_cents ?? 0;
-  const totalDiscount = Math.max(promoDiscountCents, couponDiscountCents);
-  const grandTotal = Math.max(0, total.total_cents - totalDiscount + shippingCents);
+  const grandTotal = Math.max(0, total.total_cents - couponDiscountCents + shippingCents);
 
   const selectedPickup = pickups.find((p) => p.id === selectedPickupId);
 
@@ -261,16 +261,16 @@ function CheckoutInner() {
         <p className="text-sm text-ink-mute">// Checkout</p>
         <h1 className="mt-1 font-display italic text-4xl sm:text-5xl text-ink tracking-[-1px]">Finalizar compra</h1>
 
-        {promoSlug && promoName && (
+        {(promo?.slug || (promoSlug && promoName)) && (
           <div className="mt-4 liquid-glass rounded-xl px-4 py-3 flex items-center gap-3 border border-gold/30 bg-gradient-to-br from-gold/15 to-amber-300/5">
             <span className="text-2xl">🎁</span>
             <div className="min-w-0 flex-1">
               <p className="text-[10px] uppercase tracking-wider text-gold/80">Promoción aplicada</p>
-              <p className="text-sm text-ink truncate">{promoName}</p>
+              <p className="text-sm text-ink truncate">{promo?.title || promoName}</p>
+              {promoDiscountCents > 0 && (
+                <p className="text-[11px] text-emerald-300">Ahorras {money(promoDiscountCents)}</p>
+              )}
             </div>
-            <Link href="/#ofertas" className="text-xs text-ink-mute hover:text-gold transition-colors shrink-0">
-              Ver más
-            </Link>
           </div>
         )}
 
@@ -395,8 +395,9 @@ function CheckoutInner() {
                 ))}
               </ul>
               <div className="mt-4 pt-3 border-t border-line space-y-1 text-sm">
-                <Row label={`Subtotal (${total.units}u)`} value={money(total.total_cents)} />
-                {totalDiscount > 0 && <Row label="Descuento" value={`−${money(totalDiscount)}`} accent="emerald" />}
+                <Row label={`Subtotal (${total.units}u)`} value={money(total.subtotal_cents)} />
+                {promoDiscountCents > 0 && <Row label="Promoción" value={`−${money(promoDiscountCents)}`} accent="emerald" />}
+                {couponDiscountCents > 0 && <Row label={`Cupón ${appliedCoupon?.code ?? ""}`} value={`−${money(couponDiscountCents)}`} accent="emerald" />}
                 <Row label={deliveryMode === "pickup" ? "Recogida en sitio" : "Envío"} value={deliveryMode === "pickup" ? "Gratis" : (shippingCents === 0 ? "Gratis" : money(shippingCents))} />
                 <div className="pt-2 mt-2 border-t border-line flex justify-between font-medium">
                   <span className="text-ink">Total</span>
