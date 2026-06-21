@@ -104,6 +104,15 @@ function NavbarInner() {
       .then((data) => {
         if (cancelled) return;
         if (data?.links?.length > 0) {
+          // Asegurar que "Promociones" siempre esté presente
+          const hasPromo = data.links.some((l: NavLink) => l.href.includes("ofertas") || l.label === "Promociones");
+          if (!hasPromo) {
+            // Insertar después de "Inicio"
+            const inicioIdx = data.links.findIndex((l: NavLink) => l.href === "/");
+            data.links.splice(inicioIdx + 1, 0, {
+              id: 999, label: "Promociones", href: "/#ofertas", icon: null, new_tab: false, sort_order: 5
+            });
+          }
           setLinks(data.links);
         }
       })
