@@ -362,7 +362,7 @@ function NavbarInner() {
           <button
             onClick={toggle}
             aria-label={`Carrito con ${total.units} artículos`}
-            className="liquid-glass h-10 w-10 sm:h-12 sm:w-12 rounded-full grid place-items-center shrink-0 relative hover:text-gold transition-colors"
+            className="liquid-glass h-10 w-10 sm:h-12 sm:w-12 rounded-full grid place-items-center shrink-0 relative hover:text-gold transition-colors overflow-visible"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
@@ -370,7 +370,10 @@ function NavbarInner() {
               <path d="M16 10a4 4 0 0 1-8 0" />
             </svg>
             {total.units > 0 && (
-              <span className="absolute -top-1.5 -right-1.5 min-w-[24px] h-[24px] px-2 rounded-full bg-gold text-bg text-xs font-bold grid place-items-center leading-none ring-[2.5px] ring-bg z-10">
+              <span
+                className="absolute -top-1 -right-1 min-w-[20px] h-[20px] px-1 rounded-full bg-gold text-bg text-[10px] font-bold grid place-items-center leading-none ring-2 ring-bg z-20"
+                style={{ minWidth: "20px" }}
+              >
                 {total.units > 99 ? "99+" : total.units}
               </span>
             )}

@@ -34,13 +34,24 @@ export default function CartDrawer() {
                 <p className="text-[11px] text-gold/80 uppercase tracking-wider">// Carrito</p>
                 <h2 className="font-display italic text-2xl text-ink">Tu selección</h2>
               </div>
-              <button
-                onClick={close}
-                aria-label="Cerrar"
-                className="h-9 w-9 rounded-full liquid-glass grid place-items-center hover:text-gold"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-              </button>
+              <div className="flex items-center gap-2">
+                {items.length > 0 && (
+                  <button
+                    onClick={() => { if (confirm("¿Vaciar todo el carrito?")) clear(); }}
+                    className="text-[11px] text-ink-mute/70 hover:text-rose-300 transition-colors px-2 py-1"
+                    title="Vaciar carrito"
+                  >
+                    Vaciar
+                  </button>
+                )}
+                <button
+                  onClick={close}
+                  aria-label="Cerrar"
+                  className="h-9 w-9 rounded-full liquid-glass grid place-items-center hover:text-gold"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
+                </button>
+              </div>
             </header>
 
             <div className="flex-1 overflow-y-auto">
