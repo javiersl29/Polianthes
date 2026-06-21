@@ -38,9 +38,10 @@ type Promotion = {
 async function getActivePromotions(): Promise<Promotion[]> {
   try {
     const r = await query<Promotion>(
-      `SELECT id, slug, title, subtitle, description, type, value, required_size_ml,
-              quantity_to_take, quantity_to_pay, image_url, badge_text, badge_color,
-              min_items, max_items, starts_at, ends_at, sort_order
+      `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
+              required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
+              image_url, badge_text, badge_color,
+              min_items, max_items, min_subtotal_cents, starts_at, ends_at, sort_order
        FROM promotion
        WHERE active = TRUE
          AND (starts_at IS NULL OR starts_at <= NOW())
