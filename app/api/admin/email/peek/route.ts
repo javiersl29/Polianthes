@@ -148,10 +148,21 @@ export async function GET(req: NextRequest) {
   if (action === "list_promos") {
     const r = await query(
       `SELECT id, slug, title, type, value, bundle_price_cents, required_size_ml, mix_sizes,
-              quantity_to_take, quantity_to_pay, min_subtotal_cents, active, sort_order
+              quantity_to_take, quantity_to_pay, min_subtotal_cents, active, sort_order,
+              starts_at, ends_at
        FROM promotion ORDER BY sort_order ASC`
     );
     result.promos = r.rows;
+  }
+  if (action === "fix_promo_dates") {
+    // Arregla promos con fechas incorrectas
+    await query(`
+      UPDATE promotion
+      SET starts_at = '2026-01-01T00:00:00Z',
+          ends_at = CASE WHEN ends_at IS NULL THEN NULL ELSE '2026-12-31T23:59:59Z' END
+      WHERE active = TRUE
+    `);
+    result.fixed_dates = true;
   }
   if (action === "fix_kit_discovery") {
     // Corrige el "Kit Discovery" que está mal configurado como 3x2

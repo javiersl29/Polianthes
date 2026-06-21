@@ -200,19 +200,27 @@ function NavbarInner() {
         </Link>
 
         <nav className="hidden md:flex items-center gap-1 liquid-glass rounded-full px-1.5 py-1.5">
-          {links.map((l) => (
-            <Link
-              key={l.id}
-              href={l.href}
-              target={l.new_tab ? "_blank" : undefined}
-              rel={l.new_tab ? "noopener noreferrer" : undefined}
-              className={`px-3 py-2 text-sm font-medium transition-colors ${
-                pathname === l.href ? "text-gold" : "text-ink/90 hover:text-gold"
-              }`}
-            >
-              {l.label}
-            </Link>
-          ))}
+          {links.map((l) => {
+            const isPromo = l.label === "Promociones";
+            return (
+              <Link
+                key={l.id}
+                href={l.href}
+                target={l.new_tab ? "_blank" : undefined}
+                rel={l.new_tab ? "noopener noreferrer" : undefined}
+                className={`relative px-3 py-2 text-sm font-medium transition-colors rounded-full ${
+                  isPromo
+                    ? "text-gold bg-gold/10 hover:bg-gold/20"
+                    : pathname === l.href ? "text-gold" : "text-ink/90 hover:text-gold"
+                }`}
+              >
+                {isPromo && (
+                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-gold animate-pulse" />
+                )}
+                {l.label}
+              </Link>
+            );
+          })}
           <Link
             href="/#decodificador"
             className="ml-1 inline-flex items-center gap-1 bg-ink text-bg rounded-full px-3 py-2 text-sm font-medium whitespace-nowrap hover:bg-gold transition-colors"
@@ -362,7 +370,7 @@ function NavbarInner() {
               <path d="M16 10a4 4 0 0 1-8 0" />
             </svg>
             {total.units > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-gold text-bg text-[10px] font-bold grid place-items-center">
+              <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1.5 rounded-full bg-gold text-bg text-[11px] font-bold grid place-items-center leading-none ring-2 ring-bg">
                 {total.units > 99 ? "99+" : total.units}
               </span>
             )}
@@ -467,10 +475,13 @@ function NavbarInner() {
                     target={l.new_tab ? "_blank" : undefined}
                     rel={l.new_tab ? "noopener noreferrer" : undefined}
                     onClick={close}
-                    className={`block px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
-                      pathname === l.href ? "text-gold bg-white/5" : "text-ink/90 hover:text-gold hover:bg-white/[0.03]"
+                    className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-colors ${
+                      l.label === "Promociones"
+                        ? "text-gold bg-gold/10"
+                        : pathname === l.href ? "text-gold bg-white/5" : "text-ink/90 hover:text-gold hover:bg-white/[0.03]"
                     }`}
                   >
+                    {l.label === "Promociones" && <span className="w-2 h-2 rounded-full bg-gold animate-pulse shrink-0" />}
                     {l.label}
                   </Link>
                 </motion.div>
