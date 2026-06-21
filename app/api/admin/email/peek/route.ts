@@ -155,11 +155,10 @@ export async function GET(req: NextRequest) {
     result.promos = r.rows;
   }
   if (action === "fix_promo_dates") {
-    // Arregla promos con fechas incorrectas
     await query(`
       UPDATE promotion
-      SET starts_at = '2026-01-01T00:00:00Z',
-          ends_at = CASE WHEN ends_at IS NULL THEN NULL ELSE '2026-12-31T23:59:59Z' END
+      SET starts_at = '2026-01-01 00:00:00+00'::timestamptz,
+          ends_at = '2026-12-31 23:59:59+00'::timestamptz
       WHERE active = TRUE
     `);
     result.fixed_dates = true;
