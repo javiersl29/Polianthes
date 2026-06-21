@@ -370,7 +370,7 @@ function NavbarInner() {
               <path d="M16 10a4 4 0 0 1-8 0" />
             </svg>
             {total.units > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[22px] h-[22px] px-1.5 rounded-full bg-gold text-bg text-[11px] font-bold grid place-items-center leading-none ring-2 ring-bg">
+              <span className="absolute -top-1.5 -right-1.5 min-w-[24px] h-[24px] px-2 rounded-full bg-gold text-bg text-xs font-bold grid place-items-center leading-none ring-[2.5px] ring-bg z-10">
                 {total.units > 99 ? "99+" : total.units}
               </span>
             )}
