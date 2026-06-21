@@ -250,3 +250,19 @@ input[type="range"]:disabled::-moz-range-thumb {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
 }
+
+/* Marquesina de anuncios — scroll continuo horizontal */
+@keyframes marquee-scroll {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.marquee-track {
+  overflow: hidden;
+  white-space: nowrap;
+}
+.marquee-content {
+  display: inline-flex;
+  align-items: center;
+  animation: marquee-scroll 28s linear infinite;
+  will-change: transform;
+}
