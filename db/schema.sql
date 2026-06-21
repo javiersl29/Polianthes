@@ -284,7 +284,6 @@ CREATE TABLE IF NOT EXISTS customer (
 );
 CREATE INDEX IF NOT EXISTS idx_customer_google_id ON customer(google_id);
 CREATE INDEX IF NOT EXISTS idx_customer_email ON customer(email);
-CREATE INDEX IF NOT EXISTS idx_customer_verification_token ON customer(verification_token) WHERE verification_token IS NOT NULL;
 
 -- Vincula órdenes con la cuenta del cliente (nullable: órdenes guest no tienen cuenta)
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customer(id) ON DELETE SET NULL;

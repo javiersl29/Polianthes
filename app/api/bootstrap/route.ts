@@ -150,6 +150,12 @@ export async function POST(req: NextRequest) {
   await ensureColumn(pool, "customer", "verification_expires_at", "TIMESTAMPTZ");
   await ensureColumn(pool, "customer", "password_reset_token", "TEXT");
   await ensureColumn(pool, "customer", "password_reset_expires_at", "TIMESTAMPTZ");
+  // Índice para búsqueda por token de verificación (solo si la columna existe)
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS idx_customer_verification_token
+     ON customer(verification_token)
+     WHERE verification_token IS NOT NULL`
+  ).catch(() => { /* ignore si la columna no existe todavía */ });
 
   // Seed image_api_config (idempotente, una sola fila)
 
