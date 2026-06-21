@@ -1,73 +1,122 @@
 "use client";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
-type Announcement = {
-  id: number;
+type MarqueeItem = {
+  id: string;
   text: string;
   link_url: string | null;
   link_label: string;
   icon: string;
-  bg_color: string;
 };
 
-const COLOR_STYLES: Record<string, { bg: string; text: string; separator: string }> = {
-  gold:    { bg: "bg-gradient-to-r from-gold/15 via-amber-500/8 to-gold/15",       text: "text-gold",       separator: "text-gold/40" },
-  emerald: { bg: "bg-gradient-to-r from-emerald-500/12 via-teal-500/6 to-emerald-500/12", text: "text-emerald-300", separator: "text-emerald-400/40" },
-  rose:    { bg: "bg-gradient-to-r from-rose-500/12 via-pink-500/6 to-rose-500/12", text: "text-rose-300",    separator: "text-rose-400/40" },
-  sky:     { bg: "bg-gradient-to-r from-sky-500/12 via-blue-500/6 to-sky-500/12",   text: "text-sky-300",     separator: "text-sky-400/40" },
-  violet:  { bg: "bg-gradient-to-r from-violet-500/12 via-purple-500/6 to-violet-500/12", text: "text-violet-300", separator: "text-violet-400/40" },
-  dark:    { bg: "bg-gradient-to-r from-bg-elev/80 via-black/60 to-bg-elev/80",     text: "text-gold",        separator: "text-gold/30" },
+const ICONS: Record<string, string> = {
+  "3x2": "🎁",
+  "2x1": "🎀",
+  bundle_qty: "📦",
+  bundle_mix: "🧩",
+  second_unit: "🏷️",
+  percent: "💯",
+  fixed: "💵",
+  free_shipping: "🚚",
+  bundle: "🎁",
+  tiered: "📊",
 };
+
+function money(cents: number) {
+  return "$" + (cents / 100).toLocaleString("es-MX", { maximumFractionDigits: 0 });
+}
+
+function promoToText(p: any): { text: string; link_url: string } {
+  const url = `/promociones/${p.slug}`;
+  switch (p.type) {
+    case "3x2":
+      return { text: `3x2 en fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""}`, link_url: url };
+    case "2x1":
+      return { text: `2x1 en fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""}`, link_url: url };
+    case "bundle_qty":
+      return { text: `${p.quantity_to_take} fragancias${p.required_size_ml ? ` de ${p.required_size_ml}ml` : ""} por ${money(p.bundle_price_cents)}`, link_url: url };
+    case "bundle_mix":
+      return { text: `Pack mixto ${p.mix_config?.map((r: any) => `${r.qty}×${r.size_ml}ml`).join("+") ?? ""} por ${money(p.bundle_price_cents)}`, link_url: url };
+    case "second_unit":
+      return { text: `2da unidad a ${p.value}%`, link_url: url };
+    case "percent": {
+      const min = p.min_subtotal_cents > 0 ? ` en compras +${money(p.min_subtotal_cents)}` : "";
+      return { text: `${p.value}% de descuento${min}`, link_url: url };
+    }
+    case "fixed":
+      return { text: `${money(p.value)} de descuento`, link_url: url };
+    case "free_shipping":
+      return { text: `Envío gratis`, link_url: url };
+    default:
+      return { text: p.title, link_url: url };
+  }
+}
 
 export default function AnnouncementBar() {
-  const [items, setItems] = useState<Announcement[]>([]);
+  const [items, setItems] = useState<MarqueeItem[]>([]);
 
   useEffect(() => {
-    fetch("/api/public/announcements")
-      .then(r => r.json())
-      .then(data => {
-        if (data.announcements?.length > 0) setItems(data.announcements);
-      })
-      .catch(() => {});
+    Promise.all([
+      fetch("/api/public/announcements").then(r => r.json()).catch(() => ({ announcements: [] })),
+      fetch("/api/public/promotions").then(r => r.json()).catch(() => ({ promotions: [] })),
+    ]).then(([annData, promoData]) => {
+      const announcements: MarqueeItem[] = (annData.announcements ?? []).map((a: any) => ({
+        id: `ann-${a.id}`,
+        text: a.text,
+        link_url: a.link_url,
+        link_label: a.link_label || "Ver más",
+        icon: a.icon || "✨",
+      }));
+
+      const promos: MarqueeItem[] = (promoData.promotions ?? []).map((p: any) => {
+        const { text, link_url } = promoToText(p);
+        return {
+          id: `promo-${p.id}`,
+          text,
+          link_url,
+          link_label: "Ver →",
+          icon: ICONS[p.type] || "🎁",
+        };
+      });
+
+      // Intercalar: anuncios + promos
+      const merged = [...announcements, ...promos];
+      setItems(merged);
+    });
   }, []);
 
   if (items.length === 0) return null;
 
-  // Determinar colores: usar el del primer item activo o gold por defecto
-  const colorKey = items[0]?.bg_color ?? "gold";
-  const colors = COLOR_STYLES[colorKey] ?? COLOR_STYLES.gold;
-
-  // Duplicar la lista para que el loop sea continuo sin saltos
+  // Duplicar para loop continuo
   const loop = [...items, ...items];
 
   return (
     <section
-      className={`relative ${colors.bg} border-y border-line/30 overflow-hidden`}
+      className="relative bg-gradient-to-r from-gold/10 via-amber-500/5 to-gold/10 border-y border-gold/20 overflow-hidden"
       aria-label="Avisos y promociones"
     >
-      {/* Gradiente difuminado en los bordes */}
+      {/* Difuminado en bordes */}
       <div className="pointer-events-none absolute inset-y-0 left-0 w-12 sm:w-20 bg-gradient-to-r from-bg to-transparent z-10" />
       <div className="pointer-events-none absolute inset-y-0 right-0 w-12 sm:w-20 bg-gradient-to-l from-bg to-transparent z-10" />
 
-      {/* Marquesina */}
       <div className="marquee-track">
         <div className="marquee-content">
           {loop.map((a, i) => (
-            <span key={`${a.id}-${i}`} className="inline-flex items-center gap-2 px-6 sm:px-8 py-2.5 shrink-0">
+            <span key={`${a.id}-${i}`} className="inline-flex items-center gap-2 px-5 sm:px-7 py-2.5 shrink-0">
               <span className="text-sm sm:text-base">{a.icon}</span>
-              <span className={`text-xs sm:text-sm font-medium ${colors.text} whitespace-nowrap`}>
+              <span className="text-xs sm:text-sm font-medium text-gold whitespace-nowrap">
                 {a.text}
               </span>
               {a.link_url && (
                 <Link
                   href={a.link_url}
-                  className={`text-[10px] sm:text-xs font-bold underline ${colors.text} opacity-70 hover:opacity-100`}
+                  className="text-[10px] sm:text-xs font-bold text-gold/70 underline hover:text-gold whitespace-nowrap"
                 >
-                  {a.link_label} →
+                  {a.link_label}
                 </Link>
               )}
-              <span className={`ml-4 sm:ml-6 text-lg ${colors.separator}`}>✦</span>
+              <span className="ml-4 sm:ml-6 text-lg text-gold/25">✦</span>
             </span>
           ))}
         </div>

@@ -75,8 +75,28 @@ function buildPromoSummary(p: Promotion): string {
 
 export default function MonthlyOffers({ promotions }: { promotions: Promotion[] }) {
   const [active, setActive] = useState(0);
+  const [items, setItems] = useState<Promotion[]>(promotions);
   const trackRef = useRef<HTMLDivElement>(null);
-  const total = promotions.length;
+  const total = items.length;
+
+  // Cargar imágenes client-side (evita inflar el SSR con data URLs)
+  useEffect(() => {
+    if (promotions.length === 0) return;
+    let cancelled = false;
+    fetch("/api/public/promotions")
+      .then(r => r.json())
+      .then(data => {
+        if (cancelled || !data.promotions) return;
+        // Mergear image_url de la API hacia los items del SSR
+        const withImages = promotions.map(p => {
+          const full = data.promotions.find((d: Promotion) => d.id === p.id);
+          return full ? { ...p, image_url: full.image_url } : p;
+        });
+        setItems(withImages);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [promotions]);
 
   useEffect(() => {
     if (total <= 1) return;
@@ -137,7 +157,7 @@ export default function MonthlyOffers({ promotions }: { promotions: Promotion[] 
             className="flex gap-4 overflow-x-auto pb-4 snap-x snap-mandatory scrollbar-hide"
             style={{ scrollbarWidth: "none" }}
           >
-            {promotions.map((p, idx) => {
+            {items.map((p, idx) => {
               const colors = COLOR_CLASSES[p.badge_color] ?? COLOR_CLASSES.gold;
               return (
                 <article
@@ -227,7 +247,7 @@ export default function MonthlyOffers({ promotions }: { promotions: Promotion[] 
         {/* Dots */}
         {total > 1 && (
           <div className="flex items-center justify-center gap-1.5 mt-4">
-            {promotions.map((p, i) => (
+            {items.map((p, i) => (
               <button
                 key={p.id}
                 onClick={() => setActive(i)}
