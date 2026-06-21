@@ -55,8 +55,13 @@ export async function POST(req: NextRequest) {
   if (!body.customer?.email || !body.customer?.name) {
     return NextResponse.json({ error: "Faltan datos del cliente" }, { status: 400 });
   }
-  if (!body.shipping?.zone_id) {
-    return NextResponse.json({ error: "Falta la zona de envío o sitio de entrega" }, { status: 400 });
+  if (!body.shipping) {
+    return NextResponse.json({ error: "Faltan datos de envío" }, { status: 400 });
+  }
+  // En modo pickup sí se requiere zone_id (sitio específico)
+  // En modo shipping, zone_id puede no existir si hay override o default global
+  if (body.shipping.kind === "pickup" && !body.shipping.zone_id) {
+    return NextResponse.json({ error: "Selecciona un sitio de entrega" }, { status: 400 });
   }
 
   const cfg = await getPaymentProvider("mercadopago");
