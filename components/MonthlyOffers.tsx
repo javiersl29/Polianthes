@@ -76,25 +76,40 @@ function buildPromoSummary(p: Promotion): string {
 export default function MonthlyOffers({ promotions }: { promotions: Promotion[] }) {
   const [active, setActive] = useState(0);
   const [items, setItems] = useState<Promotion[]>(promotions);
+  const [loading, setLoading] = useState(promotions.length === 0);
   const trackRef = useRef<HTMLDivElement>(null);
   const total = items.length;
 
-  // Cargar imágenes client-side (evita inflar el SSR con data URLs)
+  // Si el SSR no trajo promos, cargar client-side desde la API
   useEffect(() => {
-    if (promotions.length === 0) return;
+    if (promotions.length > 0) {
+      // Ya tenemos promos del SSR, solo cargar imágenes
+      let cancelled = false;
+      fetch("/api/public/promotions")
+        .then(r => r.json())
+        .then(data => {
+          if (cancelled || !data.promotions) return;
+          const withImages = promotions.map(p => {
+            const full = data.promotions.find((d: Promotion) => d.id === p.id);
+            return full ? { ...p, image_url: full.image_url } : p;
+          });
+          setItems(withImages);
+        })
+        .catch(() => {})
+        .finally(() => setLoading(false));
+      return () => { cancelled = true; };
+    }
+
+    // No hay promos del SSR, cargar todo desde la API
     let cancelled = false;
     fetch("/api/public/promotions")
       .then(r => r.json())
       .then(data => {
         if (cancelled || !data.promotions) return;
-        // Mergear image_url de la API hacia los items del SSR
-        const withImages = promotions.map(p => {
-          const full = data.promotions.find((d: Promotion) => d.id === p.id);
-          return full ? { ...p, image_url: full.image_url } : p;
-        });
-        setItems(withImages);
+        setItems(data.promotions);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
     return () => { cancelled = true; };
   }, [promotions]);
 
@@ -121,7 +136,25 @@ export default function MonthlyOffers({ promotions }: { promotions: Promotion[] 
     setActive((i) => (i + delta + total) % total);
   }
 
-  if (total === 0) return null;
+  if (total === 0) {
+    if (loading) {
+      return (
+        <section id="ofertas" className="relative py-12 sm:py-16 px-4">
+          <div className="max-w-6xl mx-auto">
+            <div className="text-center mb-6">
+              <p className="text-sm text-ink-mute/50 animate-pulse">Cargando ofertas…</p>
+            </div>
+            <div className="flex gap-4 overflow-hidden">
+              {[0, 1, 2].map(i => (
+                <div key={i} className="shrink-0 w-[280px] sm:w-[480px] h-[280px] rounded-2xl bg-bg-elev/50 animate-pulse" />
+              ))}
+            </div>
+          </div>
+        </section>
+      );
+    }
+    return null;
+  }
 
   return (
     <section id="ofertas" className="relative py-20 sm:py-32 px-4 overflow-hidden">

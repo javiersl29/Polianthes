@@ -104,16 +104,22 @@ function NavbarInner() {
       .then((data) => {
         if (cancelled) return;
         if (data?.links?.length > 0) {
-          // Asegurar que "Promociones" siempre esté presente
-          const hasPromo = data.links.some((l: NavLink) => l.href.includes("ofertas") || l.label === "Promociones");
+          // Asegurar que "Promociones" siempre apunte a /#ofertas
+          const links = data.links.map((l: NavLink) => {
+            if (l.label === "Promociones" || l.href.includes("ofertas") || l.href.includes("Ofertas")) {
+              return { ...l, href: "/#ofertas", label: "Promociones" };
+            }
+            return l;
+          });
+          // Si no existe, insertarlo después de Inicio
+          const hasPromo = links.some((l: NavLink) => l.label === "Promociones");
           if (!hasPromo) {
-            // Insertar después de "Inicio"
-            const inicioIdx = data.links.findIndex((l: NavLink) => l.href === "/");
-            data.links.splice(inicioIdx + 1, 0, {
+            const inicioIdx = links.findIndex((l: NavLink) => l.href === "/");
+            links.splice(inicioIdx + 1, 0, {
               id: 999, label: "Promociones", href: "/#ofertas", icon: null, new_tab: false, sort_order: 5
             });
           }
-          setLinks(data.links);
+          setLinks(links);
         }
       })
       .catch(() => { /* usar fallback */ });
