@@ -751,10 +751,9 @@ function ThinkingVisual() {
           transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
           style={{ transformOrigin: "16px 16px" }}
         />
-        <motion.circle
+        <circle
           cx="16" cy="16" r="2" fill="oklch(0.82 0.13 85)"
-          animate={{ r: [1.5, 3, 1.5], opacity: [0.6, 1, 0.6] }}
-          transition={{ duration: 1.4, repeat: Infinity, ease: "easeInOut" }}
+          className="animate-pulse"
         />
       </svg>
     </span>
