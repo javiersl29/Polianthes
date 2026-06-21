@@ -1,4 +1,5 @@
 import Hero from "@/components/Hero";
+import AnnouncementBar from "@/components/AnnouncementBar";
 import Decoder from "@/components/Decoder";
 import MonthlyOffers from "@/components/MonthlyOffers";
 import Catalog from "@/components/Catalog";
@@ -61,6 +62,7 @@ export default async function Home() {
   return (
     <main>
       <Hero />
+      <AnnouncementBar />
       <Decoder />
       <MonthlyOffers promotions={promotions} />
       <Catalog />
