@@ -51,8 +51,8 @@ export default function AnnouncementBar() {
       <div className="pointer-events-none absolute inset-y-0 right-0 w-12 sm:w-20 bg-gradient-to-l from-bg to-transparent z-10" />
 
       {/* Marquesina */}
-      <div className="marquee-track group">
-        <div className="marquee-content group-hover:[animation-play-state:paused]">
+      <div className="marquee-track">
+        <div className="marquee-content">
           {loop.map((a, i) => (
             <span key={`${a.id}-${i}`} className="inline-flex items-center gap-2 px-6 sm:px-8 py-2.5 shrink-0">
               <span className="text-sm sm:text-base">{a.icon}</span>

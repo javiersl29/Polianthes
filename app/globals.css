@@ -260,6 +260,9 @@ input[type="range"]:disabled::-moz-range-thumb {
   overflow: hidden;
   white-space: nowrap;
 }
+.marquee-track:hover .marquee-content {
+  animation-play-state: paused;
+}
 .marquee-content {
   display: inline-flex;
   align-items: center;
