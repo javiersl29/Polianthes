@@ -342,8 +342,8 @@ function NavbarInner() {
             </div>
           ) : (
             <Link
-              href={`/api/auth/google?redirect=${encodeURIComponent(pathname || "/")}`}
-              aria-label="Iniciar sesión con Google"
+              href={`/login?redirect=${encodeURIComponent(pathname || "/")}`}
+              aria-label="Iniciar sesión"
               className="liquid-glass h-10 sm:h-12 pl-2.5 sm:pl-3 pr-3 sm:pr-4 rounded-full inline-flex items-center gap-2 shrink-0 hover:ring-2 hover:ring-gold/40 transition-all text-xs sm:text-sm font-medium"
             >
               <span className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-white grid place-items-center shrink-0">
@@ -506,7 +506,7 @@ function NavbarInner() {
                   transition={{ delay: 0.05 + (links.length + 1) * 0.04, duration: 0.3 }}
                 >
                   <Link
-                    href={`/api/auth/google?redirect=${encodeURIComponent(pathname || "/")}`}
+                    href={`/login?redirect=${encodeURIComponent(pathname || "/")}`}
                     onClick={close}
                     className="mt-1 liquid-glass border border-line/40 rounded-xl px-4 py-3 text-sm font-medium hover:border-gold/40 transition-colors flex items-center justify-center gap-2"
                   >

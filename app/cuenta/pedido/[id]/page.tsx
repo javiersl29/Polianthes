@@ -21,7 +21,7 @@ function money(cents: number, currency = "MXN"): string {
 
 export default async function CustomerOrderPage({ params }: { params: { id: string } }) {
   const customer = await getCurrentCustomer();
-  if (!customer) redirect("/api/auth/google?redirect=/cuenta");
+  if (!customer) redirect("/login?redirect=/cuenta");
 
   const orderId = Number(params.id);
   if (!Number.isFinite(orderId)) notFound();

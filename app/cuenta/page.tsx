@@ -19,7 +19,7 @@ type CustomerOrder = {
 export default async function CuentaPage() {
   const customer = await getCurrentCustomer();
   if (!customer) {
-    redirect("/api/auth/google?redirect=/cuenta");
+    redirect("/login?redirect=/cuenta");
   }
 
   const ordersRes = await query<CustomerOrder>(

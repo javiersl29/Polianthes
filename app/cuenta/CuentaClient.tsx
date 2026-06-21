@@ -22,6 +22,9 @@ type Customer = {
   default_country: string | null;
   created_at: string;
   last_login_at: string | null;
+  email_verified: boolean;
+  has_password: boolean;
+  google_id: string | null;
 };
 
 type Order = {
@@ -61,6 +64,21 @@ export default function CuentaClient({
   const [orders] = useState(initialOrders);
   const [editingProfile, setEditingProfile] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  async function resendVerification() {
+    setResending(true);
+    try {
+      const r = await fetch("/api/customer/resend-verification", { method: "POST" });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error ?? "Error");
+      toast.success(data.message ?? "Correo enviado");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+    } finally {
+      setResending(false);
+    }
+  }
 
   // Form state
   const [name, setName] = useState(customer.name);
@@ -134,6 +152,25 @@ export default function CuentaClient({
         <h1 className="mt-2 font-display italic text-4xl sm:text-5xl text-ink tracking-[-2px]">
           Hola, {customer.name.split(" ")[0]}
         </h1>
+
+        {!customer.email_verified && (
+          <div className="mt-4 liquid-glass rounded-2xl p-4 border-l-4 border-amber-400/60 bg-amber-400/5 flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-sm text-amber-200 font-medium">Confirma tu correo electrónico</p>
+              <p className="mt-1 text-xs text-ink-mute">
+                Hemos enviado un enlace de confirmación a <strong>{customer.email}</strong>.
+                Revisa tu bandeja de entrada y spam.
+              </p>
+            </div>
+            <button
+              onClick={resendVerification}
+              disabled={resending}
+              className="shrink-0 rounded-full border border-amber-300/30 bg-amber-400/10 text-amber-200 px-3 py-1.5 text-xs hover:bg-amber-400/20 disabled:opacity-50"
+            >
+              {resending ? "Enviando…" : "Reenviar correo"}
+            </button>
+          </div>
+        )}
 
         <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Perfil + stats */}

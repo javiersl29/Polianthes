@@ -633,3 +633,75 @@ function emailTemplate(opts: { title: string; icon: string; iconColor: string; b
   `.trim();
 }
 
+// ──────────────────────────────────────────────────────────────
+// Emails de autenticación (registro, recuperación)
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Envía el email de confirmación de cuenta a un cliente nuevo.
+ */
+export async function sendEmailVerification(
+  toEmail: string,
+  customerName: string,
+  token: string
+): Promise<SendResult> {
+  const config = await getNotificationConfig();
+  if (!config || !config.active) {
+    return { ok: false, message: "Email no configurado", provider: "none", providerMessageId: null };
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://polianthes.shop";
+  const confirmUrl = `${baseUrl}/api/customer/verify-email?token=${encodeURIComponent(token)}`;
+  const html = emailTemplate({
+    title: "Confirma tu cuenta",
+    icon: "✦",
+    iconColor: "#d4af37",
+    body: `
+      <p style="color:#999;font-size:14px;margin-top:8px;">Hola ${customerName},</p>
+      <p style="color:#f5f5f5;font-size:15px;line-height:1.6;">Bienvenido a Polianthes. Para activar tu cuenta y poder iniciar sesión, confirma tu correo electrónico:</p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${confirmUrl}" style="display:inline-block;background:#d4af37;color:#0c0c0c;padding:14px 32px;border-radius:9999px;text-decoration:none;font-size:15px;font-weight:bold;letter-spacing:0.5px;">Confirmar mi correo</a>
+      </div>
+      <p style="color:#666;font-size:12px;line-height:1.5;">O copia y pega este enlace en tu navegador:</p>
+      <p style="color:#d4af37;font-size:11px;word-break:break-all;font-family:monospace;background:#1a1a1a;padding:10px;border-radius:8px;">${confirmUrl}</p>
+      <p style="color:#666;font-size:12px;margin-top:20px;">Este enlace expira en 24 horas.</p>
+    `,
+    footer: "Si no creaste esta cuenta, puedes ignorar este correo."
+  });
+  const text = `Polianthes — Confirma tu cuenta.\n\nHola ${customerName},\n\nPara activar tu cuenta visita: ${confirmUrl}\n\nEste enlace expira en 24 horas.\n\nSi no creaste esta cuenta, ignora este correo.`;
+  return sendEmail(config, toEmail, "Confirma tu cuenta en Polianthes", html, text);
+}
+
+/**
+ * Envía el email de restablecimiento de contraseña.
+ */
+export async function sendPasswordResetEmail(
+  toEmail: string,
+  customerName: string,
+  token: string
+): Promise<SendResult> {
+  const config = await getNotificationConfig();
+  if (!config || !config.active) {
+    return { ok: false, message: "Email no configurado", provider: "none", providerMessageId: null };
+  }
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? "https://polianthes.shop";
+  const resetUrl = `${baseUrl}/recuperar?token=${encodeURIComponent(token)}`;
+  const html = emailTemplate({
+    title: "Restablece tu contraseña",
+    icon: "✦",
+    iconColor: "#d4af37",
+    body: `
+      <p style="color:#999;font-size:14px;margin-top:8px;">Hola ${customerName},</p>
+      <p style="color:#f5f5f5;font-size:15px;line-height:1.6;">Recibimos una solicitud para restablecer la contraseña de tu cuenta en Polianthes.</p>
+      <div style="text-align:center;margin:28px 0;">
+        <a href="${resetUrl}" style="display:inline-block;background:#d4af37;color:#0c0c0c;padding:14px 32px;border-radius:9999px;text-decoration:none;font-size:15px;font-weight:bold;letter-spacing:0.5px;">Restablecer contraseña</a>
+      </div>
+      <p style="color:#666;font-size:12px;line-height:1.5;">O copia y pega este enlace en tu navegador:</p>
+      <p style="color:#d4af37;font-size:11px;word-break:break-all;font-family:monospace;background:#1a1a1a;padding:10px;border-radius:8px;">${resetUrl}</p>
+      <p style="color:#666;font-size:12px;margin-top:20px;">Este enlace expira en 1 hora. Si no solicitaste este cambio, ignora este correo y tu contraseña seguirá siendo la misma.</p>
+    `,
+    footer: "Si no solicitaste restablecer tu contraseña, puedes ignorar este correo."
+  });
+  const text = `Polianthes — Restablece tu contraseña.\n\nHola ${customerName},\n\nPara restablecer tu contraseña visita: ${resetUrl}\n\nEste enlace expira en 1 hora.\n\nSi no solicitaste este cambio, ignora este correo.`;
+  return sendEmail(config, toEmail, "Restablece tu contraseña en Polianthes", html, text);
+}
+

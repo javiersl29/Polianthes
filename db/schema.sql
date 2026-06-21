@@ -255,10 +255,18 @@ CREATE TABLE IF NOT EXISTS customer (
   id SERIAL PRIMARY KEY,
   email TEXT UNIQUE NOT NULL,
   google_id TEXT UNIQUE,
+  password_hash TEXT,
   name TEXT NOT NULL,
   picture_url TEXT,
   phone TEXT,
   birth_date DATE,
+  -- Confirmación de email
+  email_verified BOOLEAN NOT NULL DEFAULT FALSE,
+  verification_token TEXT,
+  verification_expires_at TIMESTAMPTZ,
+  -- Recuperación de contraseña
+  password_reset_token TEXT,
+  password_reset_expires_at TIMESTAMPTZ,
   -- Dirección predeterminada (la que se usa en checkout si hay sesión)
   default_address_line TEXT,
   default_address_line2 TEXT,
@@ -276,6 +284,7 @@ CREATE TABLE IF NOT EXISTS customer (
 );
 CREATE INDEX IF NOT EXISTS idx_customer_google_id ON customer(google_id);
 CREATE INDEX IF NOT EXISTS idx_customer_email ON customer(email);
+CREATE INDEX IF NOT EXISTS idx_customer_verification_token ON customer(verification_token) WHERE verification_token IS NOT NULL;
 
 -- Vincula órdenes con la cuenta del cliente (nullable: órdenes guest no tienen cuenta)
 ALTER TABLE "order" ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customer(id) ON DELETE SET NULL;

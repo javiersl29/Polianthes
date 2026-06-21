@@ -143,12 +143,15 @@ export async function POST(req: NextRequest) {
      WHERE p.sku IS NULL AND p.size_ml = d.size_ml`
   );
 
+  // Migración idempotente: columnas de auth en `customer` (password + email verification)
+  await ensureColumn(pool, "customer", "password_hash", "TEXT");
+  await ensureColumn(pool, "customer", "email_verified", "BOOLEAN NOT NULL DEFAULT FALSE");
+  await ensureColumn(pool, "customer", "verification_token", "TEXT");
+  await ensureColumn(pool, "customer", "verification_expires_at", "TIMESTAMPTZ");
+  await ensureColumn(pool, "customer", "password_reset_token", "TEXT");
+  await ensureColumn(pool, "customer", "password_reset_expires_at", "TIMESTAMPTZ");
+
   // Seed image_api_config (idempotente, una sola fila)
-  await pool.query(
-    `INSERT INTO image_api_config (id, provider, endpoint, model, aspect_ratio, response_format)
-     VALUES (1, 'minimax', 'https://api.minimax.io/v1/image_generation', 'image-01', '1:1', 'url')
-     ON CONFLICT (id) DO NOTHING`
-  );
 
   // Migración idempotente: tabla shipping_config para override + default
   await pool.query(
