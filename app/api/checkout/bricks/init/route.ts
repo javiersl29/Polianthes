@@ -3,6 +3,7 @@ import { getPool } from "@/lib/db";
 import { getPaymentProvider } from "@/lib/admin-data";
 import { parseMXN } from "@/lib/money";
 import { getCurrentCustomer, markCustomerAffiliated, incrementCustomerStats } from "@/lib/customer-auth";
+import { calculatePromo } from "@/lib/promo-calc";
 
 export const dynamic = "force-dynamic";
 
@@ -158,7 +159,7 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // 4) Promoción (3x2, 2x1, percent, fixed) — valida desde la DB
+  // 4) Promoción — usa calculatePromo de lib/promo-calc (misma lógica que el carrito client-side)
   let promoApplied = false;
   let promoSummary = "";
   if (body.promo?.slug) {
@@ -180,115 +181,43 @@ export async function POST(req: NextRequest) {
     if (pr && pr.active
         && (!pr.starts_at || new Date(pr.starts_at) <= new Date())
         && (!pr.ends_at || new Date(pr.ends_at) >= new Date())) {
-      const totalItems = orderItems.reduce((s, oi) => s + oi.qty, 0);
-      const meetsMinSubtotal = !pr.min_subtotal_cents || pr.min_subtotal_cents === 0 || subtotalCents >= pr.min_subtotal_cents;
 
-      if (!meetsMinSubtotal) {
-        // Pedido mínimo no alcanzado, no aplicar
-      } else if (pr.type === "3x2" || pr.type === "2x1") {
-        const take = pr.quantity_to_take || (pr.type === "3x2" ? 3 : 2);
-        const pay = pr.quantity_to_pay || (pr.type === "3x2" ? 2 : 1);
-        if (totalItems >= take) {
-          // Cobrar solo los `pay` items más baratos
-          const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
-          allUnitPrices.sort((a, b) => a - b);
-          const freeCount = take - pay;
-          const freeAmount = allUnitPrices.slice(0, freeCount).reduce((s, p) => s + p, 0);
-          discountCents = freeAmount;
-          couponCode = `[${pr.type.toUpperCase()}] ${pr.title}`;
-          promoApplied = true;
-          promoSummary = `${pr.type.toUpperCase()}: lleva ${take} y paga ${pay}`;
+      // Parsear mix_config
+      let mixConfig: Array<{ size_ml: number; qty: number }> | null = null;
+      if (pr.mix_config && Array.isArray(pr.mix_config)) {
+        mixConfig = pr.mix_config;
+      } else if (typeof pr.mix_config === "string") {
+        try { mixConfig = JSON.parse(pr.mix_config); } catch { /* ignore */ }
+      }
+
+      const promoResult = calculatePromo(
+        orderItems.map((oi) => ({
+          size_ml: oi.size_ml,
+          qty: oi.qty,
+          unit_price_cents: oi.unit_price_cents,
+        })),
+        {
+          type: pr.type,
+          value: pr.value,
+          bundle_price_cents: pr.bundle_price_cents,
+          quantity_to_take: pr.quantity_to_take,
+          quantity_to_pay: pr.quantity_to_pay,
+          min_subtotal_cents: pr.min_subtotal_cents,
+          mix_config: mixConfig,
         }
-      } else if (pr.type === "bundle_qty") {
-        // "Lleva N unidades por $X" — precio fijo por el bundle
-        const take = pr.quantity_to_take || 3;
-        if (pr.bundle_price_cents > 0 && totalItems >= take) {
-          // Cada grupo de `take` unidades cuesta bundle_price_cents
-          const groups = Math.floor(totalItems / take);
-          const normalCost = (() => {
-            const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
-            allUnitPrices.sort((a, b) => a - b);
-            return allUnitPrices.slice(0, take * groups).reduce((s, p) => s + p, 0);
-          })();
-          const bundleCost = pr.bundle_price_cents * groups;
-          const bundleDiscount = Math.max(0, normalCost - bundleCost);
-          discountCents = Math.max(discountCents, bundleDiscount);
-          couponCode = `[BUNDLE ${take}×$${(pr.bundle_price_cents / 100).toFixed(0)}] ${pr.title}`;
-          promoApplied = true;
-          promoSummary = `Lleva ${take} por $${(pr.bundle_price_cents / 100).toFixed(0)}`;
-        }
-      } else if (pr.type === "bundle_mix") {
-        // "N de tamaño A + M de tamaño B por $X" — bundle con mix de tamaños
-        // mix_config es JSONB array: [{size_ml, qty}, ...]
-        let mixConfig: Array<{ size_ml: number; qty: number }> = [];
-        if (pr.mix_config && Array.isArray(pr.mix_config)) {
-          mixConfig = pr.mix_config;
-        } else if (typeof pr.mix_config === "string") {
-          try { mixConfig = JSON.parse(pr.mix_config); } catch { /* ignore */ }
-        }
-        if (mixConfig.length > 0 && pr.bundle_price_cents > 0) {
-          // Contar cuántos bundles se pueden armar: el mínimo de grupos por cada size
-          let minGroups = Infinity;
-          let bundleCanBeFormed = true;
-          for (const rule of mixConfig) {
-            const matched = orderItems
-              .filter((oi) => Number(oi.size_ml) === Number(rule.size_ml))
-              .reduce((s, oi) => s + oi.qty, 0);
-            const groupsForSize = Math.floor(matched / rule.qty);
-            if (groupsForSize < 1) {
-              bundleCanBeFormed = false;
-            }
-            minGroups = Math.min(minGroups, groupsForSize);
-          }
-          if (bundleCanBeFormed && minGroups >= 1 && minGroups !== Infinity) {
-            // Costo normal de los items en el bundle (los más baratos por tamaño)
-            let normalCost = 0;
-            for (const rule of mixConfig) {
-              const pricesForSize = orderItems
-                .filter((oi) => Number(oi.size_ml) === Number(rule.size_ml))
-                .flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents))
-                .sort((a, b) => a - b)
-                .slice(0, rule.qty * minGroups);
-              normalCost += pricesForSize.reduce((s, p) => s + p, 0);
-            }
-            const bundleCost = pr.bundle_price_cents * minGroups;
-            const bundleDiscount = Math.max(0, normalCost - bundleCost);
-            discountCents = Math.max(discountCents, bundleDiscount);
-            const desc = mixConfig.map((r) => `${r.qty}×${r.size_ml}ml`).join("+");
-            couponCode = `[MIX ${desc}] ${pr.title}`;
-            promoApplied = true;
-            promoSummary = `Lleva ${desc} por $${(pr.bundle_price_cents / 100).toFixed(0)}`;
-          }
-        }
-      } else if (pr.type === "second_unit") {
-        if (totalItems >= 2) {
-          const allUnitPrices = orderItems.flatMap((oi) => Array(oi.qty).fill(oi.unit_price_cents));
-          allUnitPrices.sort((a, b) => b - a);
-          const pairs = Math.floor(totalItems / 2);
-          const discountedPrices = allUnitPrices.slice(0, pairs);
-          const discount = discountedPrices.reduce((s, p) => s + Math.round(p * (pr.value / 100)), 0);
-          discountCents = Math.max(discountCents, discount);
-          couponCode = `[2DA ${pr.value}%] ${pr.title}`;
-          promoApplied = true;
-          promoSummary = `2da unidad a ${pr.value}%`;
-        }
-      } else if (pr.type === "percent") {
-        const d = Math.round(subtotalCents * (pr.value / 100));
-        discountCents = Math.max(discountCents, d);
-        couponCode = `[PROMO ${pr.value}%] ${pr.title}`;
+      );
+
+      if (promoResult.valid) {
+        discountCents = promoResult.discount_cents;
         promoApplied = true;
-        promoSummary = `${pr.value}% de descuento`;
-      } else if (pr.type === "fixed") {
-        discountCents = Math.max(discountCents, Math.min(subtotalCents, pr.value));
-        couponCode = `[PROMO $${(pr.value / 100).toFixed(0)}] ${pr.title}`;
-        promoApplied = true;
-        promoSummary = `$${(pr.value / 100).toFixed(0)} de descuento`;
-      } else if (pr.type === "free_shipping") {
-        if (shippingCents > 0) {
+        promoSummary = promoResult.summary;
+
+        // Construir couponCode descriptivo
+        if (pr.type === "free_shipping") {
           couponCode = `[ENVÍO GRATIS] ${pr.title}`;
           shippingCents = 0;
-          promoApplied = true;
-          promoSummary = "Envío gratis";
+        } else {
+          couponCode = `[PROMO] ${pr.title}`;
         }
       }
     }
