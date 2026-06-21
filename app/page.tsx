@@ -40,7 +40,8 @@ async function getActivePromotions(): Promise<Promotion[]> {
     const r = await query<Promotion>(
       `SELECT id, slug, title, subtitle, description, type, value, bundle_price_cents,
               required_size_ml, mix_sizes, quantity_to_take, quantity_to_pay,
-              image_url, badge_text, badge_color,
+              CASE WHEN image_url LIKE 'data:%' THEN NULL ELSE image_url END AS image_url,
+              badge_text, badge_color,
               min_items, max_items, min_subtotal_cents, starts_at, ends_at, sort_order
        FROM promotion
        WHERE active = TRUE
