@@ -545,13 +545,11 @@ export default function Decoder() {
                     const pos = polar(angle, (values[i] ?? 0) / 100 * RADIUS);
                     return (
                       <motion.g key={`pt-${axis.id}`} animate={{ opacity: isActive ? 1 : 0.25 }}>
-                        <motion.circle
+                        <circle
                           cx={pos.x} cy={pos.y}
                           r={isActive ? 8 : 5}
                           fill={isActive ? "oklch(0.82 0.13 85)" : "rgba(255,255,255,0.4)"}
                           stroke="oklch(0.97 0.01 90)" strokeWidth="1.5"
-                          animate={{ cx: pos.x, cy: pos.y }}
-                          transition={{ type: "spring", stiffness: 200, damping: 20 }}
                         />
                       </motion.g>
                     );
