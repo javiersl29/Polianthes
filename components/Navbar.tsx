@@ -25,6 +25,7 @@ type Customer = {
 
 const FALLBACK_LINKS: NavLink[] = [
   { id: 1, label: "Inicio", href: "/", icon: null, new_tab: false, sort_order: 0 },
+  { id: 5, label: "Promociones", href: "/#ofertas", icon: null, new_tab: false, sort_order: 5 },
   { id: 2, label: "Decodificador", href: "/#decodificador", icon: null, new_tab: false, sort_order: 10 },
   { id: 3, label: "Capacidades", href: "/#capacidades", icon: null, new_tab: false, sort_order: 20 },
   { id: 4, label: "Catálogo", href: "/#catalogo", icon: null, new_tab: false, sort_order: 30 }

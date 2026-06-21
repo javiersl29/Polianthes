@@ -100,6 +100,31 @@ export async function GET(req: NextRequest) {
     await query(`ALTER TABLE promotion ADD COLUMN IF NOT EXISTS mix_config JSONB`);
     result.migrated_promotion_v3 = true;
   }
+  if (action === "create_announcements") {
+    await query(`
+      CREATE TABLE IF NOT EXISTS announcement (
+        id SERIAL PRIMARY KEY,
+        text TEXT NOT NULL,
+        link_url TEXT,
+        link_label TEXT DEFAULT 'Ver más',
+        icon TEXT DEFAULT '🎁',
+        bg_color TEXT NOT NULL DEFAULT 'gold' CHECK (bg_color IN ('gold','rose','emerald','sky','violet','dark')),
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        active BOOLEAN NOT NULL DEFAULT TRUE,
+        starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        ends_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+    await query(`
+      INSERT INTO announcement (text, link_url, link_label, icon, bg_color, sort_order)
+      VALUES
+        ('Envío gratis en compras superiores a $500', '/#catalogo', 'Comprar', '🚚', 'gold', 0),
+        ('3x2 en fragancias seleccionadas', '/#ofertas', 'Ver ofertas', '🎁', 'emerald', 1)
+      ON CONFLICT DO NOTHING
+    `);
+    result.created_announcements = true;
+  }
   if (action === "clean_footer_links") {
     const r = await query(
       `DELETE FROM nav_link WHERE location = 'footer' AND (href = '/admin' OR href LIKE '%github%') RETURNING id, label`
