@@ -44,16 +44,6 @@ function QuickAdd({ item }: { item: Item }) {
   const [open, setOpen] = useState(false);
   const [justAdded, setJustAdded] = useState<number | null>(null);
   const { add } = useCart();
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [open]);
 
   function addToCart(ml: number, price: number) {
     add({
@@ -74,47 +64,55 @@ function QuickAdd({ item }: { item: Item }) {
   }
 
   return (
-    <div ref={ref} className="relative">
+    <>
+      {/* Botón visible siempre */}
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(!open); }}
-        className="h-8 w-8 rounded-full bg-gold/90 text-bg grid place-items-center hover:bg-gold transition-colors shadow-lg shadow-gold/20"
+        className="h-10 w-10 rounded-full bg-gold text-bg grid place-items-center hover:bg-gold hover:scale-110 transition-all shadow-lg shadow-gold/30 ring-2 ring-bg/50"
         aria-label="Agregar al carrito"
         title="Agregar al carrito"
       >
         {justAdded !== null ? (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
         ) : (
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+            <path d="M3 6h18" />
+            <path d="M16 10a4 4 0 0 1-8 0" />
+          </svg>
         )}
       </button>
+
+      {/* Overlay que cubre toda la imagen */}
       <AnimatePresence>
         {open && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: -4 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: -4 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-30 liquid-glass rounded-2xl p-2 min-w-[140px] shadow-xl"
+            className="absolute inset-0 z-30 bg-black/75 backdrop-blur-sm rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-2 p-3"
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); }}
           >
-            <p className="text-[10px] uppercase tracking-wider text-gold/80 text-center pb-1.5 border-b border-line/40 mb-1">Elige tamaño</p>
-            <div className="space-y-0.5">
-              {SIZES.map((s) => (
-                <button
-                  key={s.ml}
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addToCart(s.ml, s.price); }}
-                  className={`w-full flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
-                    justAdded === s.ml ? "bg-gold text-bg" : "hover:bg-white/5 text-ink"
-                  }`}
-                >
-                  <span className="font-medium">{s.ml}ml</span>
-                  <span className={justAdded === s.ml ? "text-bg/80" : "text-gold/80"}>{money(s.price)}</span>
-                </button>
-              ))}
-            </div>
+            <p className="text-[10px] uppercase tracking-wider text-gold/90 font-semibold mb-1">Elige tamaño</p>
+            {SIZES.map((s) => (
+              <button
+                key={s.ml}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); addToCart(s.ml, s.price); }}
+                className={`w-full max-w-[120px] flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                  justAdded === s.ml
+                    ? "bg-gold text-bg scale-105"
+                    : "liquid-glass text-ink hover:scale-105 hover:text-gold"
+                }`}
+              >
+                <span>{s.ml}ml</span>
+                <span className={justAdded === s.ml ? "text-bg/80" : "text-gold"}>{money(s.price)}</span>
+              </button>
+            ))}
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
 
@@ -329,7 +327,8 @@ export default function Catalog() {
                   ) : (
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>
                   )}
-                  <div className="absolute bottom-1.5 right-1.5 z-20" onClick={(e) => e.preventDefault()}>
+                  {/* Botón flotante + overlay de tamaños */}
+                  <div className="absolute bottom-2 right-2 z-20" onClick={(e) => e.preventDefault()}>
                     <QuickAdd item={it} />
                   </div>
                 </div>
