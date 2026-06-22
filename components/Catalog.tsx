@@ -1,8 +1,10 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { genderBadge } from "@/lib/visual";
+import { useCart } from "@/components/CartProvider";
+import { toast } from "sonner";
 
 type Gender = "hombre" | "mujer" | "unisex";
 type Item = {
@@ -26,6 +28,95 @@ type Item = {
 const PAGE_SIZE = 60;
 const FAMILIES = ["", "Floral", "Oriental", "Amaderado", "Chipre", "Cítrico", "Gourmand"];
 const GENDERS: ("all" | Gender)[] = ["all", "hombre", "mujer", "unisex"];
+
+const SIZES = [
+  { ml: 10, price: 10000 },
+  { ml: 30, price: 25000 },
+  { ml: 60, price: 35000 },
+  { ml: 100, price: 45000 },
+] as const;
+
+function money(cents: number): string {
+  return `$${(cents / 100).toLocaleString("es-MX", { maximumFractionDigits: 0 })}`;
+}
+
+function QuickAdd({ item }: { item: Item }) {
+  const [open, setOpen] = useState(false);
+  const [justAdded, setJustAdded] = useState<number | null>(null);
+  const { add } = useCart();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  function addToCart(ml: number, price: number) {
+    add({
+      slug: item.slug,
+      brand: item.brand,
+      name: item.name,
+      full_name: item.full_name,
+      artistic_name: item.artistic_name,
+      size_ml: ml,
+      qty: 1,
+      unit_price_cents: price,
+      image_url: item.image_url,
+      image_version: item.image_version ?? null,
+    });
+    setJustAdded(ml);
+    toast.success(`${ml}ml agregado al carrito`, { duration: 1500 });
+    setTimeout(() => { setOpen(false); setJustAdded(null); }, 800);
+  }
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(!open); }}
+        className="h-8 w-8 rounded-full bg-gold/90 text-bg grid place-items-center hover:bg-gold transition-colors shadow-lg shadow-gold/20"
+        aria-label="Agregar al carrito"
+        title="Agregar al carrito"
+      >
+        {justAdded !== null ? (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
+        ) : (
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 5v14M5 12h14" /></svg>
+        )}
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.9, y: -4 }}
+            transition={{ duration: 0.15 }}
+            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-30 liquid-glass rounded-2xl p-2 min-w-[140px] shadow-xl"
+          >
+            <p className="text-[10px] uppercase tracking-wider text-gold/80 text-center pb-1.5 border-b border-line/40 mb-1">Elige tamaño</p>
+            <div className="space-y-0.5">
+              {SIZES.map((s) => (
+                <button
+                  key={s.ml}
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); addToCart(s.ml, s.price); }}
+                  className={`w-full flex items-center justify-between gap-3 px-2.5 py-1.5 rounded-lg text-xs transition-colors ${
+                    justAdded === s.ml ? "bg-gold text-bg" : "hover:bg-white/5 text-ink"
+                  }`}
+                >
+                  <span className="font-medium">{s.ml}ml</span>
+                  <span className={justAdded === s.ml ? "text-bg/80" : "text-gold/80"}>{money(s.price)}</span>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function Catalog() {
   const [items, setItems] = useState<Item[]>([]);
@@ -223,9 +314,9 @@ export default function Catalog() {
             >
               <Link
                 href={`/fragancias/${it.slug}`}
-                className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full"
+                className="liquid-glass rounded-2xl sm:rounded-3xl p-3 sm:p-4 hover:text-gold transition-all duration-300 hover:scale-[1.02] hover:shadow-lg hover:shadow-gold/5 group block h-full relative"
               >
-                <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute">
+                <div className="aspect-[3/4] rounded-xl sm:rounded-2xl bg-bg-elev overflow-hidden grid place-items-center text-ink-mute relative">
                   {it.image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
@@ -238,6 +329,9 @@ export default function Catalog() {
                   ) : (
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>
                   )}
+                  <div className="absolute bottom-1.5 right-1.5 z-20" onClick={(e) => e.preventDefault()}>
+                    <QuickAdd item={it} />
+                  </div>
                 </div>
                 <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1 min-w-0">
                   <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate min-w-0">{it.display_code ?? `PLT-${String(it.id).padStart(3, "0")}`}</p>
