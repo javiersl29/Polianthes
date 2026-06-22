@@ -37,7 +37,21 @@ export async function POST(req: NextRequest) {
     // formData puede ser null para algunos métodos de pago (saldo MP).
     // Lo normalizamos a objeto vacío y usamos selectedPaymentMethod como fallback.
     const form = (formData && typeof formData === "object") ? formData : {};
-    const spm = (selectedPaymentMethod && typeof selectedPaymentMethod === "object") ? selectedPaymentMethod : {};
+    // selectedPaymentMethod puede ser string ("wallet_purchase", "creditCard") u objeto
+    const spmRaw = typeof selectedPaymentMethod === "string" ? selectedPaymentMethod : "";
+    const spm = (selectedPaymentMethod && typeof selectedPaymentMethod === "object") ? selectedPaymentMethod as Record<string, unknown> : {};
+
+    // Mapear tipos de payment method del brick a payment_method_id de MP
+    // "wallet_purchase" → "account_money"
+    // Para tarjetas/efectivo, el payment_method_id viene en formData
+    let paymentMethodId = form.payment_method_id ?? spm.id ?? spm.paymentMethodId ?? null;
+    if (!paymentMethodId && spmRaw === "wallet_purchase") {
+      paymentMethodId = "account_money";
+    }
+    let paymentTypeId = form.payment_type_id ?? spm.type ?? spm.paymentTypeId ?? null;
+    if (!paymentTypeId && spmRaw === "wallet_purchase") {
+      paymentTypeId = "account_money";
+    }
 
     const cfg = await getPaymentProvider("mercadopago");
     if (!cfg || !cfg.active || !cfg.mp_access_token) {
@@ -66,10 +80,9 @@ export async function POST(req: NextRequest) {
       transaction_amount: transactionAmount,
       description: `Pedido Polianthes ${public_id}`,
       external_reference: public_id,
-      // Campos del brick que SÍ queremos propagar:
       token: form.token,
-      payment_method_id: form.payment_method_id ?? spm.id ?? spm.paymentMethodId,
-      payment_type_id: form.payment_type_id ?? spm.type ?? spm.paymentTypeId,
+      payment_method_id: paymentMethodId,
+      payment_type_id: paymentTypeId,
       installments: form.installments ?? 1,
       issuer_id: form.issuer_id,
       // Payer: si el brick trae payer, lo usamos; si no, usamos el customer de la orden
