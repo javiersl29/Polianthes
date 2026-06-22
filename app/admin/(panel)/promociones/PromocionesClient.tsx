@@ -2,6 +2,7 @@
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import CouponsClient from "./CouponsClient";
 
 type MixRule = { size_ml: number; qty: number };
 
@@ -143,6 +144,7 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   const [editing, setEditing] = useState<Partial<Promotion> | null>(null);
   const [isNew, setIsNew] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<"promos" | "coupons">("promos");
   const [generating, setGenerating] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
   const [refImage, setRefImage] = useState<string>("");
@@ -358,6 +360,30 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
   const customerSummary = useMemo(() => editing ? buildCustomerSummary(editing) : "", [editing]);
 
   return (
+    <>
+      {/* Tabs: Promociones | Cupones */}
+      <div className="liquid-glass rounded-full p-1 flex mb-6 w-fit">
+        <button
+          onClick={() => setTab("promos")}
+          className={`px-5 py-2 text-sm font-medium rounded-full transition-colors ${
+            tab === "promos" ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
+          }`}
+        >
+          🎁 Promociones
+        </button>
+        <button
+          onClick={() => setTab("coupons")}
+          className={`px-5 py-2 text-sm font-medium rounded-full transition-colors ${
+            tab === "coupons" ? "bg-ink text-bg" : "text-ink/80 hover:text-gold"
+          }`}
+        >
+          🏷️ Cupones
+        </button>
+      </div>
+
+      {tab === "coupons" ? (
+        <CouponsClient />
+      ) : (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
@@ -1004,6 +1030,8 @@ export default function PromocionesClient({ initialPromotions }: { initialPromot
         </div>
       )}
     </div>
+      )}
+    </>
   );
 }
 
