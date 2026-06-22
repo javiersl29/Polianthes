@@ -86,14 +86,33 @@ export default function PaymentBrick({ publicKey, preferenceId, amount, orderId,
             onReady: () => {
               setLoading(false);
             },
-            onSubmit: ({ selectedPaymentMethod, formData }: { selectedPaymentMethod: Record<string, unknown>; formData: Record<string, unknown> }) => {
+            onSubmit: ({ selectedPaymentMethod, formData }: { selectedPaymentMethod: Record<string, unknown> | string; formData: Record<string, unknown> }) => {
+              console.log("[PaymentBrick] onSubmit", { selectedPaymentMethod, formData });
+              const spm = typeof selectedPaymentMethod === "string" ? selectedPaymentMethod : "";
+
+              // Wallet MP: el brick maneja el pago internamente (redirect a MP).
+              // NO crear pago vía API — MP rechaza "account_money" si lo hacemos.
+              // El pago se actualiza vía webhook cuando el usuario completa en MP.
+              if (spm === "wallet_purchase") {
+                return new Promise<void>((resolve) => {
+                  // Marcar la orden como pendiente de confirmación MP
+                  fetch("/api/checkout/bricks/process", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ wallet: true, order_id: orderId, public_id: publicId })
+                  }).catch(() => {});
+                  resolve();
+                  onPaid({ status: "pending", payment_id: 0, public_id: publicId });
+                });
+              }
+
+              // Resto de métodos (tarjeta, efectivo, etc.): crear pago vía API
               const payload = {
                 formData: formData ?? {},
                 selectedPaymentMethod: selectedPaymentMethod ?? {},
                 order_id: orderId,
                 public_id: publicId
               };
-              console.log("[PaymentBrick] onSubmit", { selectedPaymentMethod, formData });
               return new Promise<void>((resolve, reject) => {
                 fetch("/api/checkout/bricks/process", {
                   method: "POST",

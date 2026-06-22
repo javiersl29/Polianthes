@@ -23,27 +23,38 @@ export async function POST(req: NextRequest) {
   console.log("[bricks/process] start");
   try {
     const body = await req.json();
-    const { formData, selectedPaymentMethod, order_id, public_id } = body;
+    const { formData, selectedPaymentMethod, order_id, public_id, wallet } = body;
 
     console.log("[bricks/process] body keys:", Object.keys(body));
-    console.log("[bricks/process] formData:", JSON.stringify(formData)?.slice(0, 300));
-    console.log("[bricks/process] selectedPaymentMethod:", JSON.stringify(selectedPaymentMethod));
-    console.log("[bricks/process] order_id:", order_id, "| public_id:", public_id);
+    console.log("[bricks/process] wallet:", !!wallet, "| spm:", JSON.stringify(selectedPaymentMethod)?.slice(0, 100));
 
     if (!order_id || !public_id) {
-      console.log("[bricks/process] MISSING order_id/public_id");
       return NextResponse.json({ error: "Falta order_id/public_id" }, { status: 400 });
     }
-    // formData puede ser null para algunos métodos de pago (saldo MP).
-    // Lo normalizamos a objeto vacío y usamos selectedPaymentMethod como fallback.
+
+    const cfg = await getPaymentProvider("mercadopago");
+    if (!cfg || !cfg.active || !cfg.mp_access_token) {
+      return NextResponse.json({ error: "MP no configurado" }, { status: 503 });
+    }
+
+    const pool = getPool();
+
+    // Wallet MP: el brick maneja el pago internamente.
+    // Solo marcamos la orden como pendiente y dejamos que MP la procese.
+    // El webhook actualizará el estado cuando MP confirme.
+    if (wallet) {
+      await pool.query(
+        `UPDATE "order" SET status = 'pending', mp_status = 'pending_wallet', updated_at = NOW() WHERE id = $1 AND public_id = $2`,
+        [Number(order_id), String(public_id)]
+      );
+      console.log("[bricks/process] wallet order marked pending:", order_id);
+      return NextResponse.json({ ok: true, status: "pending", public_id });
+    }
+
     const form = (formData && typeof formData === "object") ? formData : {};
-    // selectedPaymentMethod puede ser string ("wallet_purchase", "creditCard") u objeto
     const spmRaw = typeof selectedPaymentMethod === "string" ? selectedPaymentMethod : "";
     const spm = (selectedPaymentMethod && typeof selectedPaymentMethod === "object") ? selectedPaymentMethod as Record<string, unknown> : {};
 
-    // Mapear tipos de payment method del brick a payment_method_id de MP
-    // "wallet_purchase" → "account_money"
-    // Para tarjetas/efectivo, el payment_method_id viene en formData
     let paymentMethodId = form.payment_method_id ?? spm.id ?? spm.paymentMethodId ?? null;
     if (!paymentMethodId && spmRaw === "wallet_purchase") {
       paymentMethodId = "account_money";
@@ -52,15 +63,6 @@ export async function POST(req: NextRequest) {
     if (!paymentTypeId && spmRaw === "wallet_purchase") {
       paymentTypeId = "account_money";
     }
-
-    const cfg = await getPaymentProvider("mercadopago");
-    if (!cfg || !cfg.active || !cfg.mp_access_token) {
-      console.log("[bricks/process] MP not configured");
-      return NextResponse.json({ error: "MP no configurado" }, { status: 503 });
-    }
-
-    // Cargar la orden desde DB (no confiar en transaction_amount del cliente)
-    const pool = getPool();
     const orderRow = (await pool.query<{
       id: number; total_cents: number; customer_email: string; customer_name: string;
     }>(
