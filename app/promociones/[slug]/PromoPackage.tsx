@@ -268,6 +268,7 @@ export default function PromoPackage({ promo, fragrances }: { promo: Promotion; 
       bundle_price_cents: promo.bundle_price_cents,
       value: promo.value,
       mix_sizes: promo.mix_sizes,
+      required_size_ml: promo.required_size_ml,
       mix_config: promo.mix_config ?? undefined
     });
 

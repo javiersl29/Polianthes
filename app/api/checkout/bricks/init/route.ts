@@ -192,6 +192,8 @@ export async function POST(req: NextRequest) {
           quantity_to_pay: pr.quantity_to_pay,
           min_subtotal_cents: pr.min_subtotal_cents,
           mix_config: mixConfig,
+          required_size_ml: pr.required_size_ml,
+          mix_sizes: pr.mix_sizes,
         }
       );
 

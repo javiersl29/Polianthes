@@ -31,6 +31,8 @@ export type CartPromo = {
   value?: number;
   /** Si true, se permite mezclar tamaños en bundle_qty */
   mix_sizes?: boolean;
+  /** Tamaño requerido para bundle_qty (ej. 10 para "3 × 10ml por $290") */
+  required_size_ml?: number;
   /** Configuración de bundle mixto: array de {size_ml, qty} */
   mix_config?: Array<{ size_ml: number; qty: number }>;
 };
@@ -145,6 +147,8 @@ export function cartTotal(items: CartItem[], promo: CartPromo | null = null): Ca
       quantity_to_pay: 0,
       min_subtotal_cents: 0,
       mix_config: promo.mix_config ?? null,
+      required_size_ml: promo.required_size_ml,
+      mix_sizes: promo.mix_sizes,
     }
   );
 

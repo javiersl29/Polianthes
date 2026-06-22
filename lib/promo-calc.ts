@@ -15,6 +15,10 @@ export type PromoConfig = {
   quantity_to_pay: number;
   min_subtotal_cents: number;
   mix_config: Array<{ size_ml: number; qty: number }> | null;
+  /** Tamaño requerido para bundle_qty (ej. 10 para "3 × 10ml por $290") */
+  required_size_ml?: number;
+  /** Si true, bundle_qty permite mezclar tamaños (ignora required_size_ml) */
+  mix_sizes?: boolean;
 };
 
 export type PromoItem = {
@@ -192,30 +196,62 @@ export function calculatePromo(
   // --- bundle_qty: "N por $X" ---
   if (promo.type === "bundle_qty") {
     const take = promo.quantity_to_take || 3;
-    const groups = Math.floor(totalUnits / take);
 
-    if (groups < 1 || promo.bundle_price_cents <= 0) {
-      return noPromoResult(subtotal, totalUnits, "Se requieren " + take + " fragancias");
+    // Si required_size_ml está definido y mix_sizes no es true,
+    // solo los items de ese tamaño cuentan para el bundle.
+    // Los items de otros tamaños siempre pagan precio normal.
+    const allowMix = promo.mix_sizes === true;
+    const reqSize = promo.required_size_ml ?? null;
+
+    let bundleItems: number[] = [];
+    let outsideItems: number[] = [];
+
+    if (reqSize !== null && !allowMix) {
+      // Separar items por tamaño
+      for (const it of items) {
+        for (let i = 0; i < it.qty; i++) {
+          if (it.size_ml === reqSize) {
+            bundleItems.push(it.unit_price_cents);
+          } else {
+            outsideItems.push(it.unit_price_cents);
+          }
+        }
+      }
+    } else {
+      // Comportamiento anterior: todos los items califican
+      const all = [...allPrices].sort((a, b) => a - b);
+      bundleItems = all;
     }
 
-    // Los `take * groups` items más baratos entran al bundle
-    const sorted = [...allPrices].sort((a, b) => a - b);
-    const bundleItems = sorted.slice(0, take * groups);
-    const bundleNormalCost = bundleItems.reduce((s, p) => s + p, 0);
+    const groups = Math.floor(bundleItems.length / take);
+
+    if (groups < 1 || promo.bundle_price_cents <= 0) {
+      return noPromoResult(subtotal, totalUnits, "Se requieren " + take + " fragancias" + (reqSize && !allowMix ? ` de ${reqSize}ml` : ""));
+    }
+
+    // Los `take * groups` items más baratos del bundle entran al grupo
+    const sortedBundle = bundleItems.sort((a, b) => a - b);
+    const inBundle = sortedBundle.slice(0, take * groups);
+    const bundleNormalCost = inBundle.reduce((s, p) => s + p, 0);
     const bundleCost = promo.bundle_price_cents * groups;
+    // SAFETY: el descuento nunca puede ser negativo (bundle más caro que precio normal)
     const discount = Math.max(0, bundleNormalCost - bundleCost);
 
-    // Los items restantes (fuera del bundle) pagan precio normal
-    const outsideItems = sorted.slice(take * groups);
-    const outsideCost = outsideItems.reduce((s, p) => s + p, 0);
+    // Items del tamaño requerido que no entraron al bundle + items de otros tamaños
+    const leftoverBundle = sortedBundle.slice(take * groups);
+    const allOutside = [...leftoverBundle, ...outsideItems];
+    const outsideCost = allOutside.reduce((s, p) => s + p, 0);
+
+    // SAFETY: el total debe ser coherente — bundle + outside, nunca menos que 0
+    const finalTotal = Math.max(0, bundleCost + outsideCost);
 
     return {
       valid: true,
       subtotal_cents: subtotal,
       discount_cents: discount,
-      total_cents: bundleCost + outsideCost,
+      total_cents: finalTotal,
       items_in_promo: take * groups,
-      items_outside: totalUnits - take * groups,
+      items_outside: allOutside.length,
       summary: `Lleva ${take} por $${(promo.bundle_price_cents / 100).toFixed(0)}${groups > 1 ? ` (${groups} grupos)` : ""}`,
     };
   }
