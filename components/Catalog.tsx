@@ -68,7 +68,7 @@ function QuickAdd({ item }: { item: Item }) {
       {/* Botón visible siempre */}
       <button
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(!open); }}
-        className="h-10 w-10 rounded-full bg-gold text-bg grid place-items-center hover:bg-gold hover:scale-110 transition-all shadow-lg shadow-gold/30 ring-2 ring-bg/50"
+        className="absolute bottom-2 right-2 z-40 h-10 w-10 rounded-full bg-gold text-bg grid place-items-center hover:bg-gold hover:scale-110 transition-all shadow-lg shadow-gold/30 ring-2 ring-bg/50"
         aria-label="Agregar al carrito"
         title="Agregar al carrito"
       >
@@ -83,7 +83,7 @@ function QuickAdd({ item }: { item: Item }) {
         )}
       </button>
 
-      {/* Overlay que cubre toda la imagen */}
+      {/* Overlay que cubre TODA la imagen */}
       <AnimatePresence>
         {open && (
           <motion.div
@@ -91,15 +91,15 @@ function QuickAdd({ item }: { item: Item }) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="absolute inset-0 z-30 bg-black/75 backdrop-blur-sm rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-2 p-3"
+            className="absolute inset-0 z-30 bg-black/80 backdrop-blur-md rounded-xl sm:rounded-2xl flex flex-col items-center justify-center gap-1.5 p-4"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); setOpen(false); }}
           >
-            <p className="text-[10px] uppercase tracking-wider text-gold/90 font-semibold mb-1">Elige tamaño</p>
+            <p className="text-[11px] uppercase tracking-wider text-gold font-semibold mb-2">Elige tamaño</p>
             {SIZES.map((s) => (
               <button
                 key={s.ml}
                 onClick={(e) => { e.preventDefault(); e.stopPropagation(); addToCart(s.ml, s.price); }}
-                className={`w-full max-w-[120px] flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${
+                className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                   justAdded === s.ml
                     ? "bg-gold text-bg scale-105"
                     : "liquid-glass text-ink hover:scale-105 hover:text-gold"
@@ -327,10 +327,7 @@ export default function Catalog() {
                   ) : (
                     <span className="font-display italic text-gold text-3xl sm:text-4xl">{it.brand[0]}</span>
                   )}
-                  {/* Botón flotante + overlay de tamaños */}
-                  <div className="absolute bottom-2 right-2 z-20" onClick={(e) => e.preventDefault()}>
-                    <QuickAdd item={it} />
-                  </div>
+                  <QuickAdd item={it} />
                 </div>
                 <div className="mt-2 sm:mt-3 flex items-center justify-between gap-1 min-w-0">
                   <p className="text-[10px] sm:text-[11px] text-gold/80 uppercase tracking-wider truncate min-w-0">{it.display_code ?? `PLT-${String(it.id).padStart(3, "0")}`}</p>
