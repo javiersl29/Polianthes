@@ -87,6 +87,7 @@ export default function PaymentBrick({ publicKey, preferenceId, amount, orderId,
               setLoading(false);
             },
             onSubmit: ({ selectedPaymentMethod, formData }: { selectedPaymentMethod: Record<string, unknown>; formData: Record<string, unknown> }) => {
+              console.log("[PaymentBrick] onSubmit fired", { selectedPaymentMethod, formData, formDataType: typeof formData, formDataKeys: formData ? Object.keys(formData) : "null" });
               return new Promise<void>((resolve, reject) => {
                 fetch("/api/checkout/bricks/process", {
                   method: "POST",

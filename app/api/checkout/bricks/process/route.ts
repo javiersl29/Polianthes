@@ -26,7 +26,8 @@ export async function POST(req: NextRequest) {
     const { formData, order_id, public_id } = body;
 
     console.log("[bricks/process] body keys:", Object.keys(body));
-    console.log("[bricks/process] formData keys:", formData ? Object.keys(formData) : "(no formData)");
+    console.log("[bricks/process] formData type:", typeof formData, "| value:", JSON.stringify(formData)?.slice(0, 200));
+    console.log("[bricks/process] order_id:", order_id, "| public_id:", public_id);
 
     if (!order_id || !public_id) {
       console.log("[bricks/process] MISSING order_id/public_id");
