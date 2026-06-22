@@ -23,20 +23,21 @@ export async function POST(req: NextRequest) {
   console.log("[bricks/process] start");
   try {
     const body = await req.json();
-    const { formData, order_id, public_id } = body;
+    const { formData, selectedPaymentMethod, order_id, public_id } = body;
 
     console.log("[bricks/process] body keys:", Object.keys(body));
-    console.log("[bricks/process] formData type:", typeof formData, "| value:", JSON.stringify(formData)?.slice(0, 200));
+    console.log("[bricks/process] formData:", JSON.stringify(formData)?.slice(0, 300));
+    console.log("[bricks/process] selectedPaymentMethod:", JSON.stringify(selectedPaymentMethod));
     console.log("[bricks/process] order_id:", order_id, "| public_id:", public_id);
 
     if (!order_id || !public_id) {
       console.log("[bricks/process] MISSING order_id/public_id");
       return NextResponse.json({ error: "Falta order_id/public_id" }, { status: 400 });
     }
-    if (!formData || typeof formData !== "object") {
-      console.log("[bricks/process] MISSING formData");
-      return NextResponse.json({ error: "Falta formData del brick" }, { status: 400 });
-    }
+    // formData puede ser null para algunos métodos de pago (saldo MP).
+    // Lo normalizamos a objeto vacío y usamos selectedPaymentMethod como fallback.
+    const form = (formData && typeof formData === "object") ? formData : {};
+    const spm = (selectedPaymentMethod && typeof selectedPaymentMethod === "object") ? selectedPaymentMethod : {};
 
     const cfg = await getPaymentProvider("mercadopago");
     if (!cfg || !cfg.active || !cfg.mp_access_token) {
@@ -57,22 +58,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Orden no encontrada" }, { status: 404 });
     }
 
-    // Construir el body para /v1/payments de forma EXPLÍCITA. NO usar
-    // spread porque formData puede traer campos que no queremos o que
-    // sobreescriben nuestros valores críticos.
+    // Construir el body para /v1/payments.
+    // formData tiene los datos del brick (token, installments, etc.).
+    // Si formData está vacío (ej. saldo MP), usamos selectedPaymentMethod.
     const transactionAmount = orderRow.total_cents / 100;
     const paymentBody: Record<string, unknown> = {
       transaction_amount: transactionAmount,
       description: `Pedido Polianthes ${public_id}`,
       external_reference: public_id,
       // Campos del brick que SÍ queremos propagar:
-      token: formData.token,
-      payment_method_id: formData.payment_method_id,
-      payment_type_id: formData.payment_type_id,
-      installments: formData.installments ?? 1,
-      issuer_id: formData.issuer_id,
+      token: form.token,
+      payment_method_id: form.payment_method_id ?? spm.id ?? spm.paymentMethodId,
+      payment_type_id: form.payment_type_id ?? spm.type ?? spm.paymentTypeId,
+      installments: form.installments ?? 1,
+      issuer_id: form.issuer_id,
       // Payer: si el brick trae payer, lo usamos; si no, usamos el customer de la orden
-      payer: formData.payer ?? {
+      payer: form.payer ?? spm.payer ?? {
         email: orderRow.customer_email,
         first_name: orderRow.customer_name
       },
