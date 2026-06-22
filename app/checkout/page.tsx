@@ -151,11 +151,12 @@ function CheckoutInner() {
     subtotalPostCents: total.total_cents,
     explicitZoneId,
     hasFreeShippingPromo: isFreeShippingPromo,
-    zones: zones as any,
+    zones: deliveryMode === "pickup" ? [...zones, ...pickups] as any : zones as any,
     config: shippingConfig as any
   });
   const shippingCents = shippingResult.shipping_cents;
-  const selectedZoneId = shippingResult.zone_id;
+  // Para pickup, usar selectedPickupId directamente como fallback si calculateShippingSync no lo encontró
+  const selectedZoneId = shippingResult.zone_id ?? (deliveryMode === "pickup" ? selectedPickupId : null);
 
   // total.total_cents YA incluye el descuento del promo (calculado por cartTotal → calculatePromo)
   // Solo aplicamos cupón adicional si existe
