@@ -28,7 +28,30 @@ export async function POST(req: NextRequest) {
     clearCustomerCookie();
     return NextResponse.json({ ok: true });
   }
+  if (body.action === "delete_account") {
+    return deleteAccount();
+  }
   return NextResponse.json({ error: "acción no soportada" }, { status: 400 });
+}
+
+/**
+ * DELETE /api/customer/me
+ * Elimina la cuenta del cliente autenticado.
+ * Mismo flujo que POST con action=delete_account (alternativa REST).
+ */
+export async function DELETE() {
+  return deleteAccount();
+}
+
+async function deleteAccount() {
+  const customer = await getCurrentCustomer();
+  if (!customer) {
+    return NextResponse.json({ error: "no has iniciado sesión" }, { status: 401 });
+  }
+  // ON DELETE SET NULL en orders.customer_id preserva pedidos sin datos personales.
+  await query(`DELETE FROM customer WHERE id = $1`, [customer.id]);
+  clearCustomerCookie();
+  return NextResponse.json({ ok: true });
 }
 
 /**

@@ -145,6 +145,28 @@ export default function CuentaClient({
     router.push("/");
   }
 
+  const [deleting, setDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  async function handleDeleteAccount() {
+    setDeleting(true);
+    try {
+      const r = await fetch("/api/customer/me", {
+        method: "DELETE"
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error(data.error ?? "Error al eliminar la cuenta");
+      }
+      toast.success("Tu cuenta ha sido eliminada");
+      router.push("/");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Error");
+      setDeleting(false);
+    }
+  }
+
   return (
     <main className="pt-24 sm:pt-32 pb-20 px-4 sm:px-6 lg:px-8 min-h-screen">
       <div className="max-w-5xl mx-auto">
@@ -224,8 +246,56 @@ export default function CuentaClient({
               >
                 ↪ Cerrar sesión
               </button>
+
+              <button
+                onClick={() => setConfirmDelete(true)}
+                className="mt-2 w-full rounded-full border border-rose-300/20 px-3 py-2 text-xs text-rose-300/60 hover:text-rose-300 hover:border-rose-300/40 transition-colors"
+              >
+                Eliminar mi cuenta
+              </button>
             </div>
           </div>
+
+          {/* Modal de confirmación para eliminar cuenta */}
+          {confirmDelete && (
+            <div
+              className="fixed inset-0 z-50 grid place-items-center bg-black/70 backdrop-blur-sm p-4"
+              onClick={() => !deleting && setConfirmDelete(false)}
+            >
+              <div
+                className="liquid-glass rounded-3xl p-6 max-w-md w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h3 className="font-display italic text-2xl text-ink">¿Eliminar tu cuenta?</h3>
+                <p className="mt-2 text-sm text-ink-mute leading-relaxed">
+                  Esta acción es <strong className="text-rose-300">permanente e irreversible</strong>.
+                  Se eliminarán tus datos personales, dirección guardada y preferencias.
+                </p>
+                <p className="mt-2 text-sm text-ink-mute leading-relaxed">
+                  Tus <strong>pedidos anteriores se conservarán</strong> de forma anónima para
+                  efectos contables y de garantía, pero sin vínculo a tu identidad.
+                </p>
+                <div className="mt-5 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={deleting}
+                    className="flex-1 rounded-full liquid-glass border border-line px-4 py-2.5 text-sm hover:text-gold disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleDeleteAccount}
+                    disabled={deleting}
+                    className="flex-1 rounded-full bg-rose-500/90 text-white px-4 py-2.5 text-sm font-medium hover:bg-rose-500 disabled:opacity-50"
+                  >
+                    {deleting ? "Eliminando…" : "Sí, eliminar mi cuenta"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Form de perfil + pedidos */}
           <div className="lg:col-span-2 space-y-6">
