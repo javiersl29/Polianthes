@@ -40,8 +40,17 @@ export type RankedPromo = {
 
 /**
  * Convierte una ActivePromotion (de DB/API) a PromoConfig (para calculatePromo).
+ * Maneja mix_config que puede venir como string JSON desde la DB.
  */
 export function toPromoConfig(p: ActivePromotion): PromoConfig {
+  let mixConfig: Array<{ size_ml: number; qty: number }> | null = null;
+  if (p.mix_config) {
+    if (Array.isArray(p.mix_config)) {
+      mixConfig = p.mix_config;
+    } else if (typeof p.mix_config === "string") {
+      try { mixConfig = JSON.parse(p.mix_config); } catch { /* ignore */ }
+    }
+  }
   return {
     type: p.type,
     value: p.value,
@@ -49,7 +58,7 @@ export function toPromoConfig(p: ActivePromotion): PromoConfig {
     quantity_to_take: p.quantity_to_take,
     quantity_to_pay: p.quantity_to_pay,
     min_subtotal_cents: p.min_subtotal_cents ?? 0,
-    mix_config: p.mix_config,
+    mix_config: mixConfig,
     required_size_ml: p.required_size_ml ?? undefined,
     mix_sizes: p.mix_sizes,
   };
