@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 type FooterLink = { label: string; href: string };
 
 const TIENDA_LINKS: FooterLink[] = [
@@ -10,10 +12,10 @@ const TIENDA_LINKS: FooterLink[] = [
 ];
 
 const AYUDA_LINKS: FooterLink[] = [
-  { label: "Envíos y entregas", href: "mailto:ventas@polianthes.shop?subject=Envíos%20y%20entregas" },
-  { label: "Tamaños y presentaciones", href: "mailto:ventas@polianthes.shop?subject=Tamaños%20y%20presentaciones" },
-  { label: "Devoluciones", href: "mailto:ventas@polianthes.shop?subject=Devoluciones" },
-  { label: "Contacto", href: "mailto:ventas@polianthes.shop" }
+  { label: "Envíos y entregas", href: "/envios" },
+  { label: "Tamaños y presentaciones", href: "/tamanos" },
+  { label: "Devoluciones", href: "/devoluciones" },
+  { label: "Contacto", href: "/contacto" }
 ];
 
 export default function Footer() {
@@ -49,7 +51,7 @@ export default function Footer() {
             <ul className="space-y-2">
               {TIENDA_LINKS.map((l) => (
                 <li key={l.label}>
-                  <a href={l.href} className="text-sm text-ink-mute hover:text-gold transition-colors">{l.label}</a>
+                  <Link href={l.href} className="text-sm text-ink-mute hover:text-gold transition-colors">{l.label}</Link>
                 </li>
               ))}
             </ul>
@@ -61,7 +63,7 @@ export default function Footer() {
             <ul className="space-y-2">
               {AYUDA_LINKS.map((l) => (
                 <li key={l.label}>
-                  <a href={l.href} className="text-sm text-ink-mute hover:text-gold transition-colors">{l.label}</a>
+                  <Link href={l.href} className="text-sm text-ink-mute hover:text-gold transition-colors">{l.label}</Link>
                 </li>
               ))}
             </ul>
