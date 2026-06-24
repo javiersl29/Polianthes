@@ -4,6 +4,7 @@ import { getPaymentProvider } from "@/lib/admin-data";
 import { parseMXN } from "@/lib/money";
 import { getCurrentCustomer, markCustomerAffiliated, incrementCustomerStats } from "@/lib/customer-auth";
 import { calculatePromo } from "@/lib/promo-calc";
+import { findBestSinglePromo, toPromoConfig, type ActivePromotion } from "@/lib/promo-match";
 import { calculateShipping } from "@/lib/shipping";
 
 export const dynamic = "force-dynamic";
@@ -213,6 +214,41 @@ export async function POST(req: NextRequest) {
       }
     } else {
       promoSummary = "Promoción no vigente";
+    }
+  }
+
+  // FALLBACK DE SEGURIDAD: si no hay promo aplicada, buscar la mejor automáticamente
+  // Esto garantiza que el cliente siempre reciba el mejor descuento posible
+  // sin importar si llegó al checkout con o sin promo en el carrito.
+  if (!promoApplied && orderItems.length > 0) {
+    try {
+      const activePromosResult = await pool.query<ActivePromotion>(
+        `SELECT slug, title, type, value, bundle_price_cents,
+                required_size_ml, mix_sizes, mix_config,
+                quantity_to_take, quantity_to_pay,
+                min_subtotal_cents, active, starts_at, ends_at
+         FROM promotion
+         WHERE active = TRUE
+           AND (starts_at IS NULL OR starts_at <= NOW())
+           AND (ends_at IS NULL OR ends_at >= NOW())`
+      );
+      const best = findBestSinglePromo(
+        orderItems.map((oi) => ({
+          size_ml: oi.size_ml,
+          qty: oi.qty,
+          unit_price_cents: oi.unit_price_cents,
+        })),
+        activePromosResult.rows
+      );
+      if (best && best.discount_cents > 0) {
+        discountCents = best.discount_cents;
+        promoApplied = true;
+        promoSummary = `${best.title} (auto)`;
+        promoType = best.type;
+        couponCode = `[PROMO AUTO] ${best.title}`;
+      }
+    } catch (e) {
+      console.error("[bricks/init] auto-promo fallback error:", e);
     }
   }
 

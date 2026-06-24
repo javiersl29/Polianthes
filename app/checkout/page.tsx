@@ -229,13 +229,7 @@ function CheckoutInner() {
             quantity_to_take: promo.quantity_to_take ?? 3,
             quantity_to_pay: promo.quantity_to_take ? Math.max(1, promo.quantity_to_take - 1) : 1,
             bundle_price_cents: promo.bundle_price_cents ?? 0
-          } : (searchParams.get("promo") ? {
-            slug: String(searchParams.get("promo")),
-            type: String(searchParams.get("promo_type") ?? "bundle"),
-            value: Number(searchParams.get("promo_value") ?? 0),
-            quantity_to_take: Number(searchParams.get("promo_take") ?? 3),
-            quantity_to_pay: Number(searchParams.get("promo_pay") ?? 2)
-          } : undefined)
+          } : undefined
         })
       });
       const data = await r.json();

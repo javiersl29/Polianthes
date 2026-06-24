@@ -35,6 +35,8 @@ export type CartPromo = {
   required_size_ml?: number;
   /** Configuración de bundle mixto: array de {size_ml, qty} */
   mix_config?: Array<{ size_ml: number; qty: number }>;
+  /** Origen: 'user' = elegida explícitamente desde landing, 'auto' = detectada automáticamente */
+  source?: "user" | "auto";
 };
 
 const CART_KEY = "polianthes_cart_v1";
