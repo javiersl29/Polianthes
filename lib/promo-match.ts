@@ -66,9 +66,11 @@ export function toPromoConfig(p: ActivePromotion): PromoConfig {
 
 /**
  * Filtra promos vigentes (active + dentro de fechas).
+ * Si `active` no está definido (ej: viene de API pública que ya filtró),
+ * se asume true.
  */
 export function isPromoActive(p: ActivePromotion, now: Date = new Date()): boolean {
-  if (!p.active) return false;
+  if (p.active === false) return false;
   if (p.starts_at && new Date(p.starts_at) > now) return false;
   if (p.ends_at && new Date(p.ends_at) < now) return false;
   return true;
